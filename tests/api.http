@@ -1,0 +1,372 @@
+# Fieldworksdiary — API-Smoke- und Regressionstests
+#
+# Format: VSCode REST Client / IntelliJ HTTP Client / Helix REST.
+# Top-down ausführbar; Variablen-Verkettung über `@name`-Anker.
+#
+# Voraussetzung: `docker compose up --build` läuft auf {{baseUrl}}.
+
+@baseUrl = http://localhost:8090
+
+###############################################################################
+# 0. Health
+###############################################################################
+
+### Health-Check
+GET {{baseUrl}}/api/health
+
+
+###############################################################################
+# 1. Phase 1 — Code-Vergabe und Auto-Gruppierung
+###############################################################################
+
+### Sample 1: Würzburg, 2026-05-10 14:30 Berlin (= 12:30 UTC)
+# Erstes Sample des Tages -> Code "260510/1", neue Excursion.
+# @name s1
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-10 12:30:00.000Z"
+}
+
+### Sample 2: gleicher Sammeltag, 2 h später
+# Erwartet: Code "260510/2", gleiche Excursion wie Sample 1.
+# @name s2
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7920,
+    "lon": 9.9540,
+    "collected_from": "2026-05-10 14:30:00.000Z"
+}
+
+### Sample 3: Folgetag
+# Erwartet: Code "260511/1", neue Excursion.
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7930,
+    "lon": 9.9550,
+    "collected_from": "2026-05-11 10:00:00.000Z"
+}
+
+### Sample 4: Cutoff-Edge — 03:00 Berlin (vor 5h-Cutoff)
+# Erwartet: zählt zum Sammeltag 09.05., Code "260509/1" (separate Excursion).
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7940,
+    "lon": 9.9560,
+    "collected_from": "2026-05-10 01:00:00.000Z"
+}
+
+### Sample 5: Nacht-Excursion über Mitternacht (2026-05-01 22:00 Berlin)
+# @name nightStart
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-01 20:00:00.000Z"
+}
+
+### Sample 6: Nacht-Excursion, 01:30 Berlin (= 2026-05-01 23:30 UTC)
+# Erwartet: gleiche Excursion wie Sample 5, night_excursion=true.
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-01 23:30:00.000Z"
+}
+
+
+###############################################################################
+# 2. Phase 2 — Reads und Anreicherung
+###############################################################################
+
+### Sample 1 nach Anreicherung erneut lesen
+# Erwartet (nach < 2 s): admin_units mit "Würzburg" befüllt, mtb mit Sheet 6225.
+GET {{baseUrl}}/api/collections/samples/records/{{s1.response.body.id}}
+
+### Excursion zu Sample 1 lesen — sollte Astro enthalten
+GET {{baseUrl}}/api/collections/excursions/records/{{s1.response.body.excursion}}
+
+### Außerhalb DE: La Palma (Kanaren)
+# Erwartet: admin_units mit Spanien/Santa Cruz de La Palma; mtb.found = false.
+# @name lapalma
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 28.6788,
+    "lon": -17.7633,
+    "collected_from": "2026-05-10 14:00:00.000Z"
+}
+
+### La-Palma-Sample auslesen (nach Enrichment)
+GET {{baseUrl}}/api/collections/samples/records/{{lapalma.response.body.id}}
+
+
+###############################################################################
+# 3. Listen und Filter
+###############################################################################
+
+### Letzte Excursions, neueste zuerst
+GET {{baseUrl}}/api/collections/excursions/records?perPage=20&sort=-collecting_day,-started_at
+
+### Excursions mit Filter auf Tag
+GET {{baseUrl}}/api/collections/excursions/records?filter=collecting_day='2026-05-10'
+
+### Alle Samples einer Excursion
+GET {{baseUrl}}/api/collections/samples/records?filter=excursion='{{s1.response.body.excursion}}'&sort=collected_from
+
+### Nur Nacht-Excursions
+GET {{baseUrl}}/api/collections/excursions/records?filter=night_excursion=true
+
+
+###############################################################################
+# 4. Cache-Verifikation
+###############################################################################
+
+### Nochmals dieselben Koordinaten — Enrichment sollte aus Cache kommen
+# Manuell vergleichen: Time-to-Enrichment vs. erstes Sample.
+# @name cached
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-12 12:00:00.000Z"
+}
+
+### Sofort lesen (sollte schon admin_units/mtb haben, da aus Cache)
+GET {{baseUrl}}/api/collections/samples/records/{{cached.response.body.id}}
+
+
+###############################################################################
+# 5. Phase 3b — Client-Code-Honoring und Konfliktauflösung
+###############################################################################
+
+### Client schickt eigenen Code "260520/1" — frisches Datum, kein Konflikt
+# Erwartet: code = "260520/1", original_code leer.
+# @name clientCode1
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-20 10:00:00.000Z",
+    "code": "260520/1",
+    "client_uuid": "11111111-1111-1111-1111-111111111111",
+    "client_updated_at": "2026-05-20 10:00:00.000Z"
+}
+
+### Zweites Gerät: derselbe Code "260520/1" -> KONFLIKT
+# Erwartet: code != "260520/1" (server reassign), original_code = "260520/1".
+# @name clientCode2
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7920,
+    "lon": 9.9540,
+    "collected_from": "2026-05-20 11:00:00.000Z",
+    "code": "260520/1",
+    "client_uuid": "22222222-2222-2222-2222-222222222222",
+    "client_updated_at": "2026-05-20 11:00:00.000Z"
+}
+
+### Client springt auf "260520/7" — kein Konflikt, server hebt Sequenz an
+# Erwartet: code = "260520/7", folgendes Auto-Sample wäre /8.
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7930,
+    "lon": 9.9550,
+    "collected_from": "2026-05-20 12:00:00.000Z",
+    "code": "260520/7",
+    "client_uuid": "33333333-3333-3333-3333-333333333333",
+    "client_updated_at": "2026-05-20 12:00:00.000Z"
+}
+
+### Anschließend ohne Code: server allokiert /8 (max + 1)
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7940,
+    "lon": 9.9560,
+    "collected_from": "2026-05-20 13:00:00.000Z"
+}
+
+
+###############################################################################
+# 6. Phase 5 — Filter-Spalten (day_of_year, country, admin_area)
+###############################################################################
+
+### Saisonal: DOY 105–141 (15.04.–20.05. über alle Jahre)
+GET {{baseUrl}}/api/collections/excursions/records?filter=day_of_year>=105 && day_of_year<=141
+
+### Saisonal + Region: April-Mai-Bereich nur Spanien (Kanaren)
+GET {{baseUrl}}/api/collections/excursions/records?filter=day_of_year>=105 && day_of_year<=135 && country='Spanien'
+
+### Region: nur Deutschland
+GET {{baseUrl}}/api/collections/excursions/records?filter=country='Deutschland'
+
+### Saisonal wrap: 15.12.–15.01. (DOY 349–365 ODER 1–15)
+GET {{baseUrl}}/api/collections/excursions/records?filter=(day_of_year>=349 || day_of_year<=15)
+
+
+###############################################################################
+# 7. Phase 6 — Personen und Bestimmungen
+###############################################################################
+
+### Person anlegen
+# @name person1
+POST {{baseUrl}}/api/collections/people/records
+Content-Type: application/json
+
+{
+    "full_name": "Joachim Brunner",
+    "abbreviation": "J. Brunner",
+    "email": "jo@brunner.io"
+}
+
+### Sample anlegen (für Bestimmung)
+# @name samp7
+POST {{baseUrl}}/api/collections/samples/records
+Content-Type: application/json
+
+{
+    "lat": 49.7913,
+    "lon": 9.9534,
+    "collected_from": "2026-05-12 10:00:00.000Z"
+}
+
+### det.-Bestimmung mit Person
+POST {{baseUrl}}/api/collections/determinations/records
+Content-Type: application/json
+
+{
+    "sample": "{{samp7.response.body.id}}",
+    "species_text": "Otiorhynchus ligustici",
+    "kind": "det",
+    "person": "{{person1.response.body.id}}",
+    "determined_on": "2026-05-12",
+    "notes": "Habitus paßt eindeutig."
+}
+
+### vid.-Bestimmung ohne Person (anonyme Sichtung)
+POST {{baseUrl}}/api/collections/determinations/records
+Content-Type: application/json
+
+{
+    "sample": "{{samp7.response.body.id}}",
+    "species_text": "Curculio nucum",
+    "kind": "vid"
+}
+
+### Ungültiges kind → muss 400 mit validation_invalid_value zurückgeben
+POST {{baseUrl}}/api/collections/determinations/records
+Content-Type: application/json
+
+{
+    "sample": "{{samp7.response.body.id}}",
+    "species_text": "X",
+    "kind": "bogus"
+}
+
+### Bestimmungen zu einem Sample (neueste zuerst)
+GET {{baseUrl}}/api/collections/determinations/records?filter=sample='{{samp7.response.body.id}}'&sort=-determined_on,-created
+
+### Alle Personen
+GET {{baseUrl}}/api/collections/people/records?sort=full_name
+
+
+###############################################################################
+# 8. Phase 7 — Etiketten-PDFs
+###############################################################################
+
+### Locality-Etiketten für mehrere Samples rendern
+POST {{baseUrl}}/api/label-pdfs/locality
+Content-Type: application/json
+
+{
+    "sample_ids": ["{{samp7.response.body.id}}"],
+    "template": "default"
+}
+
+### Liste aller bisher erzeugten PDFs (neuste zuerst)
+GET {{baseUrl}}/api/collections/label_pdfs/records?sort=-created&perPage=10
+
+### Datei-URL eines konkreten Labels
+# Im Browser/Quicklook öffnen — `{labelId}` und `{pdfFile}` aus der Liste oben.
+# Beispiel:
+GET {{baseUrl}}/api/files/label_pdfs/{labelId}/{pdfFile}
+
+### Locality, Multi-Up-A4-Layout
+POST {{baseUrl}}/api/label-pdfs/locality
+Content-Type: application/json
+
+{
+    "sample_ids": ["{{samp7.response.body.id}}"],
+    "template": "multi-up-a4"
+}
+
+### Determination-Etiketten (Sample muss eine Determination haben)
+POST {{baseUrl}}/api/label-pdfs/determination
+Content-Type: application/json
+
+{
+    "sample_ids": ["{{samp7.response.body.id}}"],
+    "template": "default"
+}
+
+### Determination ohne vorhandene Determinations → 400 erwartet
+POST {{baseUrl}}/api/label-pdfs/determination
+Content-Type: application/json
+
+{
+    "sample_ids": ["does-not-exist-id"]
+}
+
+
+###############################################################################
+# 9. Phase 8 — Genehmigungen
+###############################################################################
+
+### Permit-Nummer auf Excursion setzen
+# Erst `s1` aus oben anlegen, dessen Excursion-ID hier verwenden.
+PATCH {{baseUrl}}/api/collections/excursions/records/{{s1.response.body.excursion}}
+Content-Type: application/json
+
+{
+    "permit_number": "BV-2026/123"
+}
+
+### Label rendern — Permit-Zeile sollte im PDF auftauchen
+POST {{baseUrl}}/api/label-pdfs/locality
+Content-Type: application/json
+
+{
+    "sample_ids": ["{{s1.response.body.id}}"]
+}
+
+### Permit-Nummer löschen (Empty-String)
+PATCH {{baseUrl}}/api/collections/excursions/records/{{s1.response.body.excursion}}
+Content-Type: application/json
+
+{
+    "permit_number": ""
+}

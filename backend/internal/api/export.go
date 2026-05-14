@@ -1,0 +1,199 @@
+package api
+
+import (
+	"archive/zip"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"path"
+	"time"
+
+	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
+)
+
+// RegisterExportRoute wires `GET /api/export`. The endpoint returns
+// a single ZIP archive containing all records owned by the
+// authenticated user plus any attached PDF files (permits, label PDFs)
+// pulled straight out of PocketBase's file storage.
+//
+// The archive is for backup. It is NOT designed as an import format —
+// fields, structure, and naming may change without a migration story.
+func RegisterExportRoute(app *pocketbase.PocketBase) {
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+		requireAuth := apis.RequireRecordAuth("users")
+		e.Router.GET("/api/export", func(c echo.Context) error {
+			return handleExport(app, c)
+		}, requireAuth)
+		return nil
+	})
+}
+
+// exportPayload is the JSON shape of `data.json` inside the archive.
+// Anything in `meta` is for human orientation; the per-collection
+// arrays carry the records as PocketBase serialises them (same shape
+// the REST API would return for an authenticated GET).
+type exportPayload struct {
+	ExportedAt time.Time        `json:"exported_at"`
+	Meta       exportMeta       `json:"meta"`
+	Samples    []map[string]any `json:"samples"`
+	Excursions []map[string]any `json:"excursions"`
+	Localities []map[string]any `json:"localities"`
+	People     []map[string]any `json:"people"`
+	Determinations []map[string]any `json:"determinations"`
+	LabelPDFs  []map[string]any `json:"label_pdfs"`
+}
+
+type exportMeta struct {
+	User map[string]any `json:"user"`
+}
+
+func handleExport(app *pocketbase.PocketBase, c echo.Context) error {
+	ownerID, err := authOwnerID(c)
+	if err != nil {
+		return err
+	}
+	dao := app.Dao()
+
+	userRec, err := dao.FindRecordById("users", ownerID)
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load user.", err)
+	}
+	userRec.IgnoreEmailVisibility(true)
+
+	payload := exportPayload{
+		ExportedAt: time.Now().UTC(),
+		Meta:       exportMeta{User: userRec.PublicExport()},
+	}
+
+	if payload.Samples, err = fetchOwned(dao, "samples", ownerID, "-collected_from"); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load samples.", err)
+	}
+	excursions, err := dao.FindRecordsByFilter("excursions", "owner = {:o}", "-collecting_day", 0, 0, dbx.Params{"o": ownerID})
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load excursions.", err)
+	}
+	payload.Excursions = exportAll(excursions)
+	if payload.Localities, err = fetchOwned(dao, "localities", ownerID, "name"); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load localities.", err)
+	}
+	if payload.People, err = fetchOwned(dao, "people", ownerID, ""); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load people.", err)
+	}
+	if payload.Determinations, err = fetchOwned(dao, "determinations", ownerID, "-determined_on"); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load determinations.", err)
+	}
+	labelPDFs, err := dao.FindRecordsByFilter("label_pdfs", "owner = {:o}", "-created", 0, 0, dbx.Params{"o": ownerID})
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load label PDFs.", err)
+	}
+	payload.LabelPDFs = exportAll(labelPDFs)
+
+	// Stream the ZIP into the response. Setting headers before we
+	// write the first byte means errors hereafter become broken
+	// downloads — but the alternative (buffer the whole archive in
+	// memory) is worse once PDFs are involved.
+	filename := fmt.Sprintf("fieldworksdiary-export-%s.zip", time.Now().UTC().Format("20060102-150405"))
+	c.Response().Header().Set("Content-Type", "application/zip")
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Response().WriteHeader(http.StatusOK)
+
+	zw := zip.NewWriter(c.Response().Writer)
+	defer zw.Close()
+
+	if err := writeJSON(zw, "data.json", payload); err != nil {
+		return err
+	}
+
+	fs, err := app.NewFilesystem()
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Filesystem unavailable.", err)
+	}
+	defer fs.Close()
+
+	// Permit PDFs from excursions.
+	for _, exc := range excursions {
+		name := exc.GetString("permit_pdf")
+		if name == "" {
+			continue
+		}
+		key := path.Join(exc.BaseFilesPath(), name)
+		entry := path.Join("pdfs", "excursions", exc.Id, name)
+		if err := copyFromStorage(zw, fs, key, entry); err != nil {
+			// Soft-fail: a missing PDF should not break the entire
+			// export. Skip with a note in the ZIP root instead.
+			writeText(zw, fmt.Sprintf("missing/%s.txt", exc.Id),
+				fmt.Sprintf("permit PDF %q for excursion %s could not be read: %v\n", name, exc.Id, err))
+		}
+	}
+
+	// Label PDFs.
+	for _, l := range labelPDFs {
+		name := l.GetString("pdf_file")
+		if name == "" {
+			continue
+		}
+		key := path.Join(l.BaseFilesPath(), name)
+		entry := path.Join("pdfs", "labels", l.Id, name)
+		if err := copyFromStorage(zw, fs, key, entry); err != nil {
+			writeText(zw, fmt.Sprintf("missing/%s.txt", l.Id),
+				fmt.Sprintf("label PDF %q for label %s could not be read: %v\n", name, l.Id, err))
+		}
+	}
+
+	return nil
+}
+
+func fetchOwned(dao interface {
+	FindRecordsByFilter(string, string, string, int, int, ...dbx.Params) ([]*models.Record, error)
+}, name, ownerID, sort string) ([]map[string]any, error) {
+	recs, err := dao.FindRecordsByFilter(name, "owner = {:o}", sort, 0, 0, dbx.Params{"o": ownerID})
+	if err != nil {
+		return nil, err
+	}
+	return exportAll(recs), nil
+}
+
+func exportAll(recs []*models.Record) []map[string]any {
+	out := make([]map[string]any, 0, len(recs))
+	for _, r := range recs {
+		out = append(out, r.PublicExport())
+	}
+	return out
+}
+
+func writeJSON(zw *zip.Writer, name string, v any) error {
+	w, err := zw.Create(name)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
+}
+
+func writeText(zw *zip.Writer, name, body string) {
+	if w, err := zw.Create(name); err == nil {
+		_, _ = io.WriteString(w, body)
+	}
+}
+
+func copyFromStorage(zw *zip.Writer, fs *filesystem.System, key, entry string) error {
+	r, err := fs.GetFile(key)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	w, err := zw.Create(entry)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(w, r)
+	return err
+}

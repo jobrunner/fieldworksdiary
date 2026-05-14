@@ -1,0 +1,9 @@
+services:
+  backend:
+    build: ./backend
+    container_name: weevilapp-backend
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./backend/pb_data:/app/pb_data
+    restart: unless-stopped

@@ -1,0 +1,1142 @@
+{
+    "info": {
+        "_postman_id": "f4d7b401-7a98-4d0c-9d61-fieldworks01",
+        "name": "Fieldworksdiary Backend",
+        "description": "Smoke- und Regressionstests für das Fieldworksdiary-Backend. Top-down ausführen — die Variablen `s1_id` / `s1_excursion` / `lapalma_id` werden über Test-Scripts zwischen den Requests verkettet.\n\nVariable `baseUrl` setzen:\n- Mac (Container lokal): http://localhost:8090\n- iPhone im LAN: http://<dein-mac>:8090\n\nAuth: ein Collection-Pre-Request-Script registriert (idempotent) den Test-User `{{test_user_email}}` und holt einen Token in `{{auth_token}}`. Alle Requests senden ihn als `Authorization`-Header.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "apikey",
+        "apikey": [
+            { "key": "key",   "value": "Authorization", "type": "string" },
+            { "key": "value", "value": "{{auth_token}}", "type": "string" },
+            { "key": "in",    "value": "header",        "type": "string" }
+        ]
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "// Stellt sicher, dass {{auth_token}} gültig ist.",
+                    "// Idempotent: existiert der Test-User schon, ignorieren wir den 400 vom Register.",
+                    "const base  = pm.collectionVariables.get('baseUrl');",
+                    "const email = pm.collectionVariables.get('test_user_email') || 'newman@fieldworksdiary.local';",
+                    "const pass  = pm.collectionVariables.get('test_user_pw')    || 'newmantestpw';",
+                    "pm.collectionVariables.set('test_user_email', email);",
+                    "pm.collectionVariables.set('test_user_pw', pass);",
+                    "",
+                    "function login(cb) {",
+                    "  pm.sendRequest({",
+                    "    url: base + '/api/collections/users/auth-with-password',",
+                    "    method: 'POST',",
+                    "    header: { 'Content-Type': 'application/json' },",
+                    "    body: { mode: 'raw', raw: JSON.stringify({ identity: email, password: pass }) }",
+                    "  }, function (err, res) {",
+                    "    if (!err && res && res.code === 200) {",
+                    "      const j = res.json();",
+                    "      pm.collectionVariables.set('auth_token', j.token);",
+                    "      pm.collectionVariables.set('auth_user_id', j.record.id);",
+                    "    }",
+                    "    cb();",
+                    "  });",
+                    "}",
+                    "",
+                    "function registerThenLogin() {",
+                    "  pm.sendRequest({",
+                    "    url: base + '/api/collections/users/records',",
+                    "    method: 'POST',",
+                    "    header: { 'Content-Type': 'application/json' },",
+                    "    body: { mode: 'raw', raw: JSON.stringify({",
+                    "      email: email, password: pass, passwordConfirm: pass,",
+                    "      display_name: 'Newman', abbreviation: 'N.'",
+                    "    }) }",
+                    "  }, function () { login(function () {}); });",
+                    "}",
+                    "",
+                    "// Wenn wir schon einen Token haben, versuchen wir ihn — andernfalls login/register.",
+                    "const existing = pm.collectionVariables.get('auth_token');",
+                    "if (existing) {",
+                    "  pm.sendRequest({",
+                    "    url: base + '/api/collections/users/auth-refresh',",
+                    "    method: 'POST',",
+                    "    header: { 'Authorization': existing, 'Content-Type': 'application/json' }",
+                    "  }, function (err, res) {",
+                    "    if (!err && res && res.code === 200) {",
+                    "      pm.collectionVariables.set('auth_token', res.json().token);",
+                    "    } else {",
+                    "      login(function () {",
+                    "        if (!pm.collectionVariables.get('auth_token')) registerThenLogin();",
+                    "      });",
+                    "    }",
+                    "  });",
+                    "} else {",
+                    "  login(function () {",
+                    "    if (!pm.collectionVariables.get('auth_token')) registerThenLogin();",
+                    "  });",
+                    "}"
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8090",
+            "type": "string"
+        },
+        {
+            "key": "test_user_email",
+            "value": "newman@fieldworksdiary.local",
+            "type": "string"
+        },
+        {
+            "key": "test_user_pw",
+            "value": "newmantestpw",
+            "type": "string"
+        },
+        {
+            "key": "auth_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "auth_user_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "s1_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "s1_excursion",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "lapalma_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "p6_person_id",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "p6_sample_id",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "0 Health",
+            "item": [
+                {
+                    "name": "GET /api/health",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('200', () => pm.response.to.have.status(200));",
+                                    "pm.test('healthy', () => pm.expect(pm.response.json().message).to.match(/healthy/i));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/health",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "health"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "1 Phase 1 — Code-Vergabe",
+            "item": [
+                {
+                    "name": "POST sample 1 (Würzburg, 14:30 Berlin)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('200', () => pm.response.to.have.status(200));",
+                                    "pm.test('code is YYMMDD/N', () => pm.expect(r.code).to.match(/^\\d{6}\\/\\d+$/));",
+                                    "pm.test('excursion linked', () => pm.expect(r.excursion).to.have.lengthOf.above(0));",
+                                    "pm.collectionVariables.set('s1_id', r.id);",
+                                    "pm.collectionVariables.set('s1_excursion', r.excursion);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7913,\n    \"lon\": 9.9534,\n    \"collected_from\": \"2026-05-10 12:30:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST sample 2 (gleicher Sammeltag → gleiche Excursion)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code is /2', () => pm.expect(r.code).to.match(/\\/2$/));",
+                                    "pm.test('same excursion as sample 1', () => pm.expect(r.excursion).to.equal(pm.collectionVariables.get('s1_excursion')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7920,\n    \"lon\": 9.9540,\n    \"collected_from\": \"2026-05-10 14:30:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST sample 3 (Folgetag → neue Excursion)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code is 260511/1', () => pm.expect(r.code).to.equal('260511/1'));",
+                                    "pm.test('different excursion', () => pm.expect(r.excursion).to.not.equal(pm.collectionVariables.get('s1_excursion')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7930,\n    \"lon\": 9.9550,\n    \"collected_from\": \"2026-05-11 10:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST sample 4 (03:00 Berlin → Cutoff: zählt zum Vortag)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code starts with 260509', () => pm.expect(r.code).to.match(/^260509\\//));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7940,\n    \"lon\": 9.9560,\n    \"collected_from\": \"2026-05-10 01:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "2 Phase 2 — Anreicherung",
+            "item": [
+                {
+                    "name": "GET sample 1 (nach Enrichment)",
+                    "description": "Vor dem Aufruf ein paar Sekunden warten, damit die Goroutine durch ist.",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('admin_units present', () => pm.expect(r.admin_units).to.be.an('object').and.not.be.empty);",
+                                    "pm.test('locality is Würzburg', () => pm.expect(r.admin_units.locality).to.equal('Würzburg'));",
+                                    "pm.test('mtb sheet 6225', () => pm.expect(r.mtb.sheet_number).to.equal('6225'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records/{{s1_id}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records", "{{s1_id}}"]
+                        }
+                    }
+                },
+                {
+                    "name": "GET excursion zu sample 1 (mit Astro)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('astro present', () => pm.expect(r.astro).to.be.an('object'));",
+                                    "pm.test('astro.moon_phase in [0,1)', () => {",
+                                    "    pm.expect(r.astro.moon_phase).to.be.gte(0);",
+                                    "    pm.expect(r.astro.moon_phase).to.be.lt(1);",
+                                    "});",
+                                    "pm.test('name promoted to locality', () => pm.expect(r.name).to.match(/W.rzburg/));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records/{{s1_excursion}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records", "{{s1_excursion}}"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST sample außerhalb DE (La Palma)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set('lapalma_id', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 28.6788,\n    \"lon\": -17.7633,\n    \"collected_from\": \"2026-05-10 14:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "GET La-Palma-Sample (mtb.found=false erwartet)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('country Spanien', () => pm.expect(r.admin_units.country).to.equal('Spanien'));",
+                                    "pm.test('mtb.found = false outside DE', () => pm.expect(r.mtb.found).to.equal(false));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records/{{lapalma_id}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records", "{{lapalma_id}}"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "3 Listen und Filter",
+            "item": [
+                {
+                    "name": "GET excursions (sortiert nach Sammeltag)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records?perPage=20&sort=-collecting_day,-started_at",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records"],
+                            "query": [
+                                { "key": "perPage", "value": "20" },
+                                { "key": "sort", "value": "-collecting_day,-started_at" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "GET excursions filter='2026-05-10'",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records?filter=collecting_day='2026-05-10'",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records"],
+                            "query": [
+                                { "key": "filter", "value": "collecting_day='2026-05-10'" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "GET samples einer Excursion",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records?filter=excursion='{{s1_excursion}}'&sort=collected_from",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"],
+                            "query": [
+                                { "key": "filter", "value": "excursion='{{s1_excursion}}'" },
+                                { "key": "sort", "value": "collected_from" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "GET nur Nacht-Excursions",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records?filter=night_excursion=true",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records"],
+                            "query": [
+                                { "key": "filter", "value": "night_excursion=true" }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "4 Phase 3b — Client-Code-Honoring",
+            "item": [
+                {
+                    "name": "POST mit Client-Code 260520/1 (frisch, kein Konflikt)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code = 260520/1', () => pm.expect(r.code).to.equal('260520/1'));",
+                                    "pm.test('original_code empty', () => pm.expect(r.original_code || '').to.equal(''));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7913,\n    \"lon\": 9.9534,\n    \"collected_from\": \"2026-05-20 10:00:00.000Z\",\n    \"code\": \"260520/1\",\n    \"client_uuid\": \"11111111-1111-1111-1111-111111111111\",\n    \"client_updated_at\": \"2026-05-20 10:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST mit konfligierendem Code 260520/1 (zweites Gerät)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code reassigned (not 260520/1)', () => pm.expect(r.code).to.not.equal('260520/1'));",
+                                    "pm.test('original_code saved as 260520/1', () => pm.expect(r.original_code).to.equal('260520/1'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7920,\n    \"lon\": 9.9540,\n    \"collected_from\": \"2026-05-20 11:00:00.000Z\",\n    \"code\": \"260520/1\",\n    \"client_uuid\": \"22222222-2222-2222-2222-222222222222\",\n    \"client_updated_at\": \"2026-05-20 11:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST mit Sprung-Code 260520/7 (hebt Sequenz an)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('code = 260520/7', () => pm.expect(r.code).to.equal('260520/7'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7930,\n    \"lon\": 9.9550,\n    \"collected_from\": \"2026-05-20 12:00:00.000Z\",\n    \"code\": \"260520/7\",\n    \"client_uuid\": \"33333333-3333-3333-3333-333333333333\",\n    \"client_updated_at\": \"2026-05-20 12:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST ohne Code (auto-allokiert /8 nach Sprung auf /7)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('auto code = 260520/8', () => pm.expect(r.code).to.equal('260520/8'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7940,\n    \"lon\": 9.9560,\n    \"collected_from\": \"2026-05-20 13:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "5 Phase 5 — Filter-Spalten",
+            "item": [
+                {
+                    "name": "GET Excursions filter day_of_year ∈ [105, 141]",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('all hits have DOY in [105,141]', () => {",
+                                    "    r.items.forEach(e => {",
+                                    "        pm.expect(e.day_of_year).to.be.gte(105);",
+                                    "        pm.expect(e.day_of_year).to.be.lte(141);",
+                                    "    });",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records?filter=day_of_year>=105 %26%26 day_of_year<=141",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records"],
+                            "query": [
+                                { "key": "filter", "value": "day_of_year>=105 && day_of_year<=141" }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "GET Excursions filter country='Deutschland'",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('all hits are Deutschland', () => {",
+                                    "    r.items.forEach(e => pm.expect(e.country).to.equal('Deutschland'));",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records?filter=country='Deutschland'",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records"],
+                            "query": [
+                                { "key": "filter", "value": "country='Deutschland'" }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "6 Phase 6 — Personen und Bestimmungen",
+            "item": [
+                {
+                    "name": "POST person",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('id assigned', () => pm.expect(r.id).to.have.lengthOf.above(0));",
+                                    "pm.collectionVariables.set('p6_person_id', r.id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"full_name\": \"Joachim Brunner\",\n    \"abbreviation\": \"J. Brunner\",\n    \"email\": \"jo@brunner.io\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/people/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "people", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST sample (für Bestimmung)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.collectionVariables.set('p6_sample_id', pm.response.json().id);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lat\": 49.7913,\n    \"lon\": 9.9534,\n    \"collected_from\": \"2026-05-12 10:00:00.000Z\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/samples/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "samples", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST determination (det. mit Person)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('kind = det', () => pm.expect(r.kind).to.equal('det'));",
+                                    "pm.test('species saved', () => pm.expect(r.species_text).to.equal('Otiorhynchus ligustici'));",
+                                    "pm.test('linked to person', () => pm.expect(r.person).to.equal(pm.collectionVariables.get('p6_person_id')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample\": \"{{p6_sample_id}}\",\n    \"species_text\": \"Otiorhynchus ligustici\",\n    \"kind\": \"det\",\n    \"person\": \"{{p6_person_id}}\",\n    \"determined_on\": \"2026-05-12\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/determinations/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "determinations", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST determination (vid., anonym)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('kind = vid', () => pm.expect(r.kind).to.equal('vid'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample\": \"{{p6_sample_id}}\",\n    \"species_text\": \"Curculio nucum\",\n    \"kind\": \"vid\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/determinations/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "determinations", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST determination (invalid kind → 400)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('rejected with 400', () => pm.expect(pm.response.code).to.equal(400));",
+                                    "pm.test('kind validation error', () => {",
+                                    "    const r = pm.response.json();",
+                                    "    pm.expect(r.data.kind.code).to.equal('validation_invalid_value');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample\": \"{{p6_sample_id}}\",\n    \"species_text\": \"X\",\n    \"kind\": \"bogus\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/determinations/records",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "determinations", "records"]
+                        }
+                    }
+                },
+                {
+                    "name": "GET determinations für sample",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('exactly 2 determinations', () => pm.expect(r.items).to.have.lengthOf(2));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/determinations/records?filter=sample='{{p6_sample_id}}'&sort=-determined_on,-created",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "determinations", "records"],
+                            "query": [
+                                { "key": "filter", "value": "sample='{{p6_sample_id}}'" },
+                                { "key": "sort", "value": "-determined_on,-created" }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "7 Phase 7 — Etiketten-PDFs",
+            "item": [
+                {
+                    "name": "POST /api/label-pdfs/locality",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('201 or 200', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                                    "pm.test('kind = locality', () => pm.expect(r.kind).to.equal('locality'));",
+                                    "pm.test('pdf_file ends with .pdf', () => pm.expect(r.pdf_file).to.match(/\\.pdf$/));",
+                                    "pm.test('samples relation contains the sample', () => pm.expect(r.samples).to.include(pm.collectionVariables.get('p6_sample_id')));",
+                                    "pm.collectionVariables.set('p7_label_id', r.id);",
+                                    "pm.collectionVariables.set('p7_pdf_file', r.pdf_file);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": [\"{{p6_sample_id}}\"],\n    \"template\": \"default\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/locality",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "locality"]
+                        }
+                    }
+                },
+                {
+                    "name": "GET PDF-File (binary)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('200', () => pm.response.to.have.status(200));",
+                                    "pm.test('content is PDF', () => {",
+                                    "    const head = pm.response.text().substring(0, 5);",
+                                    "    pm.expect(head).to.equal('%PDF-');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/api/files/label_pdfs/{{p7_label_id}}/{{p7_pdf_file}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "files", "label_pdfs", "{{p7_label_id}}", "{{p7_pdf_file}}"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST locality mit leeren sample_ids → 400",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('rejected', () => pm.expect(pm.response.code).to.equal(400));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": []\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/locality",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "locality"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST locality template multi-up-a4",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('template stored', () => pm.expect(r.template).to.equal('multi-up-a4'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": [\"{{p6_sample_id}}\"],\n    \"template\": \"multi-up-a4\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/locality",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "locality"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST determination (Sample p6 hat eine det.)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('kind = determination', () => pm.expect(r.kind).to.equal('determination'));",
+                                    "pm.test('sample wurde gelabelt', () => pm.expect(r.samples).to.include(pm.collectionVariables.get('p6_sample_id')));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": [\"{{p6_sample_id}}\"]\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/determination",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "determination"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST determination ohne vorhandene Determinations → 400",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test('rejected', () => pm.expect(pm.response.code).to.equal(400));",
+                                    "pm.test('message erwähnt skipped', () => {",
+                                    "    pm.expect(pm.response.json().message).to.match(/skipped/i);",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": [\"{{s1_id}}\"]\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/determination",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "determination"]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "8 Phase 8 — Genehmigungen",
+            "item": [
+                {
+                    "name": "PATCH excursion mit permit_number",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('permit_number gespeichert', () => pm.expect(r.permit_number).to.equal('BV-2026/123'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"permit_number\": \"BV-2026/123\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records/{{s1_excursion}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records", "{{s1_excursion}}"]
+                        }
+                    }
+                },
+                {
+                    "name": "POST locality label — Permit-Zeile erwartet",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('200', () => pm.expect(pm.response.code).to.equal(200));",
+                                    "pm.collectionVariables.set('p8_label_id', r.id);",
+                                    "pm.collectionVariables.set('p8_pdf_file', r.pdf_file);"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sample_ids\": [\"{{s1_id}}\"]\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/label-pdfs/locality",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "label-pdfs", "locality"]
+                        }
+                    }
+                },
+                {
+                    "name": "PATCH permit_number löschen",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "const r = pm.response.json();",
+                                    "pm.test('permit_number leer', () => pm.expect(r.permit_number).to.equal(''));"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"permit_number\": \"\"\n}",
+                            "options": { "raw": { "language": "json" } }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/api/collections/excursions/records/{{s1_excursion}}",
+                            "host": ["{{baseUrl}}"],
+                            "path": ["api", "collections", "excursions", "records", "{{s1_excursion}}"]
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

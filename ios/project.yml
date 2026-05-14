@@ -1,0 +1,68 @@
+name: Weevilapp
+options:
+  bundleIdPrefix: com.weevilapp
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: de
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    from: 6.29.0
+targets:
+  Weevilapp:
+    type: application
+    platform: iOS
+    sources:
+      - path: Weevilapp
+    dependencies:
+      - package: GRDB
+        product: GRDB
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weevilapp.Weevilapp
+        TARGETED_DEVICE_FAMILY: "1,2"
+        INFOPLIST_FILE: Weevilapp/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Weevilapp/Weevilapp.entitlements
+        # DEVELOPMENT_TEAM: ABC123XYZ
+        # ↑ Trage hier deine Apple-Team-ID ein (Xcode →
+        # Settings → Accounts → Team-ID), oder lass das Feld
+        # leer und wähle das Team in Xcode unter „Signing &
+        # Capabilities". Letzteres wird beim nächsten
+        # `xcodegen generate` überschrieben — also für
+        # dauerhafte Persistenz hier eintragen.
+        #
+        # Für CLI-Simulator-Builds umgehen wir Signing
+        # weiterhin via `xcodebuild ... CODE_SIGN_IDENTITY=""
+        # CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO` —
+        # die Defaults bleiben hier ON, damit Device-Builds
+        # ohne Reibung möglich sind.
+  WeevilappTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: WeevilappTests
+    dependencies:
+      - target: Weevilapp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.weevilapp.WeevilappTests
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Weevilapp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Weevilapp
+schemes:
+  Weevilapp:
+    build:
+      targets:
+        Weevilapp: all
+        WeevilappTests: [test]
+    test:
+      targets:
+        - WeevilappTests

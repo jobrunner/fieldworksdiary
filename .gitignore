@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+
+# Claude Code per-user state (permission allowlist etc.)
+.claude/
+
+# Backend
+backend/pb_data/
+backend/weevilapp
+backend/backend
+*.log
+
+# iOS
+ios/Weevilapp.xcodeproj/
+ios/build/
+ios/.build/
+ios/DerivedData/
+ios/*.xcworkspace/xcuserdata/
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp

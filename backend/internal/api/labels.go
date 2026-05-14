@@ -1,0 +1,385 @@
+// Package api contains the custom HTTP routes that PocketBase's
+// auto-generated REST API doesn't cover — PDF label generation in
+// particular. Routes are registered from main.go via
+// RegisterLabelRoutes.
+package api
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/jbrunner/weevilapp/backend/internal/pdf"
+
+	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase"
+	"github.com/pocketbase/pocketbase/apis"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/forms"
+	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/filesystem"
+)
+
+// RegisterLabelRoutes wires the custom label-PDF endpoints under
+// /api/label-pdfs/*.
+func RegisterLabelRoutes(app *pocketbase.PocketBase) {
+	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
+		// PocketBase's e.Pre(LoadAuthContext) already populates
+		// the `authRecord` context key for every route, so
+		// RequireRecordAuth("users") works as a short-circuit
+		// 401-guard for unauthenticated requests.
+		requireAuth := apis.RequireRecordAuth("users")
+		e.Router.POST("/api/label-pdfs/locality", func(c echo.Context) error {
+			return handleLocalityLabel(app, c)
+		}, requireAuth)
+		e.Router.POST("/api/label-pdfs/determination", func(c echo.Context) error {
+			return handleDeterminationLabel(app, c)
+		}, requireAuth)
+		return nil
+	})
+}
+
+type labelRequest struct {
+	SampleIDs []string `json:"sample_ids"`
+	Template  string   `json:"template"`
+}
+
+func handleLocalityLabel(app *pocketbase.PocketBase, c echo.Context) error {
+	req, err := readLabelRequest(c)
+	if err != nil {
+		return err
+	}
+	ownerID, err := authOwnerID(c)
+	if err != nil {
+		return err
+	}
+	dao := app.Dao()
+	labels, sampleRecs, err := loadLocalityLabels(dao, req.SampleIDs)
+	if err != nil {
+		return apis.NewBadRequestError("Failed to load samples.", err)
+	}
+	if err := assertOwnerOnSamples(sampleRecs, ownerID); err != nil {
+		return err
+	}
+	if len(labels) == 0 {
+		return apis.NewBadRequestError("No matching samples found.", nil)
+	}
+
+	layout := pdf.LayoutFromTemplate(req.Template)
+	pdfBytes, err := pdf.RenderLocalityLabels(labels, layout)
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Render failed.", err)
+	}
+	return saveLabelPDF(app, c, "locality", req, pdfBytes, sampleRecs, ownerID)
+}
+
+func handleDeterminationLabel(app *pocketbase.PocketBase, c echo.Context) error {
+	req, err := readLabelRequest(c)
+	if err != nil {
+		return err
+	}
+	ownerID, err := authOwnerID(c)
+	if err != nil {
+		return err
+	}
+	dao := app.Dao()
+	labels, sampleRecs, skipped, err := loadDeterminationLabels(dao, req.SampleIDs)
+	if err != nil {
+		return apis.NewBadRequestError("Failed to load samples.", err)
+	}
+	if err := assertOwnerOnSamples(sampleRecs, ownerID); err != nil {
+		return err
+	}
+	if len(labels) == 0 {
+		return apis.NewBadRequestError(
+			fmt.Sprintf("No samples have a determination yet (skipped %d).", skipped),
+			nil,
+		)
+	}
+
+	layout := pdf.LayoutFromTemplate(req.Template)
+	pdfBytes, err := pdf.RenderDeterminationLabels(labels, layout)
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Render failed.", err)
+	}
+	return saveLabelPDF(app, c, "determination", req, pdfBytes, sampleRecs, ownerID)
+}
+
+// authOwnerID extracts the authenticated user id directly from the
+// auth-record context. The `ContextRequestInfoKey` is only populated
+// by PocketBase's collection-handling middlewares — custom routes
+// like ours get the raw auth record via `ContextAuthRecordKey`
+// from the global LoadAuthContext pre-middleware.
+//
+// The RequireRecordAuth("users") guard on the route ensures we
+// never reach here without an auth record, but we type-check
+// defensively in case someone removes the guard later.
+func authOwnerID(c echo.Context) (string, error) {
+	if rec, _ := c.Get(apis.ContextAuthRecordKey).(*models.Record); rec != nil {
+		return rec.Id, nil
+	}
+	return "", apis.NewUnauthorizedError("authentication required", nil)
+}
+
+// assertOwnerOnSamples ensures every loaded sample belongs to the
+// authenticated user. Without this an attacker with a valid token
+// could guess a sample id of another user and pull its label.
+// DAO operations bypass collection rules so we have to check here.
+func assertOwnerOnSamples(samples []*models.Record, ownerID string) error {
+	for _, s := range samples {
+		if s.GetString("owner") != ownerID {
+			return apis.NewForbiddenError(
+				"sample does not belong to authenticated user", nil)
+		}
+	}
+	return nil
+}
+
+func readLabelRequest(c echo.Context) (labelRequest, error) {
+	var req labelRequest
+	if err := c.Bind(&req); err != nil {
+		return req, apis.NewBadRequestError("Invalid request body.", err)
+	}
+	if len(req.SampleIDs) == 0 {
+		return req, apis.NewBadRequestError("sample_ids is required.", nil)
+	}
+	if req.Template == "" {
+		req.Template = "default"
+	}
+	return req, nil
+}
+
+func saveLabelPDF(app *pocketbase.PocketBase, c echo.Context,
+	kind string, req labelRequest, pdfBytes []byte,
+	sampleRecs []*models.Record, ownerID string) error {
+	dao := app.Dao()
+	coll, err := dao.FindCollectionByNameOrId("label_pdfs")
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Missing label_pdfs collection.", err)
+	}
+
+	filename := fmt.Sprintf("%s-%s.pdf", kind, time.Now().UTC().Format("20060102-150405"))
+	file, err := filesystem.NewFileFromBytes(pdfBytes, filename)
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Wrap PDF as file.", err)
+	}
+
+	paramsJSON, _ := json.Marshal(req)
+	sampleIDs := make([]string, 0, len(sampleRecs))
+	for _, s := range sampleRecs {
+		sampleIDs = append(sampleIDs, s.Id)
+	}
+
+	record := models.NewRecord(coll)
+	form := forms.NewRecordUpsert(app, record)
+	if err := form.LoadData(map[string]any{
+		"kind":              kind,
+		"template":          req.Template,
+		"generation_params": string(paramsJSON),
+		"samples":           sampleIDs,
+		"owner":             ownerID,
+	}); err != nil {
+		return apis.NewBadRequestError("Bad payload for label_pdfs.", err)
+	}
+	if err := form.AddFiles("pdf_file", file); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Attach PDF.", err)
+	}
+	if err := form.Submit(); err != nil {
+		return apis.NewBadRequestError("Failed to save label_pdfs.", err)
+	}
+	return c.JSON(http.StatusOK, record)
+}
+
+// ---- Loaders ---------------------------------------------------------------
+
+func loadLocalityLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.SampleLabel, []*models.Record, error) {
+	samples, err := dao.FindRecordsByIds("samples", sampleIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	excByID, err := batchLoadExcursions(dao, samples)
+	if err != nil {
+		return nil, nil, err
+	}
+	labels := make([]pdf.SampleLabel, 0, len(samples))
+	for _, s := range samples {
+		labels = append(labels, sampleToLabel(s, excByID[s.GetString("excursion")]))
+	}
+	return labels, samples, nil
+}
+
+// loadDeterminationLabels returns one DeterminationLabel per sample
+// that has at least one determination — most-recent `det.` first,
+// otherwise the most-recent of any kind. Samples without any
+// determination are silently skipped; the count goes back to the
+// caller so they can surface "skipped N" in the response.
+func loadDeterminationLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.DeterminationLabel, []*models.Record, int, error) {
+	samples, err := dao.FindRecordsByIds("samples", sampleIDs)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+
+	// Pre-load people so we don't repeat a query per label.
+	peopleByID := map[string]*models.Record{}
+	if peopleRecs, err := dao.FindRecordsByExpr("people"); err == nil {
+		for _, p := range peopleRecs {
+			peopleByID[p.Id] = p
+		}
+	}
+
+	var labels []pdf.DeterminationLabel
+	var matched []*models.Record
+	skipped := 0
+	for _, s := range samples {
+		det, err := mostRecentDetermination(dao, s.Id)
+		if err != nil || det == nil {
+			skipped++
+			continue
+		}
+		labels = append(labels, determinationToLabel(s, det, peopleByID))
+		matched = append(matched, s)
+	}
+	return labels, matched, skipped, nil
+}
+
+func mostRecentDetermination(dao *daos.Dao, sampleID string) (*models.Record, error) {
+	// Prefer det.; fall back to any kind. Both queries pick the most
+	// recent by `determined_on` (and `created` as a stable tiebreak).
+	prefer, err := dao.FindRecordsByFilter(
+		"determinations",
+		"sample = {:sid} && kind = 'det'",
+		"-determined_on,-created",
+		1, 0,
+		dbx.Params{"sid": sampleID},
+	)
+	if err == nil && len(prefer) > 0 {
+		return prefer[0], nil
+	}
+	any, err := dao.FindRecordsByFilter(
+		"determinations",
+		"sample = {:sid}",
+		"-determined_on,-created",
+		1, 0,
+		dbx.Params{"sid": sampleID},
+	)
+	if err != nil || len(any) == 0 {
+		return nil, nil // treat "not found" as skip, not as failure
+	}
+	return any[0], nil
+}
+
+func determinationToLabel(s *models.Record, det *models.Record, peopleByID map[string]*models.Record) pdf.DeterminationLabel {
+	l := pdf.DeterminationLabel{
+		Code:         s.GetString("code"),
+		SpeciesText:  det.GetString("species_text"),
+		Kind:         det.GetString("kind"),
+		DeterminedOn: det.GetDateTime("determined_on").Time(),
+	}
+	if pid := det.GetString("person"); pid != "" {
+		if p := peopleByID[pid]; p != nil {
+			abbrev := p.GetString("abbreviation")
+			if abbrev == "" {
+				abbrev = p.GetString("full_name")
+			}
+			l.PersonAbbrev = abbrev
+		}
+	}
+	return l
+}
+
+func batchLoadExcursions(dao *daos.Dao, samples []*models.Record) (map[string]*models.Record, error) {
+	excIDs := make(map[string]struct{})
+	for _, s := range samples {
+		if id := s.GetString("excursion"); id != "" {
+			excIDs[id] = struct{}{}
+		}
+	}
+	ids := make([]string, 0, len(excIDs))
+	for id := range excIDs {
+		ids = append(ids, id)
+	}
+	out := map[string]*models.Record{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	recs, err := dao.FindRecordsByIds("excursions", ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		out[r.Id] = r
+	}
+	return out, nil
+}
+
+func sampleToLabel(s *models.Record, exc *models.Record) pdf.SampleLabel {
+	label := pdf.SampleLabel{
+		Code:          s.GetString("code"),
+		Lat:           s.GetFloat("lat"),
+		Lon:           s.GetFloat("lon"),
+		HasCoords:     true,
+		CollectedFrom: s.GetDateTime("collected_from").Time(),
+	}
+	if alt := s.GetFloat("altitude_m"); alt != 0 {
+		label.AltitudeM = alt
+		label.HasAltitude = true
+	}
+
+	if au := decodeAdminUnits(s.GetString("admin_units")); au != nil {
+		fillAdmin(&label, au)
+	} else if exc != nil {
+		if au := decodeAdminUnits(exc.GetString("admin_units")); au != nil {
+			fillAdmin(&label, au)
+		}
+	}
+	if mtb := decodeMTB(s.GetString("mtb")); mtb != nil {
+		label.MTBSheetNumber = mtb.SheetNumber
+		label.MTBSheetName = mtb.SheetName
+	}
+	if exc != nil {
+		label.PermitNumber = exc.GetString("permit_number")
+	}
+	return label
+}
+
+func fillAdmin(l *pdf.SampleLabel, au *adminUnits) {
+	l.Country = au.Country
+	l.AdminArea = au.AdminArea
+	l.Locality = au.Locality
+}
+
+type adminUnits struct {
+	Country   string `json:"country"`
+	AdminArea string `json:"adminArea"`
+	Locality  string `json:"locality"`
+}
+
+type mtbDecoded struct {
+	SheetNumber string `json:"sheet_number"`
+	SheetName   string `json:"sheet_name"`
+}
+
+func decodeAdminUnits(raw string) *adminUnits {
+	if raw == "" {
+		return nil
+	}
+	var v adminUnits
+	if json.Unmarshal([]byte(raw), &v) != nil {
+		return nil
+	}
+	return &v
+}
+
+func decodeMTB(raw string) *mtbDecoded {
+	if raw == "" {
+		return nil
+	}
+	var v mtbDecoded
+	if json.Unmarshal([]byte(raw), &v) != nil {
+		return nil
+	}
+	return &v
+}
