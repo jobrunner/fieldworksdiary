@@ -15,8 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write       # für Release-Tag und Release-Notes
-  packages: write
+  contents: read
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/fieldworksdiary
@@ -28,10 +27,14 @@ jobs:
   backend-image:
     name: Build & Push Backend-Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write     # für ghcr.io-Push
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: docker/setup-buildx-action@v4
 
@@ -81,53 +84,73 @@ jobs:
       url: ${{ vars.PROD_URL }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Pre-Deploy-Backup auf Remote
         # Vor jedem Prod-Update: aktuelle pb_data wegsichern.
+        # `${{ … }}`-Expansion vor dem Shell zu Env-Vars binden, damit
+        # User-controlled Werte (vars/secrets) nicht direkt im Script-
+        # Body landen können — siehe zizmor `template-injection`.
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/fieldworksdiary' }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+          if [ -z "$DEPLOY_HOST" ]; then
             echo "::warning::DEPLOY_HOST nicht gesetzt — skip Backup. Siehe docs/ENVIRONMENTS.md."
             exit 0
           fi
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p ${{ vars.DEPLOY_PORT || 22 }} ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/id_ed25519 \
-              -p ${{ vars.DEPLOY_PORT || 22 }} \
-              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-              bash -s <<'REMOTE'
+              -p "$DEPLOY_PORT" \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              bash -s "$DEPLOY_PATH" <<'REMOTE'
             set -euo pipefail
-            cd ${{ vars.DEPLOY_PATH || '/srv/fieldworksdiary' }}
+            cd "$1"
             bash scripts/backup-pbdata.sh ./pb_data_prod_backups || true
           REMOTE
 
       - name: SSH-Deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || 22 }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/srv/fieldworksdiary' }}
+          BACKEND_IMAGE: ${{ env.IMAGE }}:prod-${{ github.sha }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+          if [ -z "$DEPLOY_HOST" ]; then
             echo "::warning::DEPLOY_HOST nicht gesetzt — skip Deploy."
             exit 0
           fi
           ssh -i ~/.ssh/id_ed25519 \
-              -p ${{ vars.DEPLOY_PORT || 22 }} \
-              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-              bash -s <<'REMOTE'
+              -p "$DEPLOY_PORT" \
+              "$DEPLOY_USER@$DEPLOY_HOST" \
+              bash -s "$DEPLOY_PATH" "$BACKEND_IMAGE" <<'REMOTE'
             set -euo pipefail
-            cd ${{ vars.DEPLOY_PATH || '/srv/fieldworksdiary' }}
-            export BACKEND_IMAGE=${{ env.IMAGE }}:prod-${{ github.sha }}
+            cd "$1"
+            export BACKEND_IMAGE="$2"
             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
             docker image prune -f --filter "label=env=production"
           REMOTE
 
       - name: Health-Check
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          PROD_URL: ${{ vars.PROD_URL }}
         run: |
-          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+          if [ -z "$DEPLOY_HOST" ]; then
             echo "::warning::DEPLOY_HOST nicht gesetzt — Deploy übersprungen, deshalb auch Health-Check skip."
             exit 0
           fi
-          URL="${{ vars.PROD_URL }}/api/health"
+          URL="${PROD_URL}/api/health"
           if [ "${URL%/api/health}" = "/api/health" ]; then
             echo "::warning::PROD_URL nicht gesetzt — skip Health-Check."
             exit 0
@@ -150,6 +173,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Tooling
         run: brew install xcodegen xcbeautify

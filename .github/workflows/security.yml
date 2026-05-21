@@ -28,6 +28,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0   # gitleaks scannt die History
+          persist-credentials: false
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Trivy fs (vuln + secret + misconfig)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -60,6 +63,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Build image (load to local daemon)
@@ -94,6 +99,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod
@@ -112,6 +119,8 @@ jobs:
     # SARIF-Upload-Step verlagern, wenn sich False-Positives häufen).
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - name: Run semgrep
         run: |
           semgrep scan \
@@ -164,18 +173,12 @@ jobs:
           # reicht — `permissions: contents: read` (oben) gibt dem
           # automatischen `GITHUB_TOKEN` genau das.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # **Bewusst non-blocking** beim Einführen. Die existierenden
-        # Workflows haben ~20 legitime Findings (`artipacked`,
-        # `excessive-permissions`, `unpinned-images`), die wir
-        # phasenweise abarbeiten wollen, ohne PRs währenddessen rot
-        # zu sein. Findings landen als SARIF im Workflow-Artifact
-        # und können dort manuell inspiziert werden.
-        # `continue-on-error: false` setzen, sobald die Liste leer ist.
-        continue-on-error: true
         # `--persona regular` ist Default; `pedantic` würde auch
         # Style-Issues melden. Konfig siehe `.github/zizmor.yml`.
         # Ab zizmor 1.x gibt es kein `--output`-Flag mehr; SARIF geht
         # über stdout in eine Datei.
+        # Blockiert die Pipeline bei neuen Findings — Stand
+        # 2026-05-21 sind 0 unsuppressed Findings.
         run: zizmor --format sarif . > zizmor.sarif
 
       - name: Upload zizmor SARIF
@@ -192,6 +195,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/go.mod

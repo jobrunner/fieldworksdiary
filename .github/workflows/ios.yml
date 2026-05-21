@@ -31,6 +31,8 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Show Xcode version
         run: xcodebuild -version
@@ -82,11 +84,13 @@ jobs:
 
       - name: xcodebuild test (Unit + UI inkl. Snapshot + A11y-Audit)
         working-directory: ios
+        env:
+          SIM_UDID: ${{ steps.sim.outputs.udid }}
         run: |
           xcodebuild \
             -project Fieldworksdiary.xcodeproj \
             -scheme Fieldworksdiary \
-            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -destination "id=$SIM_UDID" \
             -enableCodeCoverage YES \
             test \
             CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
