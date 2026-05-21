@@ -15,7 +15,10 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write   # für SARIF-Upload nach GitHub Code Scanning
+  # Code-Scanning-Upload braucht GitHub Advanced Security; auf privaten
+  # Repos ohne GHAS ist das nicht verfügbar. SARIF-Reports werden
+  # stattdessen als Workflow-Artifacts archiviert und können dort
+  # eingesehen oder lokal mit `trivy convert` ausgewertet werden.
 
 jobs:
   gitleaks:
@@ -45,10 +48,12 @@ jobs:
           ignore-unfixed: true
       - name: Upload Trivy fs SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
+          name: trivy-fs-sarif
+          path: trivy-fs.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
   trivy-image:
     name: Trivy Image-Scan
@@ -74,10 +79,12 @@ jobs:
           ignore-unfixed: true
       - name: Upload Trivy image SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image
+          name: trivy-image-sarif
+          path: trivy-image.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
   govulncheck:
     name: Go-Vulnerabilities
@@ -122,12 +129,14 @@ jobs:
             --severity ERROR \
             --error \
             --sarif --output semgrep.sarif
-      - name: Upload SARIF
+      - name: Upload Semgrep SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: semgrep.sarif
-          category: semgrep
+          name: semgrep-sarif
+          path: semgrep.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
   zizmor:
     name: GitHub-Actions-Audit (zizmor)
@@ -159,21 +168,24 @@ jobs:
         # Workflows haben ~20 legitime Findings (`artipacked`,
         # `excessive-permissions`, `unpinned-images`), die wir
         # phasenweise abarbeiten wollen, ohne PRs währenddessen rot
-        # zu sein. Findings landen über SARIF in Code Scanning und
-        # sind dort sichtbar. `continue-on-error: false` setzen,
-        # sobald die Liste leer ist.
+        # zu sein. Findings landen als SARIF im Workflow-Artifact
+        # und können dort manuell inspiziert werden.
+        # `continue-on-error: false` setzen, sobald die Liste leer ist.
         continue-on-error: true
         # `--persona regular` ist Default; `pedantic` würde auch
         # Style-Issues melden. Konfig siehe `.github/zizmor.yml`.
-        run: |
-          zizmor --format sarif --output zizmor.sarif .
+        # Ab zizmor 1.x gibt es kein `--output`-Flag mehr; SARIF geht
+        # über stdout in eine Datei.
+        run: zizmor --format sarif . > zizmor.sarif
 
       - name: Upload zizmor SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v4
         with:
-          sarif_file: zizmor.sarif
-          category: zizmor
+          name: zizmor-sarif
+          path: zizmor.sarif
+          if-no-files-found: warn
+          retention-days: 30
 
   sbom-and-licenses:
     name: SBOM + License-Check
