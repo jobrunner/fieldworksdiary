@@ -4,14 +4,17 @@ struct LocalitiesListView: View {
     @EnvironmentObject var container: AppContainer
 
     var body: some View {
-        LocalitiesListScreen(
-            store: container.localitiesStore,
-            hydrator: container.localitiesHydrator
-        )
+        NavigationStack {
+            LocalitiesListScreen(
+                store: container.localitiesStore,
+                hydrator: container.localitiesHydrator
+            )
+        }
     }
 }
 
-private struct LocalitiesListScreen: View {
+// Internal so HomeView can embed it in its own NavigationStack.
+struct LocalitiesListScreen: View {
     @StateObject private var viewModel: LocalitiesListViewModel
     @State private var presentingNew = false
 
@@ -22,31 +25,31 @@ private struct LocalitiesListScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Fundorte")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        NavigationLink {
-                            LocalitiesMapView()
-                        } label: {
-                            Image(systemName: "map")
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            presentingNew = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+        content
+            .navigationTitle("Fundorte")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        LocalitiesMapView()
+                    } label: {
+                        Image(systemName: "map")
+                            .accessibilityLabel("Karte")
                     }
                 }
-                .onAppear { viewModel.start() }
-                .refreshable { await viewModel.refresh() }
-                .sheet(isPresented: $presentingNew) {
-                    LocalityEditView(editing: nil)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        presentingNew = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .accessibilityLabel("Neuen Fundort anlegen")
+                    }
                 }
-        }
+            }
+            .onAppear { viewModel.start() }
+            .refreshable { await viewModel.refresh() }
+            .sheet(isPresented: $presentingNew) {
+                LocalityEditView(editing: nil)
+            }
     }
 
     @ViewBuilder
@@ -83,7 +86,6 @@ private struct LocalitiesListScreen: View {
         }
     }
 
-    @ViewBuilder
     private func row(for locality: LocalLocality) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(locality.name.isEmpty ? "(ohne Namen)" : locality.name)
@@ -93,8 +95,8 @@ private struct LocalitiesListScreen: View {
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            if let r = locality.radiusM {
-                Text("Radius \(Int(r)) m")
+            if let radius = locality.radiusM {
+                Text("Radius \(Int(radius)) m")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

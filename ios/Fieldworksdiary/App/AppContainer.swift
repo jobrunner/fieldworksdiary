@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 /// Single launch-time container. Owns the database, the auth session
 /// and all long-lived services so views can pull them out of the
@@ -9,6 +9,11 @@ import Combine
 final class AppContainer: ObservableObject {
     let config: AppConfig
     let auth: AuthSession
+    // Hält den `DatabaseWriter` lebendig, solange der Container lebt.
+    // Wird nirgendwo direkt gelesen — die Stores haben eigene Refs —
+    // aber ohne dieses Property würde ARC die `Database`-Instanz frei-
+    // geben, sobald die Stores ihre eigenen Schwachreferenzen halten.
+    // periphery:ignore
     let database: Database
     let store: LocalSampleStore
     let excursions: LocalExcursionStore
@@ -16,6 +21,7 @@ final class AppContainer: ObservableObject {
     let localitiesStore: LocalLocalityStore
     let localitiesHydrator: LocalitiesHydrator
     let samplesHydrator: SamplesHydrator
+    let photos: LocalPhotoStore
     let sync: SyncRunner
 
     /// Tracks which user id the local stores currently hold data for,
@@ -36,7 +42,7 @@ final class AppContainer: ObservableObject {
         // discoverable from every service without each one holding
         // a direct reference — we just hand them a `() -> AuthSession?`.
         // That keeps the wiring shallow and avoids retain cycles.
-        let auth = AuthSession(endpointProvider: { config.endpointURL })
+        let auth = AuthSession { config.endpointURL }
 
         let store = LocalSampleStore(database: database)
         let excursions = LocalExcursionStore(database: database)
@@ -56,8 +62,10 @@ final class AppContainer: ObservableObject {
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
+        let photos = LocalPhotoStore(database: database)
         let sync = SyncRunner(
             store: store,
+            photoStore: photos,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
             onSampleSynced: { excursionID in
@@ -74,6 +82,7 @@ final class AppContainer: ObservableObject {
         self.localitiesStore = localitiesStore
         self.localitiesHydrator = localitiesHydrator
         self.samplesHydrator = samplesHydrator
+        self.photos = photos
         self.sync = sync
     }
 
@@ -82,6 +91,7 @@ final class AppContainer: ObservableObject {
     /// Combine subscription stays alive for the lifetime of the
     /// container — it's our hook for "user changed → wipe + re-hydrate".
     func bootstrap() async {
+        MetricsReporter.shared.register()
         startObservingAuth()
         await auth.restoreOnLaunch()
     }
@@ -123,11 +133,12 @@ final class AppContainer: ObservableObject {
             try store.reset()
             try excursions.reset()
             try localitiesStore.reset()
+            try photos.reset()
         } catch {
-            // Wipe failures are non-fatal — the worst case is the new
-            // user sees stale rows the rule filter wouldn't have
-            // returned anyway. Logging would land here once we add a
-            // unified logger.
+            // Wipe failures are non-fatal — der neue User sieht
+            // maximal Stale-Rows, die der Rule-Filter ohnehin
+            // ausgeblendet hätte.
+            Log.persistence.error("local-store wipe failed: \(error.localizedDescription)")
         }
     }
 
@@ -135,9 +146,9 @@ final class AppContainer: ObservableObject {
         // Fire all three pulls concurrently. Each hydrator is internally
         // single-flight, so a tab .task that also kicks pull() while
         // this is running just no-ops.
-        async let s: Void = samplesHydrator.pull()
-        async let e: Void = hydrator.pull()
-        async let l: Void = localitiesHydrator.pull()
-        _ = await (s, e, l)
+        async let samplesPull: Void = samplesHydrator.pull()
+        async let excursionsPull: Void = hydrator.pull()
+        async let localitiesPull: Void = localitiesHydrator.pull()
+        _ = await(samplesPull, excursionsPull, localitiesPull)
     }
 }

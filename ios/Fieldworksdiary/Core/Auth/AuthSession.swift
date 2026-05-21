@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 /// The single source of truth for the currently signed-in user.
 /// Lives in `AppContainer`, published to the UI via `@EnvironmentObject`.
@@ -12,15 +12,14 @@ import Combine
 @MainActor
 final class AuthSession: ObservableObject {
     @Published private(set) var currentUser: AuthUser?
-    @Published private(set) var isRestoring: Bool = false
     @Published var signInError: String?
 
     private let keychain: KeychainStore
     private let endpointProvider: () -> String
-    private var refreshTask: Task<Void, Never>?
 
     init(endpointProvider: @escaping () -> String,
-         keychain: KeychainStore = .default) {
+         keychain: KeychainStore = .default)
+    {
         self.endpointProvider = endpointProvider
         self.keychain = keychain
     }
@@ -33,15 +32,15 @@ final class AuthSession: ObservableObject {
         keychain.string(forKey: KeychainStore.Keys.token)
     }
 
-    var isSignedIn: Bool { currentUser != nil && currentToken != nil }
+    var isSignedIn: Bool {
+        currentUser != nil && currentToken != nil
+    }
 
     /// Called once at app launch. Tries to refresh whatever token is
     /// in the Keychain; failure → silently clear the session. The UI
     /// then lands on the WelcomeView.
     func restoreOnLaunch() async {
         guard let token = currentToken else { return }
-        isRestoring = true
-        defer { isRestoring = false }
         do {
             let resp = try await AuthClient(endpoint: endpointProvider())
                 .refresh(token: token)
@@ -57,12 +56,18 @@ final class AuthSession: ObservableObject {
         persist(token: resp.token, user: resp.record)
     }
 
-    func register(email: String, password: String,
-                  displayName: String, abbreviation: String) async throws {
+    func register(
+        email: String,
+        password: String,
+        displayName: String,
+        abbreviation: String
+    ) async throws {
         let client = AuthClient(endpoint: endpointProvider())
         _ = try await client.register(
-            email: email, password: password,
-            displayName: displayName, abbreviation: abbreviation
+            email: email,
+            password: password,
+            displayName: displayName,
+            abbreviation: abbreviation
         )
         // PocketBase doesn't auto-login on register; we follow up
         // with a sign-in call so the user lands signed in.

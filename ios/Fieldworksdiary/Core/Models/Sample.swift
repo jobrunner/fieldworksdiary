@@ -36,6 +36,12 @@ struct Sample: Decodable, Identifiable, Equatable {
     let accuracyM: Double?
     let altitudeM: Double?
     let collectedFrom: Date?
+    /// Free-text notes (substrate, host plant, weather, …) collected
+    /// in the add-sample form. PocketBase serialises empty editor
+    /// fields as `""` — we decode those to nil for cleaner UI checks.
+    let notes: String?
+    /// User-facing "star" flag. Defaults to false on the server.
+    let marked: Bool
     /// Match key for the offline-first round trip. iOS sets it on
     /// push; the hydrator uses it to merge a server row back into the
     /// existing local row instead of creating a duplicate.
@@ -45,14 +51,14 @@ struct Sample: Decodable, Identifiable, Equatable {
     let mtb: MTB?
 
     enum CodingKeys: String, CodingKey {
-        case id, code, excursion, lat, lon
-        case originalCode    = "original_code"
-        case accuracyM       = "accuracy_m"
-        case altitudeM       = "altitude_m"
-        case collectedFrom   = "collected_from"
-        case clientUuid      = "client_uuid"
+        case id, code, excursion, lat, lon, notes, marked
+        case originalCode = "original_code"
+        case accuracyM = "accuracy_m"
+        case altitudeM = "altitude_m"
+        case collectedFrom = "collected_from"
+        case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
-        case adminUnits      = "admin_units"
+        case adminUnits = "admin_units"
         case mtb
     }
 
@@ -73,6 +79,12 @@ struct Sample: Decodable, Identifiable, Equatable {
         accuracyM = try? c.decode(Double.self, forKey: .accuracyM)
         altitudeM = try? c.decode(Double.self, forKey: .altitudeM)
         collectedFrom = try? c.decode(Date.self, forKey: .collectedFrom)
+        if let raw = try? c.decode(String.self, forKey: .notes), !raw.isEmpty {
+            notes = raw
+        } else {
+            notes = nil
+        }
+        marked = (try? c.decode(Bool.self, forKey: .marked)) ?? false
         if let raw = try? c.decode(String.self, forKey: .clientUuid), !raw.isEmpty {
             clientUuid = raw
         } else {

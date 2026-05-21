@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct WeevilappApp: App {
+struct FieldworksdiaryApp: App {
     @StateObject private var container = AppContainer()
 
     var body: some Scene {

@@ -40,7 +40,7 @@ struct LoginView: View {
 
     private var canSubmit: Bool {
         !email.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !password.isEmpty
+            !password.isEmpty
     }
 
     private func login() async {
@@ -61,11 +61,11 @@ struct LoginView: View {
 
     private func friendly(_ err: SampleClientError) -> String {
         switch err {
-        case .http(400, _):  return "E-Mail oder Passwort nicht erkannt."
-        case .http(let s, let body): return "HTTP \(s): \(body)"
-        case .noEndpoint:    return "Kein Backend-Endpoint gesetzt."
+        case .http(400, _): return "E-Mail oder Passwort nicht erkannt."
+        case let .http(s, body): return "HTTP \(s): \(body)"
+        case .noEndpoint: return "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: return "Endpoint-URL ist ungültig."
-        case .decoding(let m): return "Antwort nicht lesbar: \(m)"
+        case let .decoding(message): return "Antwort nicht lesbar: \(message)"
         }
     }
 }

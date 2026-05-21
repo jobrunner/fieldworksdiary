@@ -1,4 +1,4 @@
-# Projektplan: Käfer-Sammel-App (Arbeitstitel: `weevilapp`)
+# Projektplan: Käfer-Sammel-App (Arbeitstitel: `fieldworksdiary`)
 
 Dieser Plan ist als Eingabe für `claude /init` gedacht. Er beschreibt Vision,
 Architektur, Datenmodell und Implementierungsphasen so, dass Claude Code daraus
@@ -392,7 +392,7 @@ Korrektur von Zeit/Ort).
 Default-iOS-Verhalten: wartet auf Backend-Wert (Server-of-Truth). Falls
 Pre-Trip-Vorschau („Mond steht heute Nacht hoch, taugt nicht für
 Lichtfang") gewünscht wird, kann später eine Mini-Variante in
-`ios/Weevilapp/Core/Astro/` ergänzt werden — bewusst **erst wenn das
+`ios/Fieldworksdiary/Core/Astro/` ergänzt werden — bewusst **erst wenn das
 Bedürfnis konkret wird**, nicht prophylaktisch.
 
 ---
@@ -490,7 +490,7 @@ Uhrzeit.
 ## 10. Repository-Layout
 
 ```
-weevilapp/
+fieldworksdiary/
 ├── README.md
 ├── PROJECT_PLAN.md          (dieses Dokument)
 ├── CLAUDE.md                (Konventionen für Claude Code)
@@ -516,8 +516,8 @@ weevilapp/
 │   └── pb_data/                   (Volume mount, gitignored)
 │
 ├── ios/
-│   ├── Weevilapp.xcodeproj
-│   ├── Weevilapp/
+│   ├── Fieldworksdiary.xcodeproj
+│   ├── Fieldworksdiary/
 │   │   ├── App/                   (Entry-Point, AppConfig, Endpoint-Setting)
 │   │   ├── Features/
 │   │   │   ├── AddSample/         (das „+"-Sheet)
@@ -532,7 +532,7 @@ weevilapp/
 │   │   │   ├── Geo/               (CoreLocation-Wrapper, Codes-Logik lokal)
 │   │   │   └── Models/            (Domain-Modelle, mit Codable+GRDB-Mapping)
 │   │   └── UI/                    (geteilte Views, Karten-Komponente)
-│   └── WeevilappTests/
+│   └── FieldworksdiaryTests/
 │
 └── docs/
     ├── adr/                       (Architecture Decision Records)
@@ -652,6 +652,64 @@ die der Sinnhaftigkeit für Tests.
 - TestFlight-Build
 - Datenschutzerklärung
 - Backup/Export-Funktion (alle eigenen Daten als JSON-Dump)
+
+### Phase 12 – Production-Härtung
+
+Tests + UX-Politur für die Stellen, die heute mit unangetastet sind oder
+nur partiell unter Test-Schutz stehen. Ziel: Refactors in Hot-Pfaden
+fangen rote Tests statt stiller Bugs, A11y-Audit deckt die volle
+Kategorien-Liste ab.
+
+- Tests für iOS-Hydrators (`ExcursionsHydrator`, `LocalitiesHydrator`,
+  `SamplesHydrator`) — derzeit ungetestet
+- Tests für `AuthSession` + `AuthClient` (Token-Restore, Apple-Sign-In-
+  Pfad inkl. Refresh)
+- Tests für `internal/services/geocache.go` (aktuell 48 % Coverage,
+  externes Service-Caching mit TTL-Logik)
+- Hydrator-Konsolidierung: gemeinsame Base-Klasse / Generic-Type für die
+  drei nahezu identischen Implementierungen
+- A11y-Sprint: `.contrast`, `.dynamicType`, `.textClipped` im
+  `AccessibilityAuditTests` reaktivieren — Farb-Tokens definieren,
+  AX-Layouts gegen die maximale Schriftgröße prüfen
+- Down-Migrations für PocketBase + GRDB (aktuell forward-only)
+
+### Phase 13 – Tile-Caching / Offline-Map
+
+Während Phase 3 nur die Pin-Layer offline-fähig gemacht hat, fehlen
+die Hintergrund-Tiles. Im Berg-/Wald-Einsatz ohne Mobilfunk ist das
+limitierend.
+
+- Tile-Provider auswählen (Apple Maps tile-cache, OpenStreetMap,
+  Swisstopo o. ä.)
+- Lokaler MBTiles-Store, Vorab-Download per Auswahl-Rechteck
+- Cache-Größen-Limit + Manuelles-Aufräumen-UI
+- Map-View nutzt Tile-Store automatisch, fällt offline auf Cache zurück
+
+### Phase 14 – UI-Redesign: Home-Dashboard + Sample-Foto
+
+Den feldtauglichen Workflow der Vorgänger-App nachbauen: grünes
+Home-Dashboard mit Active-Collector / Active-Fieldtrip /
+Recently-Sample und einem prominenten +-FAB ersetzt die 5-Tab-Bar als
+Haupteinstieg. Sample-Erfassung um Notizen-Freitext und Foto-Aufnahme
+erweitert. Phase 12 (Color-Tokens + A11y-Audit) wird hier integriert.
+
+- Theme & Color-Tokens (Light + Dark, WCAG-AA-konform) — erfüllt
+  damit das Phase-12-Color-Token-Ziel
+- Home-Dashboard ersetzt MainTabs als Haupteinstieg; Navigation läuft
+  über `NavigationStack` und Sheets
+- Sample-Formular: Notizen-`TextEditor` + Foto-Galerie mit
+  Kamera/Library-Picker, Multi-Foto pro Sample
+- Backend: neue Collection `sample_photos` (separate Collection statt
+  File-Array, einzeln nachreichbar, max 10 MB pro File, owner-scoped)
+- iOS-Persistence: GRDB-Tabelle `local_photos` + JPEG-Kompression vor
+  Upload
+- SyncRunner pusht Fotos nach erfolgreichem Sample-Push, idempotent
+  über `client_uuid`
+- A11y-Audit auf neuen Views ohne `.subtracting(...)`, Dynamic Type AX5
+  ohne Clipping (erfüllt damit auch die Phase-12-A11y-Ziele für die
+  neuen Screens)
+- Bewusst ausgeklammert (Phase 14b/c): Marked Samples, Photos-Galerie,
+  Calendar-View, Sample-Map als Placeholder-Stubs im Menü
 
 ---
 

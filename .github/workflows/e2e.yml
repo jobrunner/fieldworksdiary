@@ -1,0 +1,69 @@
+name: E2E (Newman)
+
+# Newman braucht ein laufendes Backend und hängt an den externen Docker-
+# Services (labelloc, MTB). Deshalb manuell oder geplant, NICHT in jedem PR.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sonntag 04:42 UTC — wöchentlicher Smoke gegen die externen Services.
+    - cron: '42 4 * * 0'
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  newman:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker compose build
+
+      - name: Start backend
+        run: docker compose up -d
+
+      - name: Wait for /api/health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8090/api/health >/dev/null 2>&1; then
+              echo "Backend up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Backend did not become healthy within 60 s"
+          docker compose logs --tail=200
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install newman
+        run: npm install -g newman
+
+      - name: Run Postman collection
+        run: |
+          newman run tests/Fieldworksdiary.postman_collection.json \
+            --env-var baseUrl=http://localhost:8090 \
+            --delay-request 3000 \
+            --reporters cli,junit \
+            --reporter-junit-export newman-results.xml
+
+      - name: Upload Newman report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-results
+          path: newman-results.xml
+          retention-days: 14
+
+      - name: Stop backend
+        if: always()
+        run: docker compose down -v

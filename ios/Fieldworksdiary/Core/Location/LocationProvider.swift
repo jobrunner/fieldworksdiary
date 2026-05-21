@@ -1,6 +1,6 @@
-import Foundation
-import CoreLocation
 import Combine
+import CoreLocation
+import Foundation
 
 @MainActor
 final class LocationProvider: NSObject, ObservableObject {

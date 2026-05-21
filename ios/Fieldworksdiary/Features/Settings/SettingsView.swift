@@ -1,6 +1,15 @@
 import SwiftUI
 
 struct SettingsView: View {
+    var body: some View {
+        NavigationStack {
+            SettingsScreen()
+        }
+    }
+}
+
+// Internal so HomeView can embed it in its own NavigationStack.
+struct SettingsScreen: View {
     @EnvironmentObject var config: AppConfig
     @EnvironmentObject var auth: AuthSession
     @State private var draft: String = ""
@@ -17,27 +26,32 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                accountSection
-                dataSection
-                endpointSection
+        Form {
+            accountSection
+            dataSection
+            endpointSection
+            aboutSection
+        }
+        .navigationTitle("Einstellungen")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                EnvBadge(environment: config.environment)
             }
-            .navigationTitle("Einstellungen")
-            .onAppear { draft = config.endpointURL }
-            .onChange(of: draft) { _, _ in savedHint = false }
-            .confirmationDialog("Wirklich abmelden?",
-                                isPresented: $confirmSignOut,
-                                titleVisibility: .visible) {
-                Button("Abmelden", role: .destructive) { auth.signOut() }
-                Button("Abbrechen", role: .cancel) {}
-            } message: {
-                Text("Lokale Daten bleiben erhalten. Der Token wird aus dem Schlüsselbund entfernt.")
-            }
-            .sheet(isPresented: $showDeleteSheet) {
-                AccountDeletionView()
-                    .environmentObject(auth)
-            }
+        }
+        .onAppear { draft = config.endpointURL }
+        .onChange(of: draft) { _, _ in savedHint = false }
+        .confirmationDialog("Wirklich abmelden?",
+                            isPresented: $confirmSignOut,
+                            titleVisibility: .visible)
+        {
+            Button("Abmelden", role: .destructive) { auth.signOut() }
+            Button("Abbrechen", role: .cancel) {}
+        } message: {
+            Text("Lokale Daten bleiben erhalten. Der Token wird aus dem Schlüsselbund entfernt.")
+        }
+        .sheet(isPresented: $showDeleteSheet) {
+            AccountDeletionView()
+                .environmentObject(auth)
         }
     }
 
@@ -70,7 +84,6 @@ struct SettingsView: View {
         }
     }
 
-    @ViewBuilder
     private var dataSection: some View {
         Section {
             switch exportState {
@@ -86,7 +99,7 @@ struct SettingsView: View {
                     ProgressView()
                     Text("Export wird erstellt …")
                 }
-            case .ready(let url):
+            case let .ready(url):
                 ShareLink(item: url) {
                     Label("Export teilen", systemImage: "square.and.arrow.up")
                 }
@@ -95,7 +108,7 @@ struct SettingsView: View {
                 } label: {
                     Label("Neu erstellen", systemImage: "arrow.clockwise")
                 }
-            case .failed(let message):
+            case let .failed(message):
                 Label(message, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.red)
                 Button {
@@ -132,6 +145,23 @@ struct SettingsView: View {
             } else {
                 Text("Beispiel: http://localhost:8090 (Simulator) oder http://<host-ip>:8090 (Gerät).")
             }
+        }
+    }
+
+    private var aboutSection: some View {
+        Section {
+            Link(destination: config.privacyPolicyURL) {
+                Label("Datenschutzerklärung", systemImage: "hand.raised")
+            }
+            #if DEBUG
+            NavigationLink {
+                DesignCatalogView()
+            } label: {
+                Label("Design-Katalog", systemImage: "paintpalette")
+            }
+            #endif
+        } header: {
+            Text("Rechtliches")
         }
     }
 

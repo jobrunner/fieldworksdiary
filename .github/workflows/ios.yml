@@ -1,0 +1,106 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.swiftlint.yml'
+      - '.swiftformat'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.swiftlint.yml'
+      - '.swiftformat'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-build-test:
+    # macOS-Runner sind teuer; PRs auf nicht-iOS-Pfade triggern uns nicht.
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Install tooling (xcodegen, SwiftLint, SwiftFormat, xcbeautify, periphery)
+        run: |
+          brew update
+          brew install xcodegen swiftlint swiftformat xcbeautify
+          brew install peripheryapp/periphery/periphery
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: SwiftFormat (lint mode)
+        run: swiftformat --lint --config .swiftformat ios
+
+      - name: Periphery (warn-only, blockt CI nicht)
+        continue-on-error: true
+        run: periphery scan --config .periphery.yml --format github-actions
+
+      - name: SwiftLint
+        run: swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
+
+      - name: xcodebuild build
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Fieldworksdiary.xcodeproj \
+            -scheme Fieldworksdiary \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            build \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify --renderer github-actions
+        shell: bash
+
+      - name: Select an iOS Simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | jq -r '[.devices | to_entries[] | select(.key|contains("iOS")) | .value[] | select(.isAvailable==true)] | .[0].udid')
+          if [ -z "$UDID" ] || [ "$UDID" = "null" ]; then
+            echo "::error::No iOS Simulator available"
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+
+      - name: xcodebuild test (Unit + UI inkl. Snapshot + A11y-Audit)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Fieldworksdiary.xcodeproj \
+            -scheme Fieldworksdiary \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -enableCodeCoverage YES \
+            test \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify --renderer github-actions
+        shell: bash
+
+      - name: Upload snapshot diffs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-failures
+          path: |
+            ios/FieldworksdiaryTests/__Snapshots__/**/*.png
+            /tmp/snapshot-diffs-*
+          if-no-files-found: ignore
+          retention-days: 14
+

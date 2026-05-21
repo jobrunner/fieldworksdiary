@@ -9,13 +9,15 @@ enum DeterminationKind: String, Codable, CaseIterable, Identifiable {
     case t
     case vid
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Short label as it appears on the printed sample label.
     var labelShort: String {
         switch self {
         case .det: "det."
-        case .t:   "t."
+        case .t: "t."
         case .vid: "vid."
         }
     }
@@ -24,7 +26,7 @@ enum DeterminationKind: String, Codable, CaseIterable, Identifiable {
     var labelLong: String {
         switch self {
         case .det: "Bestimmung (determinavit)"
-        case .t:   "Bestätigung (teste)"
+        case .t: "Bestätigung (teste)"
         case .vid: "Gesehen (vidit)"
         }
     }
@@ -35,13 +37,13 @@ struct Determination: Decodable, Identifiable, Equatable {
     let sample: String
     let speciesText: String
     let kind: DeterminationKind
-    let person: String?      // person id, empty string ⇒ nil
+    let person: String? // person id, empty string ⇒ nil
     let determinedOn: Date?
     let notes: String
 
     enum CodingKeys: String, CodingKey {
         case id, sample, kind, person, notes
-        case speciesText  = "species_text"
+        case speciesText = "species_text"
         case determinedOn = "determined_on"
     }
 

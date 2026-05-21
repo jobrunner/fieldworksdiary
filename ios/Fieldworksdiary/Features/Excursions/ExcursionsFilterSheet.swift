@@ -2,12 +2,12 @@ import SwiftUI
 
 struct ExcursionsFilterSheet: View {
     @Binding var filter: ExcursionsFilter
-    let countries: [String]            // known set from local data
+    let countries: [String] // known set from local data
     @Environment(\.dismiss) private var dismiss
 
     @State private var dateModeTag: DateModeTag = .off
-    @State private var absoluteFrom: Date = Date().addingTimeInterval(-30*86400)
-    @State private var absoluteTo: Date = Date()
+    @State private var absoluteFrom = Date().addingTimeInterval(-30 * 86400)
+    @State private var absoluteTo = Date()
     @State private var seasonalFromMonth = 4
     @State private var seasonalFromDay = 15
     @State private var seasonalToMonth = 5
@@ -15,10 +15,12 @@ struct ExcursionsFilterSheet: View {
     @State private var country: String = ""
 
     enum DateModeTag: String, CaseIterable, Identifiable {
-        case off       = "Aus"
-        case absolute  = "Zeitraum"
-        case seasonal  = "Saisonal"
-        var id: String { rawValue }
+        case off = "Aus"
+        case absolute = "Zeitraum"
+        case seasonal = "Saisonal"
+        var id: String {
+            rawValue
+        }
     }
 
     var body: some View {
@@ -40,9 +42,14 @@ struct ExcursionsFilterSheet: View {
                         VStack(alignment: .leading, spacing: 8) {
                             monthDayRow("Von", month: $seasonalFromMonth, day: $seasonalFromDay)
                             monthDayRow("Bis", month: $seasonalToMonth, day: $seasonalToDay)
-                            Text("Jahresübergreifend: Tag-und-Monat-Bereich wird über alle Jahre angewendet. Bereich darf den Jahreswechsel umfassen.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                """
+                                Jahresübergreifend: Tag-und-Monat-Bereich wird über alle Jahre \
+                                angewendet. Bereich darf den Jahreswechsel umfassen.
+                                """
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -81,37 +88,36 @@ struct ExcursionsFilterSheet: View {
         }
     }
 
-    @ViewBuilder
     private func monthDayRow(_ label: String, month: Binding<Int>, day: Binding<Int>) -> some View {
         HStack {
             Text(label)
                 .frame(width: 40, alignment: .leading)
             Picker("Monat", selection: month) {
-                ForEach(1...12, id: \.self) { Text(germanMonth($0)).tag($0) }
+                ForEach(1 ... 12, id: \.self) { Text(germanMonth($0)).tag($0) }
             }
             .pickerStyle(.menu)
             Picker("Tag", selection: day) {
-                ForEach(1...31, id: \.self) { Text("\($0)").tag($0) }
+                ForEach(1 ... 31, id: \.self) { Text("\($0)").tag($0) }
             }
             .pickerStyle(.menu)
         }
     }
 
-    private func germanMonth(_ m: Int) -> String {
-        let s = DateFormatter()
-        s.locale = Locale(identifier: "de_DE")
-        return s.monthSymbols[m - 1]
+    private func germanMonth(_ month: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        return formatter.monthSymbols[month - 1]
     }
 
     private func hydrateFromFilter() {
         switch filter.date {
         case .off:
             dateModeTag = .off
-        case .absolute(let from, let to):
+        case let .absolute(from, to):
             dateModeTag = .absolute
             absoluteFrom = from
             absoluteTo = to
-        case .seasonal(let fromDOY, let toDOY):
+        case let .seasonal(fromDOY, toDOY):
             dateModeTag = .seasonal
             let (fm, fd) = monthDay(fromDOY: fromDOY)
             seasonalFromMonth = fm
@@ -140,10 +146,13 @@ struct ExcursionsFilterSheet: View {
     private func monthDay(fromDOY doy: Int) -> (month: Int, day: Int) {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = .gmt
-        // Project against 2026 (non-leap) for stable month/day.
-        let jan1 = cal.date(from: DateComponents(year: 2026, month: 1, day: 1))!
-        let d = cal.date(byAdding: .day, value: max(0, doy - 1), to: jan1) ?? jan1
-        let comps = cal.dateComponents([.month, .day], from: d)
+        // Projekt auf 2026 (non-leap) für stabile Month/Day-Berechnung.
+        // Fallback `Date()` ist harmlos: `dateComponents` daraus liefert
+        // immer noch valide month/day, die der Aufrufer für UI-Strings
+        // einsetzt.
+        let jan1 = cal.date(from: DateComponents(year: 2026, month: 1, day: 1)) ?? Date()
+        let projected = cal.date(byAdding: .day, value: max(0, doy - 1), to: jan1) ?? jan1
+        let comps = cal.dateComponents([.month, .day], from: projected)
         return (comps.month ?? 1, comps.day ?? 1)
     }
 }

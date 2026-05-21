@@ -15,7 +15,7 @@ struct ExcursionClient {
         var components = URLComponents(string: trimmed.appending("/api/collections/excursions/records"))
         components?.queryItems = [
             URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "-collecting_day,-started_at"),
+            URLQueryItem(name: "sort", value: "-collecting_day,-started_at")
         ]
         guard let url = components?.url else {
             throw SampleClientError.invalidEndpoint
@@ -27,7 +27,7 @@ struct ExcursionClient {
         request.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
@@ -76,8 +76,13 @@ struct ExcursionClient {
         if let permitNumber {
             body.appendField(boundary: boundary, name: "permit_number", value: permitNumber)
         }
-        body.appendFile(boundary: boundary, name: "permit_pdf",
-                        filename: filename, mimeType: "application/pdf", data: data)
+        body.appendFile(
+            boundary: boundary,
+            name: "permit_pdf",
+            filename: filename,
+            mimeType: "application/pdf",
+            data: data
+        )
         body.append("--\(boundary)--\r\n")
 
         var request = URLRequest(url: url)
@@ -138,7 +143,7 @@ struct ExcursionClient {
         request.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
@@ -161,7 +166,7 @@ struct ExcursionClient {
         request.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
@@ -173,28 +178,12 @@ struct ExcursionClient {
 
     private static func assertOK(data: Data, response: URLResponse) throws {
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
     }
 }
 
-private extension Data {
-    mutating func append(_ s: String) {
-        if let d = s.data(using: .utf8) { append(d) }
-    }
-    mutating func appendField(boundary: String, name: String, value: String) {
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
-        append(value)
-        append("\r\n")
-    }
-    mutating func appendFile(boundary: String, name: String, filename: String,
-                             mimeType: String, data: Data) {
-        append("--\(boundary)\r\n")
-        append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n")
-        append("Content-Type: \(mimeType)\r\n\r\n")
-        append(data)
-        append("\r\n")
-    }
-}
+// Multipart-helper extensions moved to MultipartHelpers.swift so the
+// PhotoClient (Phase 14) can share them. The methods themselves are
+// unchanged.

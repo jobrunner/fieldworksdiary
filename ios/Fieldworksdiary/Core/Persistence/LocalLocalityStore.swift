@@ -24,12 +24,6 @@ final class LocalLocalityStore {
         }
     }
 
-    func fetchAll() throws -> [LocalLocality] {
-        try database.reader.read { db in
-            try LocalLocality.order(Column("name")).fetchAll(db)
-        }
-    }
-
     func fetchById(_ id: String) throws -> LocalLocality? {
         try database.reader.read { db in
             try LocalLocality.fetchOne(db, key: id)
@@ -41,6 +35,12 @@ final class LocalLocalityStore {
         AsyncValueObservation(observation: ValueObservation.tracking { db in
             try LocalLocality.order(Column("name")).fetchAll(db)
         }, reader: database.reader)
+    }
+
+    func count() throws -> Int {
+        try database.reader.read { db in
+            try LocalLocality.fetchCount(db)
+        }
     }
 
     /// Empties the table. Called on logout/user switch.

@@ -60,8 +60,8 @@ func init() {
 				},
 				&schema.SchemaField{Name: "template", Type: schema.FieldTypeText},
 				&schema.SchemaField{
-					Name: "generation_params",
-					Type: schema.FieldTypeJson,
+					Name:    "generation_params",
+					Type:    schema.FieldTypeJson,
 					Options: &schema.JsonOptions{MaxSize: 1 << 20},
 				},
 				&schema.SchemaField{

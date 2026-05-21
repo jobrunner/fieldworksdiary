@@ -14,7 +14,7 @@ struct Locality: Decodable, Identifiable, Equatable {
         case id, name, notes
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
-        case radiusM     = "radius_m"
+        case radiusM = "radius_m"
     }
 
     init(from decoder: Decoder) throws {

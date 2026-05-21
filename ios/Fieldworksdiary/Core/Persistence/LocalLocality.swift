@@ -12,10 +12,10 @@ struct LocalLocality: Codable, FetchableRecord, MutablePersistableRecord, Identi
 
     enum CodingKeys: String, CodingKey {
         case id, name, notes
-        case centroidLat       = "centroid_lat"
-        case centroidLon       = "centroid_lon"
-        case radiusM           = "radius_m"
-        case backendUpdatedAt  = "backend_updated_at"
+        case centroidLat = "centroid_lat"
+        case centroidLon = "centroid_lon"
+        case radiusM = "radius_m"
+        case backendUpdatedAt = "backend_updated_at"
     }
 
     static let databaseTableName = "local_localities"
@@ -23,12 +23,12 @@ struct LocalLocality: Codable, FetchableRecord, MutablePersistableRecord, Identi
 
 extension LocalLocality {
     init(from remote: Locality) {
-        self.id = remote.id
-        self.name = remote.name
-        self.centroidLat = remote.centroidLat
-        self.centroidLon = remote.centroidLon
-        self.radiusM = remote.radiusM
-        self.notes = remote.notes
-        self.backendUpdatedAt = Date()
+        id = remote.id
+        name = remote.name
+        centroidLat = remote.centroidLat
+        centroidLon = remote.centroidLon
+        radiusM = remote.radiusM
+        notes = remote.notes
+        backendUpdatedAt = Date()
     }
 }

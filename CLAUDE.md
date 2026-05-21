@@ -25,8 +25,8 @@ stoppen und Demo zeigen, nicht in die nächste Phase laufen.
 
 - `backend/` – Go + PocketBase. Hooks und Custom-Logik in
   `backend/internal/`. Migrations in `backend/migrations/`.
-- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Weevilapp/Core/`,
-  Features in `ios/Weevilapp/Features/`.
+- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Fieldworksdiary/Core/`,
+  Features in `ios/Fieldworksdiary/Features/`.
 - `docs/adr/` – Architecture Decision Records, eines pro Entscheidung.
 
 ## Drei-Ebenen-Datenmodell
@@ -53,6 +53,9 @@ provisorische Exkursionszuordnung.
 ### Allgemein
 
 - **Englische Bezeichner im Code**, deutsche Strings in der UI.
+- **Commits** folgen Conventional Commits (`feat(scope): …`,
+  `fix(scope): …`, etc.). Hook in `.githooks/commit-msg` erzwingt das
+  lokal — Konvention in @.claude/rules/COMMITS.md.
 - Domänen-Begriffe (auch im Code-Kontext) sind: `Sample`, `Excursion`,
   `Locality`, `Determination`. Wir benutzen NICHT „Collection" als Modell,
   weil PocketBase „collections" für Tabellen verwendet (Namens-Konflikt).
@@ -64,7 +67,7 @@ provisorische Exkursionszuordnung.
 
 ### Backend (Go)
 
-- Modul-Pfad in `go.mod`: `github.com/<dein-user>/weevilapp/backend`.
+- Modul-Pfad in `go.mod`: `github.com/<dein-user>/fieldworksdiary/backend`.
 - Logik **niemals** im `main.go`. Dort nur Hook-Registrierung und Wiring.
 - Pure Funktionen in `internal/codes/` und `internal/grouping/` mit
   Tests (das ist die Kernlogik – ohne Tests nichts mergen, > 80 % Coverage).
@@ -75,6 +78,9 @@ provisorische Exkursionszuordnung.
   aus Hooks heraus aufrufen.
 - Asynchrone Anreicherung läuft in Goroutines mit Recover, damit ein
   fehlgeschlagener Service nie das Sample-Insert killt.
+- **Logging**: `log/slog` mit den Key-Konventionen aus
+  @.claude/rules/LOGGING.md. Kein `log.Printf`, kein `fmt.Println`. PII
+  und Coordinates niemals im Klartext.
 
 ### iOS (Swift)
 
@@ -86,6 +92,17 @@ provisorische Exkursionszuordnung.
 - Endpoint-URL kommt aus `AppConfig` (UserDefaults), darf an einer
   Stelle gesetzt werden und ist von allen Services injiziert.
 - Keine Force-Unwraps in Production-Code.
+- **Accessibility ist Pflicht**, nicht optional. Bei jedem UI-Refactor
+  (SwiftUI und UIKit) gelten die Regeln aus
+  @.claude/rules/ACCESSIBILITY-IOS.md — bei Konflikt mit Style-Vorgaben
+  oder Design-Tokens gewinnt die Regel-Datei.
+- **Design-System**: Features bauen nur aus Tokens (`Core/Theme/`)
+  und Atoms (`Core/UI/`). Magic-Numbers, Hex-Farben und feste Font-
+  Größen sind verboten — siehe @.claude/rules/DESIGN-SYSTEM.md
+  (inkl. Drei-Wiederholungen-Regel und Migrations-Workflow).
+- **Logging** läuft ausschließlich über `Log.<category>` aus
+  `Core/Observability/Log.swift` (OSLog-basiert). `print()` ist verboten.
+  Subsystem-/Category-/Privacy-Konvention: @.claude/rules/LOGGING.md.
 
 ### Tests
 
@@ -131,7 +148,7 @@ cd backend && go test ./internal/codes -run TestCollectingDay
 cd ios && xcodegen generate
 
 # iOS bauen (CLI-Verifikation)
-cd ios && xcodebuild -project Weevilapp.xcodeproj -scheme Weevilapp \
+cd ios && xcodebuild -project Fieldworksdiary.xcodeproj -scheme Fieldworksdiary \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build \
   CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 ```
@@ -140,6 +157,7 @@ Nach erstem Backend-Start: PocketBase-Admin unter
 `http://localhost:8090/_/` einrichten. Danach in der iOS-App den
 Endpoint `http://<host>:8090` setzen.
 
-`ios/Weevilapp.xcodeproj/` ist gitignored und wird aus
+`ios/Fieldworksdiary.xcodeproj/` ist gitignored und wird aus
 `ios/project.yml` regeneriert (`xcodegen generate`). Quelle für
 Projekt-Änderungen ist immer `project.yml`, nicht das `.xcodeproj`.
+

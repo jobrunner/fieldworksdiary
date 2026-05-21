@@ -11,8 +11,8 @@ struct LabelPDF: Decodable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, kind, template, samples, created
-        case pdfFile      = "pdf_file"
-        case collectionId = "collectionId"
+        case pdfFile = "pdf_file"
+        case collectionId
     }
 
     init(from decoder: Decoder) throws {

@@ -10,8 +10,8 @@ enum SampleClientError: LocalizedError {
         switch self {
         case .noEndpoint: "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: "Endpoint-URL ist ungültig."
-        case .http(let s, let b): "HTTP \(s): \(b)"
-        case .decoding(let m): "Antwort konnte nicht gelesen werden: \(m)"
+        case let .http(status, body): "HTTP \(status): \(body)"
+        case let .decoding(message): "Antwort konnte nicht gelesen werden: \(message)"
         }
     }
 }
@@ -31,6 +31,8 @@ struct SampleClient {
         accuracy: Double?,
         altitude: Double?,
         collectedFrom: Date,
+        notes: String? = nil,
+        marked: Bool = false,
         code: String? = nil,
         clientUuid: String? = nil,
         clientUpdatedAt: Date? = nil
@@ -43,10 +45,12 @@ struct SampleClient {
         var body: [String: Any] = [
             "lat": lat,
             "lon": lon,
-            "collected_from": isoFormatter.string(from: collectedFrom),
+            "collected_from": isoFormatter.string(from: collectedFrom)
         ]
         if let accuracy { body["accuracy_m"] = accuracy }
         if let altitude { body["altitude_m"] = altitude }
+        if let notes, !notes.isEmpty { body["notes"] = notes }
+        if marked { body["marked"] = true }
         if let code, !code.isEmpty { body["code"] = code }
         if let clientUuid, !clientUuid.isEmpty { body["client_uuid"] = clientUuid }
         if let clientUpdatedAt {
@@ -59,6 +63,19 @@ struct SampleClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
+        return try await send(request)
+    }
+
+    /// Toggles the `marked` flag on an existing sample. PATCH-only —
+    /// the caller is responsible for not invoking this on a row that
+    /// hasn't been pushed yet (no backend id).
+    func setMarked(id: String, marked: Bool) async throws -> Sample {
+        let url = try makeURL(path: "/api/collections/samples/records/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["marked": marked])
         return try await send(request)
     }
 
@@ -78,7 +95,7 @@ struct SampleClient {
         var components = URLComponents(string: trimmed.appending("/api/collections/samples/records"))
         components?.queryItems = [
             URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "-collected_from"),
+            URLQueryItem(name: "sort", value: "-collected_from")
         ]
         guard let url = components?.url else {
             throw SampleClientError.invalidEndpoint
@@ -90,7 +107,7 @@ struct SampleClient {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
@@ -105,7 +122,7 @@ struct SampleClient {
         request.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {

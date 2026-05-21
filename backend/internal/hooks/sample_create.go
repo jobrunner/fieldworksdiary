@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jbrunner/weevilapp/backend/internal/codes"
-	"github.com/jbrunner/weevilapp/backend/internal/grouping"
+	"go.mett.io/fwd-backend/internal/codes"
+	"go.mett.io/fwd-backend/internal/grouping"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase"
@@ -69,7 +69,7 @@ func RegisterSampleCreate(app *pocketbase.PocketBase) {
 // for B even with our rules in place, because rules apply post-write
 // on update/delete but not on create).
 func RegisterOwnerSetters(app *pocketbase.PocketBase) {
-	for _, name := range []string{"excursions", "localities", "people", "determinations"} {
+	for _, name := range []string{"excursions", "localities", "people", "determinations", "sample_photos"} {
 		app.OnRecordBeforeCreateRequest(name).Add(func(e *core.RecordCreateEvent) error {
 			ownerID, err := authOwnerID(e.HttpContext)
 			if err != nil {
@@ -78,7 +78,8 @@ func RegisterOwnerSetters(app *pocketbase.PocketBase) {
 			incoming := strings.TrimSpace(e.Record.GetString("owner"))
 			if incoming != "" && incoming != ownerID {
 				return apis.NewForbiddenError(
-					"owner must match the authenticated user", nil)
+					"owner must match the authenticated user", nil,
+				)
 			}
 			e.Record.Set("owner", ownerID)
 			return nil
@@ -87,7 +88,7 @@ func RegisterOwnerSetters(app *pocketbase.PocketBase) {
 }
 
 // authOwnerID returns the auth record's id. The collection's
-// CreateRule (`@request.auth.id != ''`) blocks the request before
+// CreateRule (`@request.auth.id != ”`) blocks the request before
 // our hook ever runs, but we type-check defensively in case the
 // rules ever loosen. We read `ContextAuthRecordKey` directly —
 // `ContextRequestInfoKey` is only populated by the collection
@@ -95,7 +96,8 @@ func RegisterOwnerSetters(app *pocketbase.PocketBase) {
 // pre-middleware.
 func authOwnerID(c interface {
 	Get(string) any
-}) (string, error) {
+},
+) (string, error) {
 	if rec, _ := c.Get(apis.ContextAuthRecordKey).(*models.Record); rec != nil {
 		return rec.Id, nil
 	}

@@ -11,11 +11,11 @@ final class ExcursionsHydrator: ObservableObject {
 
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
-    @Published private(set) var lastPulledAt: Date?
 
     init(store: LocalExcursionStore,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil }) {
+         authProvider: @escaping () -> AuthSession? = { nil })
+    {
         self.store = store
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
@@ -33,7 +33,6 @@ final class ExcursionsHydrator: ObservableObject {
             let client = ExcursionClient(endpoint: endpoint, auth: authProvider())
             let items = try await client.listRecent(limit: limit)
             try store.upsert(items)
-            lastPulledAt = Date()
             lastError = nil
         } catch let err as SampleClientError {
             lastError = err.errorDescription

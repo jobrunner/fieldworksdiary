@@ -1,0 +1,198 @@
+# OpenAPI-Spec für die **eigenen** HTTP-Routen, die das Backend zusätzlich
+# zur Standard-PocketBase-REST-API anbietet. Die PocketBase-CRUD-Endpoints
+# (/api/collections/*/records) sind hier NICHT dokumentiert — Doku dafür
+# ist die offizielle PocketBase-Doku (https://pocketbase.io/docs/api-rules-and-filters/).
+#
+# Diese Datei ist hand-gepflegt. Bei jeder Route-Änderung in
+# `backend/internal/api/` hier nachziehen.
+
+openapi: 3.1.0
+
+info:
+  title: Fieldworksdiary Custom API
+  version: "0.1.0"
+  description: |
+    Erweiterungs-Endpoints für PDF-Generierung und ZIP-Export. Alle
+    Routen erwarten ein gültiges PocketBase-Auth-Token (Header
+    `Authorization: <token>`); ohne Token gibt es 401.
+
+    Vollständige Doku zu Owner-Scoping und Auth: `docs/adr/0002-auth-and-owner-scoping.md`.
+
+servers:
+  - url: http://localhost:8090
+    description: Lokales Dev-Backend
+  - url: https://staging.fieldworksdiary.org
+    description: Staging
+  - url: https://api.fieldworksdiary.org
+    description: Production
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        PocketBase-Token aus `POST /api/collections/users/auth-with-password`.
+        Im Header als `Authorization: <token>` mitgeben — **nicht** mit
+        `Bearer `-Präfix (PocketBase-Konvention).
+  schemas:
+    LabelRequest:
+      type: object
+      required: [sample_ids]
+      properties:
+        sample_ids:
+          type: array
+          items: { type: string }
+          description: PocketBase-Sample-Record-IDs, die auf das Label sollen.
+        template:
+          type: string
+          description: |
+            Optionaler Layout-Selektor. Erlaubte Werte
+            (Standard ist `multi-a4`):
+            * `multi-a4` — bis zu 6 Labels pro A4-Seite
+            * `single-portrait`
+            * `single-landscape`
+          enum: [multi-a4, single-portrait, single-landscape]
+    LabelResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID des generierten `label_pdfs`-Records.
+        file:
+          type: string
+          description: |
+            Dateiname im PB-Storage. Abruf über
+            `GET /api/files/label_pdfs/{id}/{file}` mit Auth-Token.
+        sample_count:
+          type: integer
+        kind:
+          type: string
+          enum: [locality, determination]
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+  responses:
+    Unauthorized:
+      description: Kein oder ungültiges Auth-Token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: |
+        Mindestens eine der angeforderten Sample-IDs gehört nicht zum
+        authentifizierten User (Owner-Scoping greift).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: |
+        Schema-Verletzung (z. B. leere `sample_ids`) oder keine der IDs
+        existiert.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+paths:
+  /api/label-pdfs/locality:
+    post:
+      summary: Fundort-Labels (PDF) generieren
+      description: |
+        Erzeugt ein PDF mit den Fundort-Daten (Locality + Excursion +
+        Astro + MTB) für die angegebenen Samples. Das Backend
+        persistiert das Ergebnis in der `label_pdfs`-Collection,
+        die Antwort enthält die ID, unter der das File später wieder
+        ausgelesen wird.
+      operationId: createLocalityLabel
+      tags: [labels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabelRequest" }
+      responses:
+        "200":
+          description: PDF erfolgreich erzeugt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabelResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: PDF-Rendering oder DB-Schreib-Fehler.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/label-pdfs/determination:
+    post:
+      summary: Determinations-Labels (PDF) generieren
+      description: |
+        Wie `/api/label-pdfs/locality`, aber das PDF enthält den
+        Bestimmungs-Block (Art, Determinator, Datum) statt der
+        Fundort-Details. Verlangt mindestens eine zugeordnete
+        Determination pro Sample — Samples ohne Bestimmung werden
+        ohne Block gerendert (`internal/api/labels.go:271`,
+        intentional `nilerr`).
+      operationId: createDeterminationLabel
+      tags: [labels]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LabelRequest" }
+      responses:
+        "200":
+          description: PDF erfolgreich erzeugt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LabelResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500":
+          description: PDF-Rendering oder DB-Schreib-Fehler.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/export:
+    get:
+      summary: ZIP-Export aller eigenen Daten
+      description: |
+        Liefert ein ZIP-Archiv mit (a) einer `data.json`, die alle
+        Records des authentifizierten Users enthält (Samples,
+        Excursions, Localities, People, Determinations, LabelPDFs),
+        und (b) allen referenzierten PDF-Files (Permits, Labels) aus
+        dem PocketBase-Storage.
+
+        **Nicht** für Restore gedacht — Schema kann sich ändern. Für
+        DR-Restore: Host-`pb_data`-Backup zurückspielen, siehe
+        `docs/DISASTER_RECOVERY.md`.
+      operationId: exportUserData
+      tags: [export]
+      responses:
+        "200":
+          description: ZIP-Archiv.
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500":
+          description: Storage-Lesefehler oder ZIP-Streaming-Fehler.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

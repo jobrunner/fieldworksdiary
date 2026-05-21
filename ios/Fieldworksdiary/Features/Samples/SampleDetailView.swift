@@ -1,39 +1,96 @@
 import SwiftUI
 
 struct SampleDetailView: View {
-    let sample: LocalSample
+    /// The detail view can be entered with a `LocalSample` (from a
+    /// drill-down where the parent already has the row) or with just an
+    /// id (e.g. the home dashboard's "Letzte Probe" shortcut). The
+    /// `loadedSample` state mirrors whichever route the user took.
+    init(sample: LocalSample) {
+        sampleID = sample.id
+        _loadedSample = State(initialValue: sample)
+    }
+
+    init(sampleID: String) {
+        self.sampleID = sampleID
+        _loadedSample = State(initialValue: nil)
+    }
+
+    private let sampleID: String
 
     @EnvironmentObject var container: AppContainer
+    @State private var loadedSample: LocalSample?
+    @State private var photos: [LocalPhoto] = []
     @State private var determinations: [Determination] = []
     @State private var loadingDeterminations = false
     @State private var loadError: String?
     @State private var presentingNew = false
     @State private var editing: Determination?
-    @State private var people: [String: Person] = [:]  // id → person (for label lookup)
+    @State private var people: [String: Person] = [:] // id → person (for label lookup)
 
     private let berlin = TimeZone(identifier: "Europe/Berlin") ?? TimeZone.current
+
+    private var sample: LocalSample? { loadedSample }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                codeCard
-                metadataCard
-                determinationsSection
+                if let sample {
+                    codeCard(sample)
+                    metadataCard(sample)
+                    if !sample.notes.isEmpty {
+                        notesCard(sample.notes)
+                    }
+                    if !photos.isEmpty {
+                        photoSection
+                    }
+                    determinationsSection(sample)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
             }
             .padding()
         }
-        .navigationTitle(sample.code)
+        .navigationTitle(sample?.code ?? "Probe")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let sample {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        toggleMarked(currentlyMarked: sample.marked)
+                    } label: {
+                        Image(systemName: sample.marked ? "star.fill" : "star")
+                            .foregroundStyle(sample.marked ? .yellow : .secondary)
+                            .accessibilityLabel(sample.marked ? "Markierung entfernen" : "Probe markieren")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SampleEditorView(sampleID: nil)
+                    } label: {
+                        Image(systemName: "plus")
+                            .accessibilityLabel("Neue Probe anlegen")
+                    }
+                }
+            }
+        }
         .task {
+            reloadSample()
+            reloadPhotos()
             await refreshDeterminations()
         }
-        .refreshable { await refreshDeterminations() }
+        .refreshable {
+            reloadSample()
+            reloadPhotos()
+            await refreshDeterminations()
+        }
         .sheet(isPresented: $presentingNew) {
-            DeterminationEditView(
-                mode: .create(sampleID: sample.backendId ?? sample.id),
-                onSaved: { _ in Task { await refreshDeterminations() } },
-                onDeleted: nil
-            )
+            if let sample {
+                DeterminationEditView(
+                    mode: .create(sampleID: sample.backendId ?? sample.id),
+                    onSaved: { _ in Task { await refreshDeterminations() } },
+                    onDeleted: nil
+                )
+            }
         }
         .sheet(item: $editing) { det in
             DeterminationEditView(
@@ -44,8 +101,7 @@ struct SampleDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var codeCard: some View {
+    private func codeCard(_ sample: LocalSample) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 Text(sample.code)
@@ -60,8 +116,7 @@ struct SampleDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
-    private var metadataCard: some View {
+    private func metadataCard(_ sample: LocalSample) -> some View {
         GroupBox("Probe") {
             VStack(alignment: .leading, spacing: 6) {
                 Label(String(format: "%.6f, %.6f", sample.lat, sample.lon),
@@ -87,8 +142,32 @@ struct SampleDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
-    private var determinationsSection: some View {
+    private func notesCard(_ notes: String) -> some View {
+        GroupBox("Notizen") {
+            Text(notes)
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var photoSection: some View {
+        GroupBox("Fotos") {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(Array(photos.enumerated()), id: \.element.id) { idx, photo in
+                        SamplePhotoThumbnail(
+                            relativePath: photo.localPath,
+                            accessibilityLabel: "Foto \(idx + 1) von \(photos.count)"
+                        )
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func determinationsSection(_ sample: LocalSample) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
@@ -131,7 +210,6 @@ struct SampleDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
     private func determinationRow(_ det: Determination) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(det.kind.labelShort)
@@ -161,6 +239,7 @@ struct SampleDetailView: View {
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 6)
         .contentShape(Rectangle())
@@ -169,21 +248,55 @@ struct SampleDetailView: View {
     // MARK: - Helpers
 
     private func formatDateTime(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.timeZone = berlin
-        f.dateFormat = "dd.MM.yyyy HH:mm"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.timeZone = berlin
+        formatter.dateFormat = "dd.MM.yyyy HH:mm"
+        return formatter.string(from: date)
     }
 
     private func shortDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.timeZone = berlin
-        f.dateFormat = "dd.MM.yyyy"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.timeZone = berlin
+        formatter.dateFormat = "dd.MM.yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func reloadSample() {
+        if let fresh = try? container.store.fetchById(sampleID) {
+            loadedSample = fresh
+        }
+    }
+
+    /// Flips the star: writes the new state locally for an instant UI
+    /// update, then fire-and-forget PATCHes the backend if the sample
+    /// has already been pushed. Failures are logged but not surfaced
+    /// — the local state remains the source of truth, and the next
+    /// hydrate-pull will reconcile if the server disagrees.
+    private func toggleMarked(currentlyMarked: Bool) {
+        let next = !currentlyMarked
+        try? container.store.setMarked(id: sampleID, marked: next)
+        reloadSample()
+
+        guard let backendID = loadedSample?.backendId, !backendID.isEmpty else { return }
+        Task {
+            let client = SampleClient(
+                endpoint: container.config.endpointURL,
+                auth: container.auth
+            )
+            do {
+                _ = try await client.setMarked(id: backendID, marked: next)
+            } catch {
+                Log.sync.error("toggle marked PATCH failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func reloadPhotos() {
+        photos = (try? container.photos.fetchBySample(sampleID)) ?? []
     }
 
     private func refreshDeterminations() async {
-        guard let backendID = sample.backendId else { return }
+        guard let sample, let backendID = sample.backendId else { return }
         loadingDeterminations = true
         defer { loadingDeterminations = false }
         do {
@@ -206,6 +319,45 @@ struct SampleDetailView: View {
             for p in all where ids.contains(p.id) {
                 people[p.id] = p
             }
+        }
+    }
+}
+
+/// Decodes a JPEG file from PhotoStorage and renders it as a fixed-size
+/// thumbnail. Lazy-loads on `.task` so a long photo strip doesn't block
+/// the parent's first frame.
+private struct SamplePhotoThumbnail: View {
+    let relativePath: String
+    let accessibilityLabel: String
+
+    // Foto-Thumbnail-Größe ist domänenspezifisch (Sample-Detail-Strip)
+    // — kein globales Token, lokales `@ScaledMetric`.
+    @ScaledMetric(relativeTo: .body) private var thumbSize: CGFloat = 84
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle()
+                    .fill(AppColor.surfaceSecondary)
+            }
+        }
+        .frame(width: thumbSize, height: thumbSize)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
+        .accessibilityLabel(accessibilityLabel)
+        .task { load() }
+    }
+
+    private func load() {
+        guard image == nil else { return }
+        if let data = try? PhotoStorage.readData(relativePath: relativePath),
+           let img = UIImage(data: data)
+        {
+            image = img
         }
     }
 }

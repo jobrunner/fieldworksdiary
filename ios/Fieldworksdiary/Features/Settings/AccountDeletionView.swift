@@ -41,8 +41,15 @@ struct AccountDeletionView: View {
                 }
 
                 Section {
-                    Text("Falls du deine Daten behalten willst, lade vorher unter „Einstellungen → Daten → Daten exportieren“ das ZIP-Backup herunter und sichere es an einem zuverlässigen Ort. Nach der Löschung sind die Daten unwiderruflich weg.")
-                        .foregroundStyle(.secondary)
+                    Text(
+                        """
+                        Falls du deine Daten behalten willst, lade vorher unter \
+                        „Einstellungen → Daten → Daten exportieren“ das ZIP-Backup \
+                        herunter und sichere es an einem zuverlässigen Ort. \
+                        Nach der Löschung sind die Daten unwiderruflich weg.
+                        """
+                    )
+                    .foregroundStyle(.secondary)
                 } header: {
                     Text("Vor dem Löschen")
                 }
@@ -55,7 +62,9 @@ struct AccountDeletionView: View {
                         Task { await performDelete() }
                     } label: {
                         if busy {
-                            HStack { ProgressView(); Text("Wird gelöscht …") }
+                            HStack { ProgressView()
+                                Text("Wird gelöscht …")
+                            }
                         } else {
                             Text("Account endgültig löschen")
                         }
@@ -90,7 +99,7 @@ struct AccountDeletionView: View {
         do {
             try await auth.deleteAccount()
             // On success, AuthSession clears `currentUser`, and the
-            // RootView gating in WeevilappApp swaps in WelcomeView —
+            // RootView gating in FieldworksdiaryApp swaps in WelcomeView —
             // dismissing the sheet is just cosmetic.
             dismiss()
         } catch let err as SampleClientError {

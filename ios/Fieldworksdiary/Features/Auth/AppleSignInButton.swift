@@ -1,5 +1,5 @@
-import SwiftUI
 import AuthenticationServices
+import SwiftUI
 
 /// SwiftUI wrapper around `SignInWithAppleButton` that hands the
 /// `identityToken` and authorization `code` off to `AuthSession`.
@@ -23,9 +23,9 @@ struct AppleSignInButton: View {
             request.requestedScopes = [.email, .fullName]
         } onCompletion: { result in
             switch result {
-            case .success(let auth):
+            case let .success(auth):
                 handle(authorization: auth)
-            case .failure(let err):
+            case let .failure(err):
                 // User-cancel comes through here too — surface only
                 // the real-error message; the cancel case is a no-op.
                 if (err as NSError).code == ASAuthorizationError.canceled.rawValue {
@@ -43,7 +43,8 @@ struct AppleSignInButton: View {
               let tokenData = credential.identityToken,
               let token = String(data: tokenData, encoding: .utf8),
               let codeData = credential.authorizationCode,
-              let code = String(data: codeData, encoding: .utf8) else {
+              let code = String(data: codeData, encoding: .utf8)
+        else {
             onError("Apple-Anmeldung lieferte keine verwertbaren Daten.")
             return
         }

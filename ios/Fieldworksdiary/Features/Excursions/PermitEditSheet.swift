@@ -13,7 +13,7 @@ struct PermitEditSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var numberDraft: String = ""
-    @State private var pickedFile: URL? = nil
+    @State private var pickedFile: URL?
     @State private var presentingPicker = false
     @State private var saving = false
     @State private var error: String?
@@ -34,12 +34,14 @@ struct PermitEditSheet: View {
                     if let url = pickedFile {
                         HStack {
                             Image(systemName: "doc.text")
+                                .accessibilityHidden(true)
                             Text(url.lastPathComponent).lineLimit(1)
                             Spacer()
                             Button(role: .destructive) {
                                 pickedFile = nil
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
+                                    .accessibilityLabel("Auswahl entfernen")
                             }
                             .buttonStyle(.borderless)
                         }
@@ -47,12 +49,14 @@ struct PermitEditSheet: View {
                         HStack {
                             Image(systemName: "doc.text.fill")
                                 .foregroundStyle(.tint)
+                                .accessibilityHidden(true)
                             Text(existing).lineLimit(1)
                             Spacer()
                             Button(role: .destructive) {
                                 clearPDF = true
                             } label: {
                                 Image(systemName: "trash")
+                                    .accessibilityLabel("PDF entfernen")
                             }
                             .buttonStyle(.borderless)
                         }
@@ -91,14 +95,15 @@ struct PermitEditSheet: View {
                 }
             }
             .fileImporter(isPresented: $presentingPicker,
-                          allowedContentTypes: [.pdf]) { result in
+                          allowedContentTypes: [.pdf])
+            { result in
                 switch result {
-                case .success(let url):
+                case let .success(url):
                     // Move into our caches so we don't have to keep
                     // the document-picker security scope open later.
                     pickedFile = copyIntoCaches(url)
                     clearPDF = false
-                case .failure(let err):
+                case let .failure(err):
                     error = err.localizedDescription
                 }
             }
@@ -122,8 +127,10 @@ struct PermitEditSheet: View {
         defer { if didSecure { src.stopAccessingSecurityScopedResource() } }
         do {
             let caches = try FileManager.default.url(
-                for: .cachesDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: true
+                for: .cachesDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
             )
             let dest = caches.appendingPathComponent("permit-\(UUID().uuidString).pdf")
             try FileManager.default.copyItem(at: src, to: dest)

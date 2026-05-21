@@ -1,5 +1,5 @@
-import SwiftUI
 import CoreLocation
+import SwiftUI
 
 /// Create- and edit-form for localities. The same view is reused for
 /// both — pass `editing: nil` to create.
@@ -41,7 +41,7 @@ struct LocalityEditView: View {
                 }
                 Section("Radius") {
                     HStack {
-                        Slider(value: $radiusMeters, in: 25...5000, step: 25)
+                        Slider(value: $radiusMeters, in: 25 ... 5000, step: 25)
                         Text("\(Int(radiusMeters)) m")
                             .font(.body.monospacedDigit())
                             .frame(width: 80, alignment: .trailing)
@@ -49,7 +49,7 @@ struct LocalityEditView: View {
                 }
                 Section("Notizen") {
                     TextField("optional", text: $notes, axis: .vertical)
-                        .lineLimit(3...8)
+                        .lineLimit(3 ... 8)
                 }
                 if let saveError {
                     Section {
@@ -82,13 +82,13 @@ struct LocalityEditView: View {
     }
 
     private func applyEditing() {
-        guard let l = editing else { return }
-        name = l.name
-        notes = l.notes
-        if let lat = l.centroidLat, let lon = l.centroidLon {
+        guard let existing = editing else { return }
+        name = existing.name
+        notes = existing.notes
+        if let lat = existing.centroidLat, let lon = existing.centroidLon {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }
-        radiusMeters = l.radiusM ?? 100
+        radiusMeters = existing.radiusM ?? 100
     }
 
     private func save() async {
@@ -102,24 +102,18 @@ struct LocalityEditView: View {
         let endpoint = container.config.endpointURL
         let client = LocalityClient(endpoint: endpoint, auth: container.auth)
         do {
+            let input = LocalityInput(
+                name: trimmedName,
+                centroidLat: coord.latitude,
+                centroidLon: coord.longitude,
+                radiusM: radiusMeters,
+                notes: notes
+            )
             let result: Locality
             if let editing {
-                result = try await client.update(
-                    id: editing.id,
-                    name: trimmedName,
-                    centroidLat: coord.latitude,
-                    centroidLon: coord.longitude,
-                    radiusM: radiusMeters,
-                    notes: notes
-                )
+                result = try await client.update(id: editing.id, input: input)
             } else {
-                result = try await client.create(
-                    name: trimmedName,
-                    centroidLat: coord.latitude,
-                    centroidLon: coord.longitude,
-                    radiusM: radiusMeters,
-                    notes: notes
-                )
+                result = try await client.create(input)
             }
             try container.localitiesStore.upsertOne(result)
             dismiss()

@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase 11 + 10 done. Nächste offene Phase: vom User formulierte UI/DB-Refactorings, dann App-Store-Submit. Phase 9 zurückgestellt.**
+**Aktive Phase: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -212,10 +212,10 @@ Akzeptanzkriterium: Flugmodus → 10 Samples anlegen → Internet wieder da
 ### 3a – Local DB + lokale Code-Vergabe (done am 2026-05-11)
 
 - [x] GRDB 6.29+ als SPM-Dep im `ios/project.yml`
-- [x] WeevilappTests-Target in xcodegen mit `GENERATE_INFOPLIST_FILE=YES`
+- [x] FieldworksdiaryTests-Target in xcodegen mit `GENERATE_INFOPLIST_FILE=YES`
 - [x] `Core/Geo/Codes/Codes.swift`: Swift-Port von `internal/codes`
       (`collectingDay`, `formatCode`, `collectingDayKey`)
-- [x] `WeevilappTests/CodesTests.swift`: 9 Test-Cases parallel zu den
+- [x] `FieldworksdiaryTests/CodesTests.swift`: 9 Test-Cases parallel zu den
       Go-Tests (Cutoff-Edges, Format, Jahreswechsel) — 9/9 grün
 - [x] `Core/Persistence/Database.swift`: GRDB-DatabasePool,
       Migration `v1_local_samples_and_sequences`, Test-Init
@@ -463,7 +463,7 @@ Phase-5a-Limitierungen (in 5c oder später):
       wenn Filter aktiv), Filter-Chip unter dem Header zeigt
       "n von m gefiltert" mit Aufheben-Button, separater Empty-State
       "Keine Treffer" wenn Filter alle ausschließt.
-- [x] `WeevilappTests/ExcursionsFilterTests.swift`: 7 Test-Cases
+- [x] `FieldworksdiaryTests/ExcursionsFilterTests.swift`: 7 Test-Cases
       inkl. seasonal wrap und kombinierter Filter; alle grün.
 
 End-to-end: iOS-Build + Test grün (16 Tests gesamt), Newman gegen
@@ -847,7 +847,7 @@ jetzt direkt diesen Key.
 ### 11b – iOS Auth Foundation (done am 2026-05-13)
 
 - [x] `Core/Auth/KeychainStore.swift` (SecItem-Wrapper, Service
-      `com.weevilapp.Weevilapp.auth`, `kSecAttrAccessibleAfterFirstUnlock`)
+      `org.fieldworksdiary.auth`, `kSecAttrAccessibleAfterFirstUnlock`)
 - [x] `Core/Auth/AuthSession.swift` (`@MainActor ObservableObject`,
       `currentToken` als `nonisolated` damit HTTP-Clients ohne Hop auf
       MainActor lesen können)
@@ -921,10 +921,10 @@ laufen, ohne sich gegenseitig zu killen.
       `AuthSession.signInWithApple`)
 - [x] `WelcomeView` zeigt Apple-Button oben, dann Trenner, dann
       E-Mail-Flow
-- [x] `ios/Weevilapp/Weevilapp.entitlements` mit
+- [x] `ios/Fieldworksdiary/Fieldworksdiary.entitlements` mit
       `com.apple.developer.applesignin`
 - [x] `ios/project.yml`: `CODE_SIGN_ENTITLEMENTS` gesetzt
-- [x] `ios/Weevilapp/PrivacyInfo.xcprivacy` (Email/Name/Precise
+- [x] `ios/Fieldworksdiary/PrivacyInfo.xcprivacy` (Email/Name/Precise
       Location als „linked, not tracking, App Functionality"; API-
       Reasons für UserDefaults/FileTimestamp/SystemBootTime/DiskSpace)
 - [x] `docs/datenschutz.md` (DE, DSGVO-konform; Verantwortlicher-
@@ -949,3 +949,99 @@ DB-Inspektion verifiziert.
 - Apple-Dev-Account, Bundle-ID-Registrierung, Service-ID + Private Key
   für Sign-in-with-Apple, Datenschutz-URL hosten, Marketing-Texte,
   Screenshots, TestFlight-Upload (siehe `docs/app-store-prep.md`).
+
+---
+
+## Phase 12 – Production-Härtung
+
+**Status: pending**
+
+Ziel: alle Hot-Pfade unter Test-Schutz, A11y-Audit ohne Kategorien-
+Ausnahmen, keine forward-only-Migrationen mehr.
+
+Akzeptanzkriterium: `bash scripts/check.sh` grün, AccessibilityAuditTest
+läuft mit `.all` ohne `.subtracting(...)`, Coverage in den heute
+ungetesteten Pfaden > 60 %.
+
+Aufgaben:
+- [ ] Tests für `Core/Sync/ExcursionsHydrator`, `LocalitiesHydrator`,
+      `SamplesHydrator` (0 % → > 60 %)
+- [ ] Tests für `Core/Auth/AuthSession` und `Core/Auth/AuthClient`
+      (Token-Restore, Apple-Sign-In, Refresh-Pfad)
+- [ ] Tests für `backend/internal/services/geocache.go`
+      (48 % → > 80 %): Cache-Hit/Miss/TTL-Ablauf, SHA-256-Key-Stabilität
+- [ ] Hydrator-Konsolidierung: gemeinsame Base oder Generic statt drei
+      Quasi-Duplikate
+- [ ] Farb-Tokens definieren (Light + Dark) und in der App durchziehen,
+      damit `.contrast`-Audit wieder grün läuft
+- [ ] AX-Layouts gegen größte Dynamic-Type-Stufe testen
+      (`.dynamicType` + `.textClipped` im A11y-Audit reaktivieren)
+- [ ] Down-Migrations für PocketBase (DB-Rollback bei Bad-Migration)
+- [ ] Down-Migrations für GRDB (lokale-DB-Rollback)
+
+---
+
+## Phase 13 – Tile-Caching / Offline-Map
+
+**Status: pending**
+
+Ziel: Karten-Hintergrund offline verfügbar, sobald der User vorab ein
+Gebiet markiert. Die Pin-Layer waren ab Phase 3 schon offline; nur die
+Map-Tiles fehlten.
+
+Akzeptanzkriterium: User wählt ein Rechteck auf der Karte → App lädt
+die Tiles → Flugmodus an → die Map zeigt weiterhin den Hintergrund;
+neue Samples lassen sich erfassen und auf der Karte sehen.
+
+Aufgaben:
+- [ ] Tile-Provider-Entscheidung (Apple-Maps-Cache vs. OSM-MBTiles vs.
+      Swisstopo/IGN für DE/CH) — ADR schreiben
+- [ ] Lokaler MBTiles-Store (SQLite mit Tile-Blobs)
+- [ ] „Region herunterladen"-UI: Rechteck-Picker + Zoom-Range-Selector
+      + Download-Fortschritt
+- [ ] Cache-Größen-Limit + manuelles Aufräumen in Settings
+- [ ] `LocalitiesMapView` + `CoordinatePickerView` nutzen Tile-Store
+      automatisch, fallback auf Online-Tiles wenn Cache-Miss
+
+---
+
+## Phase 14 – UI-Redesign: Home-Dashboard + Sample-Foto
+
+**Status: in progress** (gestartet 2026-05-20). Plan unter
+`~/.claude/plans/wir-m-ssen-die-features-curious-lerdorf.md`.
+
+Ziel: Den feldtauglichen Workflow der alten App in der neuen Architektur
+nachbauen — grünes Home-Dashboard mit Active-Collector / Active-Fieldtrip
+/ Recently-Sample und prominentem +-FAB ersetzt die 5-Tab-Bar als
+Haupteinstieg. Sample-Erfassung um Notizen-Freitext und Foto-Aufnahme
+(Kamera + Galerie) erweitert. Color-Tokens und A11y-Audit aus Phase 12
+werden hier integriert.
+
+Akzeptanzkriterium: Nach Login landet der User auf einem grünen
+Home-Dashboard mit allen wichtigen Kontext-Infos und einem 64×64pt-FAB.
+„Neue Probe" öffnet ein Sheet mit GPS, Notizen, Foto-Aufnahme; nach
+Submit landet das Foto im PocketBase-`sample_photos`-Record. A11y-Audit
+auf Home + AddSample läuft ohne `.subtracting(...)` durch, Dynamic Type
+AX5 funktioniert ohne Clipping.
+
+**Out of scope (Phase 14b/c folgt):** Marked Samples, Photos-Galerie,
+Calendar-View, Sample-Map. Diese Menüpunkte kommen mit Placeholder-Stubs.
+
+Aufgaben:
+- [ ] Theme & Color-Tokens (`Assets.xcassets`, `AppColor`, `AppMetric`)
+      — Brand-Grün light/dark, WCAG-AA verifiziert
+- [ ] Backend: Migration `1700000012_phase14_sample_photos` (separate
+      Collection mit owner-Rules, max 10 MB pro File)
+- [ ] iOS GRDB-Migration v7 `local_photos`, `LocalPhoto`-Record +
+      `LocalPhotoStore`
+- [ ] `PhotoStorage` (Filesystem-Layer, JPEG-Kompression) +
+      `PhotoPicker` (UIImagePickerController-Bridge)
+- [ ] Home-Feature: `HomeView`, `HomeViewModel`, `HomeHeader`,
+      `HomeMenuRow` (A11y-Pflichten gegen `.claude/rules/ACCESSIBILITY-IOS.md`)
+- [ ] `SamplesListView` + `SampleDetailView` als top-level Liste
+- [ ] `AddSampleView` erweitert um Notizen-`TextEditor` und Foto-Section
+- [ ] `SyncRunner`: Photo-Upload nach erfolgreichem Sample-Push (multipart,
+      idempotent via `client_uuid`)
+- [ ] `RootView` → `HomeView` (statt MainTabs), `AppContainer` mit
+      `PhotoStore`/`LocalPhotoStore`, Info.plist mit Camera/Photo-Usage
+- [ ] Build + Tests grün, manueller Foto-Capture im Simulator verifiziert

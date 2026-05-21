@@ -97,9 +97,9 @@ func TestFormatCode(t *testing.T) {
 
 func TestParseSequence(t *testing.T) {
 	cases := []struct {
-		code   string
-		want   int
-		ok     bool
+		code string
+		want int
+		ok   bool
 	}{
 		{"260510/1", 1, true},
 		{"260510/12", 12, true},

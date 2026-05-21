@@ -1,5 +1,5 @@
-import SwiftUI
 import MapKit
+import SwiftUI
 
 /// Map of every locality the local store knows about. Pins are
 /// clickable — tap navigates into the locality detail. Radius shows
@@ -56,11 +56,11 @@ private struct LocalitiesMapScreen: View {
 
     private var map: some View {
         Map(position: $cameraPosition, selection: $selectedID) {
-            ForEach(viewModel.items) { l in
-                if let coord = l.coordinate {
-                    Marker(l.displayName, coordinate: coord)
-                        .tag(l.id)
-                    if let radius = l.radiusM, radius > 0 {
+            ForEach(viewModel.items) { locality in
+                if let coord = locality.coordinate {
+                    Marker(locality.displayName, coordinate: coord)
+                        .tag(locality.id)
+                    if let radius = locality.radiusM, radius > 0 {
                         MapCircle(center: coord, radius: radius)
                             .foregroundStyle(.red.opacity(0.15))
                             .stroke(.red.opacity(0.6), lineWidth: 1)
@@ -95,21 +95,23 @@ private struct LocalitiesMapScreen: View {
 
     private func updateCameraToFit() {
         let coords = viewModel.items.compactMap { $0.coordinate }
-        guard !coords.isEmpty else {
+        let lats = coords.map(\.latitude)
+        let lons = coords.map(\.longitude)
+        guard let latMin = lats.min(), let latMax = lats.max(),
+              let lonMin = lons.min(), let lonMax = lons.max()
+        else {
             cameraPosition = .region(.germany)
             return
         }
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
         let center = CLLocationCoordinate2D(
-            latitude: (lats.min()! + lats.max()!) / 2,
-            longitude: (lons.min()! + lons.max()!) / 2
+            latitude: (latMin + latMax) / 2,
+            longitude: (lonMin + lonMax) / 2
         )
         // 1.5× padding around the bounding box, but never tighter
         // than a 1-km diagonal — otherwise the single-pin case looks
         // like the map is broken at street zoom.
-        let latDelta = max(0.01, (lats.max()! - lats.min()!) * 1.5)
-        let lonDelta = max(0.01, (lons.max()! - lons.min()!) * 1.5)
+        let latDelta = max(0.01, (latMax - latMin) * 1.5)
+        let lonDelta = max(0.01, (lonMax - lonMin) * 1.5)
         cameraPosition = .region(MKCoordinateRegion(
             center: center,
             span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
@@ -124,7 +126,9 @@ private final class LocalitiesMapViewModel: ObservableObject {
     private let store: LocalLocalityStore
     private var task: Task<Void, Never>?
 
-    init(store: LocalLocalityStore) { self.store = store }
+    init(store: LocalLocalityStore) {
+        self.store = store
+    }
 
     deinit { task?.cancel() }
 
@@ -144,7 +148,10 @@ private extension LocalLocality {
         guard let lat = centroidLat, let lon = centroidLon else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
-    var displayName: String { name.isEmpty ? "(ohne Namen)" : name }
+
+    var displayName: String {
+        name.isEmpty ? "(ohne Namen)" : name
+    }
 }
 
 private extension MKCoordinateRegion {

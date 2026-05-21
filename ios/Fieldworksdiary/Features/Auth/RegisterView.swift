@@ -31,9 +31,15 @@ struct RegisterView: View {
                     Section { Text(error).foregroundStyle(.red) }
                 }
                 Section {
-                    Text("Nach der Registrierung schickt das Backend eine Verifikations-E-Mail. Du kannst die App in der Zwischenzeit voll nutzen.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        """
+                        Nach der Registrierung schickt das Backend eine \
+                        Verifikations-E-Mail. Du kannst die App in der \
+                        Zwischenzeit voll nutzen.
+                        """
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
             }
             .navigationTitle("Konto erstellen")
@@ -52,8 +58,8 @@ struct RegisterView: View {
     }
 
     private var canSubmit: Bool {
-        let e = email.trimmingCharacters(in: .whitespaces)
-        return !e.isEmpty
+        let trimmedEmail = email.trimmingCharacters(in: .whitespaces)
+        return !trimmedEmail.isEmpty
             && password.count >= 8
             && password == passwordConfirm
     }
@@ -78,13 +84,13 @@ struct RegisterView: View {
 
     private func friendly(_ err: SampleClientError) -> String {
         switch err {
-        case .http(400, let body):
+        case let .http(400, body):
             if body.contains("validation_") { return "E-Mail bereits vergeben oder Passwort zu schwach." }
             return body.isEmpty ? "Registrierung abgelehnt." : body
-        case .http(let s, let body): return "HTTP \(s): \(body)"
+        case let .http(s, body): return "HTTP \(s): \(body)"
         case .noEndpoint: return "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: return "Endpoint-URL ist ungültig."
-        case .decoding(let m): return "Antwort nicht lesbar: \(m)"
+        case let .decoding(message): return "Antwort nicht lesbar: \(message)"
         }
     }
 }

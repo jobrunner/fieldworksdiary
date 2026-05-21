@@ -11,7 +11,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
@@ -25,7 +24,7 @@ import (
 //
 // The archive is for backup. It is NOT designed as an import format —
 // fields, structure, and naming may change without a migration story.
-func RegisterExportRoute(app *pocketbase.PocketBase) {
+func RegisterExportRoute(app core.App) {
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		requireAuth := apis.RequireRecordAuth("users")
 		e.Router.GET("/api/export", func(c echo.Context) error {
@@ -40,21 +39,21 @@ func RegisterExportRoute(app *pocketbase.PocketBase) {
 // arrays carry the records as PocketBase serialises them (same shape
 // the REST API would return for an authenticated GET).
 type exportPayload struct {
-	ExportedAt time.Time        `json:"exported_at"`
-	Meta       exportMeta       `json:"meta"`
-	Samples    []map[string]any `json:"samples"`
-	Excursions []map[string]any `json:"excursions"`
-	Localities []map[string]any `json:"localities"`
-	People     []map[string]any `json:"people"`
+	ExportedAt     time.Time        `json:"exported_at"`
+	Meta           exportMeta       `json:"meta"`
+	Samples        []map[string]any `json:"samples"`
+	Excursions     []map[string]any `json:"excursions"`
+	Localities     []map[string]any `json:"localities"`
+	People         []map[string]any `json:"people"`
 	Determinations []map[string]any `json:"determinations"`
-	LabelPDFs  []map[string]any `json:"label_pdfs"`
+	LabelPDFs      []map[string]any `json:"label_pdfs"`
 }
 
 type exportMeta struct {
 	User map[string]any `json:"user"`
 }
 
-func handleExport(app *pocketbase.PocketBase, c echo.Context) error {
+func handleExport(app core.App, c echo.Context) error {
 	ownerID, err := authOwnerID(c)
 	if err != nil {
 		return err
@@ -152,7 +151,8 @@ func handleExport(app *pocketbase.PocketBase, c echo.Context) error {
 
 func fetchOwned(dao interface {
 	FindRecordsByFilter(string, string, string, int, int, ...dbx.Params) ([]*models.Record, error)
-}, name, ownerID, sort string) ([]map[string]any, error) {
+}, name, ownerID, sort string,
+) ([]map[string]any, error) {
 	recs, err := dao.FindRecordsByFilter(name, "owner = {:o}", sort, 0, 0, dbx.Params{"o": ownerID})
 	if err != nil {
 		return nil, err

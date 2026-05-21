@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Conventional-Commits-Check.
+# Erlaubt: type(scope)?!?: subject
+#   type   ∈ {feat, fix, chore, docs, refactor, perf, test, build, ci, style, revert}
+#   scope  optional, frei wählbar (z. B. backend, ios, sync, auth, ci, deps, codes)
+#   !      optional, kennzeichnet Breaking-Change
+#   subject min 1, max 100 Zeichen
+#
+# Beispiele:
+#   feat(ios): Datenschutz-Link in SettingsView
+#   fix(backend): SHA-256 statt SHA-1 für Cache-Keys
+#   chore(deps): bump golang.org/x/oauth2 → v0.36.0
+#   refactor(grouping)!: Coordinate-Type-Signature gewechselt
+
+set -u
+
+MSG_FILE="$1"
+FIRST_LINE=$(head -1 "$MSG_FILE")
+
+# Merge-/Revert-/Fixup-Commits durchlassen — die generiert Git selbst.
+case "$FIRST_LINE" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*)
+    exit 0 ;;
+esac
+
+PATTERN='^(feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert)(\([a-z0-9-]+\))?!?: .{1,100}$'
+
+if ! printf '%s' "$FIRST_LINE" | grep -qE "$PATTERN"; then
+  cat >&2 <<'EOF'
+✘ Commit-Message folgt nicht der Conventional-Commits-Konvention.
+
+  Format:  type(scope)?!?: subject
+  Types:   feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert
+  Scope:   optional, kleinbuchstaben/digits/`-` (z. B. ios, backend, sync, deps)
+  !        optional, kennzeichnet Breaking-Change
+  Subject: 1–100 Zeichen, kein Punkt am Ende
+
+  Beispiele:
+    feat(ios): Datenschutz-Link in SettingsView
+    fix(backend): SHA-256 statt SHA-1 für Cache-Keys
+    chore(deps): bump x/oauth2 → v0.36.0
+    refactor(grouping)!: Coordinate-Type-Signature gewechselt
+
+  Konvention: .claude/rules/COMMITS.md
+EOF
+  echo "Aktuell: $FIRST_LINE" >&2
+  exit 1
+fi

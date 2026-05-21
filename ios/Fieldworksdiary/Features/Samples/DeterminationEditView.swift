@@ -16,7 +16,7 @@ struct DeterminationEditView: View {
     @State private var speciesText: String = ""
     @State private var kind: DeterminationKind = .det
     @State private var person: Person?
-    @State private var determinedOn: Date = Date()
+    @State private var determinedOn: Date = .init()
     @State private var notes: String = ""
     @State private var saving = false
     @State private var error: String?
@@ -52,6 +52,7 @@ struct DeterminationEditView: View {
                         if let person {
                             HStack {
                                 Image(systemName: "person.crop.circle")
+                                    .accessibilityHidden(true)
                                 VStack(alignment: .leading) {
                                     Text(person.fullName).font(.body)
                                     if !person.abbreviation.isEmpty {
@@ -64,6 +65,7 @@ struct DeterminationEditView: View {
                                 Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .accessibilityHidden(true)
                             }
                         } else {
                             Label("Person wählen oder anlegen", systemImage: "person.crop.circle.badge.questionmark")
@@ -76,7 +78,7 @@ struct DeterminationEditView: View {
                 }
                 Section("Notizen") {
                     TextField("optional", text: $notes, axis: .vertical)
-                        .lineLimit(2...6)
+                        .lineLimit(2 ... 6)
                 }
                 if case .edit = mode, onDeleted != nil {
                     Section {
@@ -106,8 +108,11 @@ struct DeterminationEditView: View {
             .sheet(isPresented: $presentingPersonPicker) {
                 PersonPickerView(selected: $person)
             }
-            .confirmationDialog("Bestimmung wirklich löschen?",
-                                isPresented: $confirmDelete, titleVisibility: .visible) {
+            .confirmationDialog(
+                "Bestimmung wirklich löschen?",
+                isPresented: $confirmDelete,
+                titleVisibility: .visible
+            ) {
                 Button("Löschen", role: .destructive) {
                     Task { await deleteDetermination() }
                 }
@@ -119,13 +124,14 @@ struct DeterminationEditView: View {
     private var navigationTitle: String {
         switch mode {
         case .create: "Neue Bestimmung"
-        case .edit:   "Bestimmung bearbeiten"
+        case .edit: "Bestimmung bearbeiten"
         }
     }
+
     private var saveLabel: String {
         switch mode {
         case .create: "Anlegen"
-        case .edit:   "Speichern"
+        case .edit: "Speichern"
         }
     }
 
@@ -133,7 +139,7 @@ struct DeterminationEditView: View {
         switch mode {
         case .create:
             break
-        case .edit(let existing):
+        case let .edit(existing):
             speciesText = existing.speciesText
             kind = existing.kind
             determinedOn = existing.determinedOn ?? Date()
@@ -141,7 +147,8 @@ struct DeterminationEditView: View {
             if let personID = existing.person {
                 Task {
                     if let p = try? await PersonClient(endpoint: container.config.endpointURL, auth: container.auth).listAll()
-                        .first(where: { $0.id == personID }) {
+                        .first(where: { $0.id == personID })
+                    {
                         person = p
                     }
                 }
@@ -156,18 +163,19 @@ struct DeterminationEditView: View {
         do {
             let trimmedSpecies = speciesText.trimmingCharacters(in: .whitespacesAndNewlines)
             let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+            let input = DeterminationInput(
+                speciesText: trimmedSpecies,
+                kind: kind,
+                person: person?.id,
+                determinedOn: determinedOn,
+                notes: trimmedNotes
+            )
             let result: Determination
             switch mode {
-            case .create(let sampleID):
-                result = try await client.create(
-                    sample: sampleID, speciesText: trimmedSpecies, kind: kind,
-                    person: person?.id, determinedOn: determinedOn, notes: trimmedNotes
-                )
-            case .edit(let existing):
-                result = try await client.update(
-                    id: existing.id, speciesText: trimmedSpecies, kind: kind,
-                    person: person?.id, determinedOn: determinedOn, notes: trimmedNotes
-                )
+            case let .create(sampleID):
+                result = try await client.create(sample: sampleID, input: input)
+            case let .edit(existing):
+                result = try await client.update(id: existing.id, input: input)
             }
             onSaved(result)
             dismiss()
@@ -179,7 +187,7 @@ struct DeterminationEditView: View {
     }
 
     private func deleteDetermination() async {
-        guard case .edit(let existing) = mode else { return }
+        guard case let .edit(existing) = mode else { return }
         saving = true
         defer { saving = false }
         do {

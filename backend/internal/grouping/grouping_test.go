@@ -8,8 +8,8 @@ import (
 
 // fakeRepo is a tiny stub that records the calls made to it.
 type fakeRepo struct {
-	found    *Excursion
-	findErr  error
+	found     *Excursion
+	findErr   error
 	createErr error
 	updateErr error
 
@@ -23,10 +23,12 @@ func (f *fakeRepo) FindByUserAndDay(userID string, day time.Time) (*Excursion, e
 	}
 	return f.found, nil
 }
+
 func (f *fakeRepo) Create(e *Excursion) error {
 	f.createdWith = append(f.createdWith, e)
 	return f.createErr
 }
+
 func (f *fakeRepo) Update(e *Excursion) error {
 	f.updatedWith = append(f.updatedWith, e)
 	return f.updateErr

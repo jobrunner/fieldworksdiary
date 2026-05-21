@@ -1,17 +1,21 @@
 # OS
 .DS_Store
 
-# Claude Code per-user state (permission allowlist etc.)
-.claude/
+# Claude Code: settings.json (Hooks, geteilt) versionieren wir;
+# alles andere unter .claude/ ist per-user und bleibt ignoriert.
+.claude/*
+!.claude/settings.json
 
 # Backend
 backend/pb_data/
-backend/weevilapp
+pb_data_staging/
+pb_data_prod/
+backend/fieldworksdiary
 backend/backend
 *.log
 
 # iOS
-ios/Weevilapp.xcodeproj/
+ios/Fieldworksdiary.xcodeproj/
 ios/build/
 ios/.build/
 ios/DerivedData/
@@ -23,3 +27,6 @@ ios/**/*.xcuserstate
 .idea/
 .vscode/
 *.swp
+
+# Build artifacts (SBOM, license reports)
+dist/

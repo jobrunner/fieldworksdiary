@@ -6,7 +6,7 @@
 //   - Adds `owner → users` to localities, people, determinations,
 //     label_pdfs (none of which had a user-link before).
 //   - Updates indexes to use the owner column instead of user_id.
-//   - Locks down rules to `@request.auth.id != '' && owner = @request.auth.id`
+//   - Locks down rules to `@request.auth.id != ” && owner = @request.auth.id`
 //     for the user-facing collections. `sample_sequences` and
 //     `geocache` stay admin-only (server-internal).
 //
@@ -48,29 +48,43 @@ func init() {
 			scopedRules    bool   // apply user-scoped rules?
 		}
 		plans := []plan{
-			{"samples", true, true,
+			{
+				"samples", true, true,
 				"idx_sample_sequences_user_day",
 				"CREATE INDEX idx_samples_owner ON samples (owner)",
-				true},
-			{"excursions", true, true,
+				true,
+			},
+			{
+				"excursions", true, true,
 				"idx_excursions_user_day",
 				"CREATE INDEX idx_excursions_owner ON excursions (owner)",
-				true},
-			{"localities", true, false, "",
+				true,
+			},
+			{
+				"localities", true, false, "",
 				"CREATE INDEX idx_localities_owner ON localities (owner)",
-				true},
-			{"people", true, false, "",
+				true,
+			},
+			{
+				"people", true, false, "",
 				"CREATE INDEX idx_people_owner ON people (owner)",
-				true},
-			{"determinations", true, false, "",
+				true,
+			},
+			{
+				"determinations", true, false, "",
 				"CREATE INDEX idx_determinations_owner ON determinations (owner)",
-				true},
-			{"label_pdfs", true, false, "",
+				true,
+			},
+			{
+				"label_pdfs", true, false, "",
 				"CREATE INDEX idx_label_pdfs_owner ON label_pdfs (owner)",
-				true},
-			{"sample_sequences", true, true, "",
+				true,
+			},
+			{
+				"sample_sequences", true, true, "",
 				"CREATE UNIQUE INDEX idx_sample_sequences_owner_day ON sample_sequences (owner, collecting_day)",
-				false},
+				false,
+			},
 		}
 
 		// On excursions the old user_id index included

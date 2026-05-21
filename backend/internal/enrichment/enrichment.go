@@ -14,17 +14,20 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/jbrunner/weevilapp/backend/internal/services"
+	"go.mett.io/fwd-backend/internal/services"
 
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
 )
 
 // Enricher knows how to fill admin_units / mtb on an already-saved
 // sample. Construct one at startup, register the hook, then leave it.
+//
+// `App` ist absichtlich auf `core.App` getypt (Interface), damit Tests
+// `tests.TestApp` direkt einsetzen können — `*pocketbase.PocketBase`
+// implementiert das Interface via eingebettetem `*core.BaseApp` ebenso.
 type Enricher struct {
-	App      *pocketbase.PocketBase
+	App      core.App
 	Labelloc *services.Labelloc
 	MTB      *services.MTB
 	Logger   *slog.Logger
@@ -50,7 +53,8 @@ func (e *Enricher) Register() {
 func (e *Enricher) runSafely(recordID string, lat, lon float64, excID string) {
 	defer func() {
 		if r := recover(); r != nil {
-			e.log().Error("enrichment panic",
+			e.log().Error(
+				"enrichment panic",
 				slog.String("record_id", recordID),
 				slog.Any("recover", r),
 				slog.String("stack", string(debug.Stack())),
@@ -126,7 +130,8 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 	for i := 0; i < 2; i++ {
 		r := <-results
 		if r.err != nil {
-			e.log().Warn("enrichment service failed",
+			e.log().Warn(
+				"enrichment service failed",
 				slog.String("field", r.field),
 				slog.String("record_id", recordID),
 				slog.Any("err", r.err),
@@ -138,7 +143,8 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 		}
 		raw, err := json.Marshal(r.data)
 		if err != nil {
-			e.log().Warn("enrichment marshal failed",
+			e.log().Warn(
+				"enrichment marshal failed",
 				slog.String("field", r.field),
 				slog.Any("err", err),
 			)
@@ -160,7 +166,8 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 		if errors.Is(err, sql.ErrNoRows) {
 			level = slog.LevelDebug
 		}
-		e.log().Log(ctx, level, "enrichment: save failed",
+		e.log().Log(
+			ctx, level, "enrichment: save failed",
 			slog.String("record_id", recordID),
 			slog.Any("err", err),
 		)
@@ -216,7 +223,8 @@ func (e *Enricher) maybePropagateToExcursion(sample *models.Record) {
 		return
 	}
 	if err := dao.SaveRecord(exc); err != nil {
-		e.log().Warn("enrichment: excursion save failed",
+		e.log().Warn(
+			"enrichment: excursion save failed",
 			slog.String("id", excID),
 			slog.Any("err", err),
 		)

@@ -10,11 +10,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jbrunner/weevilapp/backend/internal/pdf"
+	"go.mett.io/fwd-backend/internal/pdf"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/daos"
@@ -25,7 +24,7 @@ import (
 
 // RegisterLabelRoutes wires the custom label-PDF endpoints under
 // /api/label-pdfs/*.
-func RegisterLabelRoutes(app *pocketbase.PocketBase) {
+func RegisterLabelRoutes(app core.App) {
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		// PocketBase's e.Pre(LoadAuthContext) already populates
 		// the `authRecord` context key for every route, so
@@ -47,7 +46,7 @@ type labelRequest struct {
 	Template  string   `json:"template"`
 }
 
-func handleLocalityLabel(app *pocketbase.PocketBase, c echo.Context) error {
+func handleLocalityLabel(app core.App, c echo.Context) error {
 	req, err := readLabelRequest(c)
 	if err != nil {
 		return err
@@ -76,7 +75,7 @@ func handleLocalityLabel(app *pocketbase.PocketBase, c echo.Context) error {
 	return saveLabelPDF(app, c, "locality", req, pdfBytes, sampleRecs, ownerID)
 }
 
-func handleDeterminationLabel(app *pocketbase.PocketBase, c echo.Context) error {
+func handleDeterminationLabel(app core.App, c echo.Context) error {
 	req, err := readLabelRequest(c)
 	if err != nil {
 		return err
@@ -132,7 +131,8 @@ func assertOwnerOnSamples(samples []*models.Record, ownerID string) error {
 	for _, s := range samples {
 		if s.GetString("owner") != ownerID {
 			return apis.NewForbiddenError(
-				"sample does not belong to authenticated user", nil)
+				"sample does not belong to authenticated user", nil,
+			)
 		}
 	}
 	return nil
@@ -152,9 +152,10 @@ func readLabelRequest(c echo.Context) (labelRequest, error) {
 	return req, nil
 }
 
-func saveLabelPDF(app *pocketbase.PocketBase, c echo.Context,
+func saveLabelPDF(app core.App, c echo.Context,
 	kind string, req labelRequest, pdfBytes []byte,
-	sampleRecs []*models.Record, ownerID string) error {
+	sampleRecs []*models.Record, ownerID string,
+) error {
 	dao := app.Dao()
 	coll, err := dao.FindCollectionByNameOrId("label_pdfs")
 	if err != nil {
@@ -266,7 +267,11 @@ func mostRecentDetermination(dao *daos.Dao, sampleID string) (*models.Record, er
 		dbx.Params{"sid": sampleID},
 	)
 	if err != nil || len(any) == 0 {
-		return nil, nil // treat "not found" as skip, not as failure
+		// "Keine Determination zum Sample" ist hier kein Fehler, sondern
+		// erwartetes Skip-Signal an den Aufrufer (Label ohne Det.-Block
+		// rendern). Wir verschlucken den FindRecords-Fehler bewusst, weil
+		// er ohnehin nur ein leerer Result-Set wäre.
+		return nil, nil //nolint:nilerr // intentional: not-found = skip
 	}
 	return any[0], nil
 }

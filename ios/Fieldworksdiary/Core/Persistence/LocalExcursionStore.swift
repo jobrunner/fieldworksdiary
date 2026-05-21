@@ -19,17 +19,25 @@ final class LocalExcursionStore {
         }
     }
 
-    func fetchAll() throws -> [LocalExcursion] {
-        try database.reader.read { db in
-            try LocalExcursion
-                .order(Column("collecting_day").desc, Column("started_at").desc)
-                .fetchAll(db)
-        }
-    }
-
     func fetchById(_ id: String) throws -> LocalExcursion? {
         try database.reader.read { db in
             try LocalExcursion.fetchOne(db, key: id)
+        }
+    }
+
+    /// Excursion for a given collecting day ("YYYY-MM-DD"). Used on
+    /// the home dashboard to surface "today's active fieldtrip".
+    func fetchByCollectingDay(_ day: String) throws -> LocalExcursion? {
+        try database.reader.read { db in
+            try LocalExcursion
+                .filter(Column("collecting_day") == day)
+                .fetchOne(db)
+        }
+    }
+
+    func count() throws -> Int {
+        try database.reader.read { db in
+            try LocalExcursion.fetchCount(db)
         }
     }
 

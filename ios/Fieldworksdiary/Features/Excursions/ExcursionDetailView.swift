@@ -34,8 +34,10 @@ struct ExcursionDetailView: View {
                     } else {
                         GroupBox("Astro") {
                             VStack(alignment: .leading, spacing: 6) {
-                                HStack { ProgressView().controlSize(.small); Text("Wird berechnet …") }
-                                    .foregroundStyle(.secondary)
+                                HStack { ProgressView().controlSize(.small)
+                                    Text("Wird berechnet …")
+                                }
+                                .foregroundStyle(.secondary)
                                 Text("Sonnen- und Mondzeiten erscheinen, sobald die Anreicherung durchgelaufen ist.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
@@ -59,7 +61,6 @@ struct ExcursionDetailView: View {
         .refreshable { await reload() }
     }
 
-    @ViewBuilder
     private func permitSection(_ current: LocalExcursion) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
@@ -92,15 +93,11 @@ struct ExcursionDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(isPresented: $presentingPermitEdit) {
-            PermitEditSheet(
-                excursionID: excursionID,
-                current: current,
-                onSaved: {
-                    Task {
-                        local = (try? container.excursions.fetchById(excursionID)) ?? local
-                    }
+            PermitEditSheet(excursionID: excursionID, current: current) {
+                Task {
+                    local = (try? container.excursions.fetchById(excursionID)) ?? local
                 }
-            )
+            }
         }
         .sheet(item: Binding(
             get: { permitPDFLocalURL.map(IdentifiableURL.init) },
@@ -114,12 +111,15 @@ struct ExcursionDetailView: View {
         let endpoint = container.config.endpointURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty,
               let url = URL(string: endpoint.appending(
-                "/api/files/excursions/\(excursionID)/\(filename)")) else { return }
+                  "/api/files/excursions/\(excursionID)/\(filename)"
+              )) else { return }
         do {
             let (tempURL, _) = try await URLSession.shared.download(from: url)
             let caches = try FileManager.default.url(
-                for: .cachesDirectory, in: .userDomainMask,
-                appropriateFor: nil, create: true
+                for: .cachesDirectory,
+                in: .userDomainMask,
+                appropriateFor: nil,
+                create: true
             )
             let dest = caches.appendingPathComponent(filename)
             try? FileManager.default.removeItem(at: dest)
@@ -127,7 +127,7 @@ struct ExcursionDetailView: View {
             permitPDFLocalURL = dest
         } catch {
             // best-effort — log but don't surface to user
-            print("permit PDF download failed: \(error)")
+            Log.network.error("permit PDF download failed: \(error.localizedDescription)")
         }
     }
 
@@ -173,7 +173,6 @@ struct ExcursionDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func labelPDFRow(syncedSamples: [LocalSample]) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Etiketten drucken")
@@ -202,8 +201,10 @@ struct ExcursionDetailView: View {
             .disabled(labelGenerating || syncedSamples.isEmpty)
 
             if labelGenerating {
-                HStack { ProgressView().controlSize(.small); Text("Erzeuge PDF …") }
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack { ProgressView().controlSize(.small)
+                    Text("Erzeuge PDF …")
+                }
+                .font(.caption).foregroundStyle(.secondary)
             }
             if syncedSamples.isEmpty {
                 Text("Nur gesyncte Proben können gedruckt werden.")
@@ -276,7 +277,9 @@ struct ExcursionDetailView: View {
 
     private func reloadPreviousLabels(for samples: [LocalSample]) async {
         let ids = samples.compactMap(\.backendId)
-        guard !ids.isEmpty else { previousLabels = []; return }
+        guard !ids.isEmpty else { previousLabels = []
+            return
+        }
         loadingPreviousLabels = true
         defer { loadingPreviousLabels = false }
         let client = LabelClient(endpoint: container.config.endpointURL, auth: container.auth)
@@ -285,13 +288,13 @@ struct ExcursionDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func previousLabelRow(_ label: LabelPDF) -> some View {
         HStack(spacing: 10) {
             Image(systemName: label.kind == "determination"
-                  ? "doc.text.below.ecg"
-                  : "doc.text")
+                ? "doc.text.below.ecg"
+                : "doc.text")
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(humanReadableKind(label.kind))
                     .font(.body)
@@ -311,6 +314,7 @@ struct ExcursionDetailView: View {
             Image(systemName: "arrow.up.right.square")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -318,44 +322,44 @@ struct ExcursionDetailView: View {
 
     private func humanReadableKind(_ raw: String) -> String {
         switch raw {
-        case "locality":      "Locality-Etiketten"
+        case "locality": "Locality-Etiketten"
         case "determination": "Determinations-Etiketten"
-        default:              raw
+        default: raw
         }
     }
 
     private func formatPDFDate(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.timeZone = berlin
-        f.dateFormat = "dd.MM. HH:mm"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.timeZone = berlin
+        formatter.dateFormat = "dd.MM. HH:mm"
+        return formatter.string(from: date)
     }
 
-    @ViewBuilder
-    private func sampleRow(_ s: LocalSample) -> some View {
+    private func sampleRow(_ sample: LocalSample) -> some View {
         HStack {
-            Text(s.code)
+            Text(sample.code)
                 .font(.system(.body, design: .monospaced).weight(.medium))
             Spacer()
-            if s.adminUnitsLocality == nil && s.syncStatus != .synced {
+            if sample.adminUnitsLocality == nil && sample.syncStatus != .synced {
                 Image(systemName: "clock")
                     .foregroundStyle(.secondary)
                     .imageScale(.small)
+                    .accessibilityLabel("Anreicherung läuft")
             }
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 
-    private func displayName(_ e: LocalExcursion) -> String {
-        if !e.name.isEmpty { return e.name }
-        return "Sammeltag \(e.collectingDay)"
+    private func displayName(_ excursion: LocalExcursion) -> String {
+        if !excursion.name.isEmpty { return excursion.name }
+        return "Sammeltag \(excursion.collectingDay)"
     }
 
-    @ViewBuilder
     private func header(_ current: LocalExcursion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -364,6 +368,7 @@ struct ExcursionDetailView: View {
                 if current.nightExcursion {
                     Image(systemName: "moon.stars.fill")
                         .foregroundStyle(.indigo)
+                        .accessibilityLabel("Nacht-Exkursion")
                 }
             }
             if let started = current.startedAt, let ended = current.endedAt {
@@ -382,7 +387,9 @@ struct ExcursionDetailView: View {
             }
             if let mtb = current.mtb, let sheetNumber = mtb.sheetNumber, let sheetName = mtb.sheetName {
                 HStack(spacing: 6) {
-                    Image(systemName: "square.grid.2x2").foregroundStyle(.secondary)
+                    Image(systemName: "square.grid.2x2")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                     Text("MTB \(sheetNumber) — \(sheetName)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -399,12 +406,14 @@ struct ExcursionDetailView: View {
     @ViewBuilder
     private func localitySection(_ current: LocalExcursion) -> some View {
         if let assignedID = current.locality,
-           let assigned = try? container.localitiesStore.fetchById(assignedID) {
+           let assigned = try? container.localitiesStore.fetchById(assignedID)
+        {
             GroupBox("Fundort") {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 6) {
                         Image(systemName: "mappin.circle.fill")
                             .foregroundStyle(.green)
+                            .accessibilityHidden(true)
                         Text(assigned.name).font(.body.weight(.medium))
                     }
                     Button(role: .destructive) {
@@ -420,7 +429,8 @@ struct ExcursionDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if let suggestedID = current.suggestedLocality,
-                  let suggested = try? container.localitiesStore.fetchById(suggestedID) {
+                  let suggested = try? container.localitiesStore.fetchById(suggestedID)
+        {
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("Vorschlag", systemImage: "lightbulb")
@@ -454,10 +464,10 @@ struct ExcursionDetailView: View {
     }
 
     private func formatDateTime(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.timeZone = berlin
-        f.dateFormat = "dd.MM. HH:mm"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.timeZone = berlin
+        formatter.dateFormat = "dd.MM. HH:mm"
+        return formatter.string(from: date)
     }
 
     private func reload() async {

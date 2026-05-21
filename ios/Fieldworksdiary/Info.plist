@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Info.plist für Staging und Release (HTTPS-Backend).
+
+  Wichtig: Debug-Builds nutzen `Info.debug.plist` (per-Config via
+  `INFOPLIST_FILE` in project.yml), weil iOS rohe IP-Adressen wie
+  `192.168.178.30` über HTTP nicht über `NSAllowsLocalNetworking`
+  zulässt — die Sicherheits-Lockerung sitzt deshalb nur in der
+  Debug-Plist. Beim Editieren immer beide Files synchron halten.
+-->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -12,6 +21,12 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>$(APP_DISPLAY_NAME)</string>
+	<key>APP_ENV</key>
+	<string>$(APP_ENV)</string>
+	<key>BACKEND_ENDPOINT_DEFAULT</key>
+	<string>$(BACKEND_ENDPOINT_DEFAULT)</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -20,13 +35,12 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Wird beim Anlegen einer Aufsammlung verwendet, um die Fundkoordinaten zu erfassen.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Für das Aufnehmen von Belegfotos zu deinen Proben (Substrat, Wirtspflanze, Probe selbst).</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Für die Auswahl von Belegfotos aus deiner Mediathek, wenn keine Kamera verfügbar ist.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

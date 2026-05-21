@@ -1,0 +1,33 @@
+# SwiftFormat-Config — abgestimmt mit .swiftlint.yml.
+# Vollständige Doku: https://github.com/nicklockwood/SwiftFormat/blob/main/Rules.md
+
+--swiftversion 5.0
+--indent 4
+--maxwidth 140
+--tabwidth 4
+--linebreaks lf
+--commas inline           # SwiftLint hat trailing_comma deaktiviert
+--semicolons never
+--self remove
+--selfrequired @escaping
+--stripunusedargs closure-only
+--header strip
+
+# Pfade ausnehmen
+--exclude ios/Weevilapp.xcodeproj
+--exclude ios/.build
+--exclude ios/DerivedData
+
+# Rules — defaults sind sinnvoll, hier nur Abweichungen
+--enable isEmpty
+--enable redundantSelf
+--enable redundantReturn
+--enable redundantParens
+--enable sortImports
+--enable trailingSpace
+--enable wrapMultilineStatementBraces
+--enable blockComments
+--enable docComments
+
+# Disabled: SwiftFormat würde sonst SwiftUI-Property-Wrapper umsortieren
+--disable wrapAttributes

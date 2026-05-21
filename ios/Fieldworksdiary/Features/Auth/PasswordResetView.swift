@@ -20,7 +20,13 @@ struct PasswordResetView: View {
                 } header: {
                     Text("Passwort zurücksetzen")
                 } footer: {
-                    Text("Das Backend schickt einen Link an deine E-Mail. SMTP muss auf der Docker-Maschine eingerichtet sein, sonst kommt nichts an.")
+                    Text(
+                        """
+                        Das Backend schickt einen Link an deine E-Mail. \
+                        SMTP muss auf der Docker-Maschine eingerichtet sein, \
+                        sonst kommt nichts an.
+                        """
+                    )
                 }
                 if let info {
                     Section { Text(info).foregroundStyle(.secondary) }

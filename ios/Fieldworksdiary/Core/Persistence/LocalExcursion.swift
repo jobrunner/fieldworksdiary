@@ -28,23 +28,23 @@ struct LocalExcursion: Codable, FetchableRecord, MutablePersistableRecord, Ident
 
     enum CodingKeys: String, CodingKey {
         case id, name
-        case collectingDay     = "collecting_day"
-        case nightExcursion    = "night_excursion"
-        case startedAt         = "started_at"
-        case endedAt           = "ended_at"
-        case centroidLat       = "centroid_lat"
-        case centroidLon       = "centroid_lon"
-        case adminUnitsJson    = "admin_units_json"
-        case mtbJson           = "mtb_json"
-        case astroJson         = "astro_json"
+        case collectingDay = "collecting_day"
+        case nightExcursion = "night_excursion"
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case centroidLat = "centroid_lat"
+        case centroidLon = "centroid_lon"
+        case adminUnitsJson = "admin_units_json"
+        case mtbJson = "mtb_json"
+        case astroJson = "astro_json"
         case locality
         case suggestedLocality = "suggested_locality"
-        case dayOfYear         = "day_of_year"
+        case dayOfYear = "day_of_year"
         case country
-        case adminArea         = "admin_area"
-        case permitNumber      = "permit_number"
-        case permitPDFFile     = "permit_pdf_file"
-        case backendUpdatedAt  = "backend_updated_at"
+        case adminArea = "admin_area"
+        case permitNumber = "permit_number"
+        case permitPDFFile = "permit_pdf_file"
+        case backendUpdatedAt = "backend_updated_at"
     }
 
     static let databaseTableName = "local_excursions"
@@ -53,9 +53,17 @@ struct LocalExcursion: Codable, FetchableRecord, MutablePersistableRecord, Ident
 extension LocalExcursion {
     /// Decode the stored JSON back into the typed model when needed
     /// for display.
-    var adminUnits: AdminUnits? { decode(adminUnitsJson) }
-    var mtb: MTB?               { decode(mtbJson) }
-    var astro: Astro?           { decode(astroJson) }
+    var adminUnits: AdminUnits? {
+        decode(adminUnitsJson)
+    }
+
+    var mtb: MTB? {
+        decode(mtbJson)
+    }
+
+    var astro: Astro? {
+        decode(astroJson)
+    }
 
     private func decode<T: Decodable>(_ json: String?) -> T? {
         guard let json, !json.isEmpty,
@@ -69,25 +77,25 @@ extension LocalExcursion {
     /// timestamp is recorded as `backend_updated_at` so the view can
     /// surface "last refreshed at" if we want it later.
     init(from remote: Excursion) {
-        self.id = remote.id
-        self.name = remote.name
-        self.collectingDay = remote.collectingDay
-        self.nightExcursion = remote.nightExcursion
-        self.startedAt = remote.startedAt
-        self.endedAt = remote.endedAt
-        self.centroidLat = remote.centroidLat
-        self.centroidLon = remote.centroidLon
-        self.adminUnitsJson = Self.encode(remote.adminUnits)
-        self.mtbJson = Self.encode(remote.mtb)
-        self.astroJson = Self.encode(remote.astro)
-        self.locality = remote.locality
-        self.suggestedLocality = remote.suggestedLocality
-        self.dayOfYear = remote.dayOfYear
-        self.country = remote.country
-        self.adminArea = remote.adminArea
-        self.permitNumber = remote.permitNumber
-        self.permitPDFFile = remote.permitPDFFile
-        self.backendUpdatedAt = Date()
+        id = remote.id
+        name = remote.name
+        collectingDay = remote.collectingDay
+        nightExcursion = remote.nightExcursion
+        startedAt = remote.startedAt
+        endedAt = remote.endedAt
+        centroidLat = remote.centroidLat
+        centroidLon = remote.centroidLon
+        adminUnitsJson = Self.encode(remote.adminUnits)
+        mtbJson = Self.encode(remote.mtb)
+        astroJson = Self.encode(remote.astro)
+        locality = remote.locality
+        suggestedLocality = remote.suggestedLocality
+        dayOfYear = remote.dayOfYear
+        country = remote.country
+        adminArea = remote.adminArea
+        permitNumber = remote.permitNumber
+        permitPDFFile = remote.permitPDFFile
+        backendUpdatedAt = Date()
     }
 
     private static func encode<T: Encodable>(_ value: T?) -> String? {

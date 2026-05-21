@@ -9,7 +9,7 @@ struct AuthClient {
     func signInWithPassword(email: String, password: String) async throws -> AuthResponse {
         try await post("/api/collections/users/auth-with-password", body: [
             "identity": email,
-            "password": password,
+            "password": password
         ])
     }
 
@@ -19,7 +19,7 @@ struct AuthClient {
             "password": password,
             "passwordConfirm": password,
             "display_name": displayName,
-            "abbreviation": abbreviation,
+            "abbreviation": abbreviation
         ])
     }
 
@@ -28,23 +28,22 @@ struct AuthClient {
     /// (PocketBase's refresh endpoint requires authentication).
     func refresh(token: String) async throws -> AuthResponse {
         try await post("/api/collections/users/auth-refresh", body: [:], extraHeaders: [
-            "Authorization": token,
+            "Authorization": token
         ])
     }
 
     func requestPasswordReset(email: String) async throws {
         try await postIgnoringResponse("/api/collections/users/request-password-reset", body: [
-            "email": email,
+            "email": email
         ])
     }
 
-    func requestEmailVerification(email: String) async throws {
-        try await postIgnoringResponse("/api/collections/users/request-verification", body: [
-            "email": email,
-        ])
-    }
-
-    func signInWithApple(identityToken: String, code: String) async throws -> AuthResponse {
+    // periphery:ignore — Parameter wird vom Call-Site (AppleSignInButton)
+    // weitergereicht. Aktuell ungenutzt im Request-Body, weil PocketBase's
+    // OAuth2-Endpoint mit `code` allein zufrieden ist. Wir behalten den
+    // Parameter, damit wir bei einer alternativen PB-Provider-Konfig
+    // den identityToken einsetzen können, ohne Call-Sites zu ändern.
+    func signInWithApple(identityToken _: String, code: String) async throws -> AuthResponse {
         // PocketBase Apple OAuth2 expects an internal "code" produced
         // by its OAuth2 flow. For native Apple-Sign-In on iOS we send
         // identityToken via the OAuth2 endpoint. Whether the backend
@@ -56,7 +55,7 @@ struct AuthClient {
             "code": code,
             "codeVerifier": "",
             "redirectUrl": "",
-            "createData": [:],
+            "createData": [:]
         ])
     }
 
@@ -72,7 +71,7 @@ struct AuthClient {
         req.setValue(token, forHTTPHeaderField: "Authorization")
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
     }
@@ -111,7 +110,9 @@ struct AuthClient {
         req.httpMethod = "POST"
         req.timeoutInterval = 15
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        for (k, v) in extraHeaders { req.setValue(v, forHTTPHeaderField: k) }
+        for (k, v) in extraHeaders {
+            req.setValue(v, forHTTPHeaderField: k)
+        }
         if !body.isEmpty {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         } else {
@@ -119,7 +120,7 @@ struct AuthClient {
         }
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data

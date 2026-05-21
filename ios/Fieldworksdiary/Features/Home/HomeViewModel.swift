@@ -1,0 +1,122 @@
+import Combine
+import Foundation
+
+/// Aggregates the data the home dashboard renders: the active
+/// collector + fieldtrip + recent sample summary plus counts for the
+/// menu rows.
+///
+/// Doesn't drive a live `ValueObservation` — refresh is cheap (small
+/// SELECTs / counts) and the view kicks it on `.task` and when the
+/// add-sample sheet dismisses, which covers every state change the
+/// user can trigger.
+@MainActor
+final class HomeViewModel: ObservableObject {
+    struct ActiveExcursion: Equatable {
+        let id: String
+        let title: String
+        let localityName: String?
+    }
+
+    struct RecentSample: Equatable {
+        let id: String
+        let code: String
+        let locality: String?
+    }
+
+    @Published var collectorName: String = ""
+    @Published var activeExcursion: ActiveExcursion?
+    @Published var recentSample: RecentSample?
+    @Published var sampleCount: Int = 0
+    @Published var markedCount: Int = 0
+    @Published var excursionCount: Int = 0
+    @Published var localityCount: Int = 0
+    @Published var photoCount: Int = 0
+
+    private let auth: AuthSession
+    private let samples: LocalSampleStore
+    private let excursions: LocalExcursionStore
+    private let localities: LocalLocalityStore
+    private let photos: LocalPhotoStore
+
+    /// Cutoff hour drives "what is today's collecting day". 5h matches
+    /// the backend default (and the per-user override that will land
+    /// with Phase 14b's settings UI).
+    private let cutoffHour: Int = 5
+    private let timeZone: TimeZone = TimeZone(identifier: "Europe/Berlin") ?? .current
+
+    init(
+        auth: AuthSession,
+        samples: LocalSampleStore,
+        excursions: LocalExcursionStore,
+        localities: LocalLocalityStore,
+        photos: LocalPhotoStore
+    ) {
+        self.auth = auth
+        self.samples = samples
+        self.excursions = excursions
+        self.localities = localities
+        self.photos = photos
+    }
+
+    func refresh() {
+        collectorName = displayName(for: auth.currentUser)
+        sampleCount = (try? samples.count()) ?? 0
+        markedCount = (try? samples.countMarked()) ?? 0
+        excursionCount = (try? excursions.count()) ?? 0
+        localityCount = (try? localities.count()) ?? 0
+        photoCount = (try? photos.count()) ?? 0
+
+        activeExcursion = loadActiveExcursion()
+        recentSample = loadRecentSample()
+    }
+
+    // MARK: - private
+
+    private func displayName(for user: AuthUser?) -> String {
+        guard let user else { return "" }
+        if !user.displayName.isEmpty { return user.displayName }
+        if !user.abbreviation.isEmpty { return user.abbreviation }
+        return user.email
+    }
+
+    private func loadActiveExcursion() -> ActiveExcursion? {
+        let today = Codes.collectingDay(Date(), cutoffHour: cutoffHour, timeZone: timeZone)
+        let key = Codes.collectingDayKey(today, timeZone: timeZone)
+        guard let exc = try? excursions.fetchByCollectingDay(key) else { return nil }
+        let title = exc.name.isEmpty
+            ? "Sammeltag \(formattedShort(exc.collectingDay))"
+            : exc.name
+        let localityName = localityName(for: exc.locality)
+        return ActiveExcursion(id: exc.id, title: title, localityName: localityName)
+    }
+
+    private func loadRecentSample() -> RecentSample? {
+        guard let sample = try? samples.mostRecent() else { return nil }
+        return RecentSample(
+            id: sample.id,
+            code: sample.backendCode ?? sample.code,
+            locality: sample.adminUnitsLocality
+        )
+    }
+
+    private func localityName(for id: String?) -> String? {
+        guard let id, !id.isEmpty,
+              let loc = try? localities.fetchById(id) else { return nil }
+        return loc.name.isEmpty ? nil : loc.name
+    }
+
+    /// "2026-05-20" → "20.05.2026". Falls back to the raw key if it
+    /// doesn't parse — defensive against schema drift.
+    private func formattedShort(_ key: String) -> String {
+        let input = DateFormatter()
+        input.locale = Locale(identifier: "en_US_POSIX")
+        input.timeZone = timeZone
+        input.dateFormat = "yyyy-MM-dd"
+        guard let date = input.date(from: key) else { return key }
+        let out = DateFormatter()
+        out.locale = Locale(identifier: "de_DE")
+        out.timeZone = timeZone
+        out.dateFormat = "dd.MM.yyyy"
+        return out.string(from: date)
+    }
+}

@@ -15,12 +15,11 @@ final class SamplesHydrator: ObservableObject {
     let authProvider: () -> AuthSession?
 
     @Published private(set) var isLoading = false
-    @Published private(set) var lastError: String?
-    @Published private(set) var lastPulledAt: Date?
 
     init(store: LocalSampleStore,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil }) {
+         authProvider: @escaping () -> AuthSession? = { nil })
+    {
         self.store = store
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
@@ -37,12 +36,10 @@ final class SamplesHydrator: ObservableObject {
             let client = SampleClient(endpoint: endpoint, auth: authProvider())
             let items = try await client.listRecent(limit: limit)
             try store.upsert(items)
-            lastPulledAt = Date()
-            lastError = nil
         } catch let err as SampleClientError {
-            lastError = err.errorDescription
+            Log.sync.error("samples hydrate failed: \(err.errorDescription ?? "")")
         } catch {
-            lastError = error.localizedDescription
+            Log.sync.error("samples hydrate failed: \(error.localizedDescription)")
         }
     }
 }

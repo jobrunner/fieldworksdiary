@@ -1,9 +1,17 @@
-name: Weevilapp
+name: Fieldworksdiary
 options:
-  bundleIdPrefix: com.weevilapp
+  bundleIdPrefix: org.fieldworksdiary
   deploymentTarget:
     iOS: "17.0"
   developmentLanguage: de
+# Drei Build-Configs:
+#   Debug    — lokaler Build, leere Default-Endpoint-URL, .dev-Bundle-ID
+#   Staging  — Beta-Build, staging-Backend-URL voreingestellt, .staging-Bundle-ID
+#   Release  — Prod-Build, prod-Backend-URL voreingestellt, .prod-Bundle-ID
+configs:
+  Debug: debug
+  Staging: release
+  Release: release
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -11,27 +19,33 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     GENERATE_INFOPLIST_FILE: NO
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    # Phase 14: ties the system tint (NavigationLink chevrons, default
+    # Button tints, sheet handles) to the brand green defined in
+    # Assets.xcassets/AccentColor.colorset.
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 packages:
   GRDB:
     url: https://github.com/groue/GRDB.swift
     from: 6.29.0
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    from: 1.17.0
 targets:
-  Weevilapp:
+  Fieldworksdiary:
     type: application
     platform: iOS
     sources:
-      - path: Weevilapp
+      - path: Fieldworksdiary
     dependencies:
       - package: GRDB
         product: GRDB
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weevilapp.Weevilapp
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_FILE: Weevilapp/Info.plist
+        INFOPLIST_FILE: Fieldworksdiary/Info.plist
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: Weevilapp/Weevilapp.entitlements
-        # DEVELOPMENT_TEAM: ABC123XYZ
+        CODE_SIGN_ENTITLEMENTS: Fieldworksdiary/Fieldworksdiary.entitlements
+        DEVELOPMENT_TEAM: XS554Q5YY9
         # ↑ Trage hier deine Apple-Team-ID ein (Xcode →
         # Settings → Accounts → Team-ID), oder lass das Feld
         # leer und wähle das Team in Xcode unter „Signing &
@@ -44,25 +58,96 @@ targets:
         # CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO` —
         # die Defaults bleiben hier ON, damit Device-Builds
         # ohne Reibung möglich sind.
-  WeevilappTests:
+        # Default-Werte; pro Config unten überschrieben.
+        PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.dev
+        APP_DISPLAY_NAME: Diary Dev
+        APP_ENV: dev
+        BACKEND_ENDPOINT_DEFAULT: ""
+      configs:
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.dev
+          APP_DISPLAY_NAME: Diary Dev
+          APP_ENV: dev
+          BACKEND_ENDPOINT_DEFAULT: "http://192.168.178.30:8090"
+          # Lockerung der App-Transport-Security: nur Debug-Builds dürfen
+          # an rohe IPs über HTTP rauf (z. B. http://192.168.x.x:8090).
+          # Staging/Release laufen über HTTPS-Domains und brauchen die
+          # Plist nicht.
+          INFOPLIST_FILE: Fieldworksdiary/Info.debug.plist
+        Staging:
+          PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.staging
+          APP_DISPLAY_NAME: Diary Beta
+          APP_ENV: staging
+          BACKEND_ENDPOINT_DEFAULT: https://staging.fieldworksdiary.org
+          INFOPLIST_FILE: Fieldworksdiary/Info.plist
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.prod
+          APP_DISPLAY_NAME: Diary
+          APP_ENV: production
+          BACKEND_ENDPOINT_DEFAULT: https://api.fieldworksdiary.org
+          INFOPLIST_FILE: Fieldworksdiary/Info.plist
+  FieldworksdiaryTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: WeevilappTests
+      - path: FieldworksdiaryTests
     dependencies:
-      - target: Weevilapp
+      - target: Fieldworksdiary
+      - package: SnapshotTesting
+        product: SnapshotTesting
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.weevilapp.WeevilappTests
+        PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.dev.tests
         GENERATE_INFOPLIST_FILE: YES
         BUNDLE_LOADER: $(TEST_HOST)
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Weevilapp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Weevilapp
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Fieldworksdiary.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fieldworksdiary
+  FieldworksdiaryUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FieldworksdiaryUITests
+    dependencies:
+      - target: Fieldworksdiary
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.fieldworksdiary.dev.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Fieldworksdiary
 schemes:
-  Weevilapp:
+  Fieldworksdiary:
+    # Default-Scheme = Debug (lokal entwickeln, am Simulator laufen).
     build:
       targets:
-        Weevilapp: all
-        WeevilappTests: [test]
+        Fieldworksdiary: all
+        FieldworksdiaryTests: [test]
+        FieldworksdiaryUITests: [test]
+      config: Debug
+    run:
+      config: Debug
     test:
+      config: Debug
       targets:
-        - WeevilappTests
+        - FieldworksdiaryTests
+        - FieldworksdiaryUITests
+    archive:
+      config: Release
+  Fieldworksdiary-Staging:
+    # Für TestFlight-Beta-Builds, CI verwendet dieses Scheme.
+    build:
+      targets:
+        Fieldworksdiary: all
+      config: Staging
+    run:
+      config: Staging
+    archive:
+      config: Staging
+  Fieldworksdiary-Prod:
+    # Für App-Store-Submits, CI verwendet dieses Scheme.
+    build:
+      targets:
+        Fieldworksdiary: all
+      config: Release
+    run:
+      config: Release
+    archive:
+      config: Release

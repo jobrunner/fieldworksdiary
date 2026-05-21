@@ -15,10 +15,11 @@ struct PersonClient {
         var c = URLComponents(string: trimmed.appending("/api/collections/people/records"))
         c?.queryItems = [
             URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "full_name"),
+            URLQueryItem(name: "sort", value: "full_name")
         ]
         guard let url = c?.url else { throw SampleClientError.invalidEndpoint }
-        var req = URLRequest(url: url); req.timeoutInterval = 6
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 6
         req.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: req)
         try Self.assertOK(data: data, response: response)
@@ -42,7 +43,7 @@ struct PersonClient {
         let body: [String: Any] = [
             "full_name": fullName,
             "abbreviation": abbreviation,
-            "email": email,
+            "email": email
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         req.authenticate(with: auth)
@@ -57,7 +58,7 @@ struct PersonClient {
 
     private static func assertOK(data: Data, response: URLResponse) throws {
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
     }

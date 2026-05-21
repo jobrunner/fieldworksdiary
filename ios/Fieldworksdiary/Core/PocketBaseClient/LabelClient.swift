@@ -4,14 +4,17 @@ import Foundation
 /// `template` query param the Go side resolves via
 /// `pdf.LayoutFromTemplate`.
 enum LabelTemplate: String, CaseIterable, Identifiable {
-    case defaultA6     = "default"
-    case multiUpA4     = "multi-up-a4"
+    case defaultA6 = "default"
+    case multiUpA4 = "multi-up-a4"
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
+
     var label: String {
         switch self {
-        case .defaultA6:  "A6 (eine pro Seite)"
-        case .multiUpA4:  "A4 multi-up (4 × 8)"
+        case .defaultA6: "A6 (eine pro Seite)"
+        case .multiUpA4: "A4 multi-up (4 × 8)"
         }
     }
 }
@@ -55,14 +58,15 @@ struct LabelClient {
         components?.queryItems = [
             URLQueryItem(name: "filter", value: clauses),
             URLQueryItem(name: "sort", value: "-created"),
-            URLQueryItem(name: "perPage", value: "50"),
+            URLQueryItem(name: "perPage", value: "50")
         ]
         guard let url = components?.url else { throw SampleClientError.invalidEndpoint }
-        var req = URLRequest(url: url); req.timeoutInterval = 6
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 6
         req.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
@@ -92,13 +96,15 @@ struct LabelClient {
         request.authenticate(with: auth)
         let (tempURL, response) = try await URLSession.shared.download(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             try? FileManager.default.removeItem(at: tempURL)
             throw SampleClientError.http(status: status, body: "")
         }
         let caches = try FileManager.default.url(
-            for: .cachesDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
         )
         let dest = caches.appendingPathComponent(label.pdfFile)
         try? FileManager.default.removeItem(at: dest)
@@ -120,14 +126,14 @@ struct LabelClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
             "sample_ids": sampleIDs,
-            "template":   template.rawValue,
+            "template": template.rawValue
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         req.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: req)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {

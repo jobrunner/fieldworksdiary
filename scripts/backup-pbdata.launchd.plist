@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Beispiel-launchd-Job für tägliches pb_data-Backup um 03:00 Uhr.
+     Installation:
+       1. FieldworksdiaryBackup-Pfade unten auf eigene Pfade anpassen.
+       2. cp scripts/backup-pbdata.launchd.plist ~/Library/LaunchAgents/org.fieldworksdiary.backup.plist
+       3. launchctl load -w ~/Library/LaunchAgents/org.fieldworksdiary.backup.plist
+     Stoppen:  launchctl unload -w ~/Library/LaunchAgents/org.fieldworksdiary.backup.plist
+     Manuell triggern: launchctl start org.fieldworksdiary.backup
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>org.fieldworksdiary.backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/CHANGE_ME/work/projects/fieldworksdiary-ng/scripts/backup-pbdata.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>KEEP_LAST</key>
+    <string>30</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/CHANGE_ME/Library/Logs/fieldworksdiary-backup.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/CHANGE_ME/Library/Logs/fieldworksdiary-backup.err.log</string>
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>

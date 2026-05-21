@@ -20,9 +20,9 @@ struct ExcursionsFilter: Equatable {
     }
 
     var date: DateMode = .off
-    var country: String? = nil  // exact match on Excursion.country
+    var country: String? // exact match on Excursion.country
 
-    static let none = ExcursionsFilter()
+    static let none = Self()
 
     var isActive: Bool {
         switch date {
@@ -39,15 +39,15 @@ struct ExcursionsFilter: Equatable {
         items.filter { matches($0) }
     }
 
-    func matches(_ e: LocalExcursion) -> Bool {
+    func matches(_ excursion: LocalExcursion) -> Bool {
         switch date {
         case .off:
             break
-        case .absolute(let from, let to):
-            guard let day = parseDay(e.collectingDay) else { return false }
+        case let .absolute(from, to):
+            guard let day = parseDay(excursion.collectingDay) else { return false }
             if day < startOfDay(from) || day > endOfDay(to) { return false }
-        case .seasonal(let fromDOY, let toDOY):
-            guard let doy = e.dayOfYear else { return false }
+        case let .seasonal(fromDOY, toDOY):
+            guard let doy = excursion.dayOfYear else { return false }
             if fromDOY <= toDOY {
                 if doy < fromDOY || doy > toDOY { return false }
             } else {
@@ -57,17 +57,17 @@ struct ExcursionsFilter: Equatable {
             }
         }
         if let country, !country.isEmpty {
-            guard let c = e.country, c == country else { return false }
+            guard let excursionCountry = excursion.country, excursionCountry == country else { return false }
         }
         return true
     }
 
-    private func parseDay(_ s: String) -> Date? {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "Europe/Berlin")
-        return f.date(from: s)
+    private func parseDay(_ raw: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(identifier: "Europe/Berlin")
+        return formatter.date(from: raw)
     }
 
     private func startOfDay(_ d: Date) -> Date {

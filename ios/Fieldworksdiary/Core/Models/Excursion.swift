@@ -54,21 +54,21 @@ struct Excursion: Decodable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, name
-        case collectingDay      = "collecting_day"
-        case nightExcursion     = "night_excursion"
-        case startedAt          = "started_at"
-        case endedAt            = "ended_at"
-        case centroidLat        = "centroid_lat"
-        case centroidLon        = "centroid_lon"
-        case adminUnits         = "admin_units"
+        case collectingDay = "collecting_day"
+        case nightExcursion = "night_excursion"
+        case startedAt = "started_at"
+        case endedAt = "ended_at"
+        case centroidLat = "centroid_lat"
+        case centroidLon = "centroid_lon"
+        case adminUnits = "admin_units"
         case mtb, astro
         case locality
-        case suggestedLocality  = "suggested_locality"
-        case dayOfYear          = "day_of_year"
+        case suggestedLocality = "suggested_locality"
+        case dayOfYear = "day_of_year"
         case country
-        case adminArea          = "admin_area"
-        case permitNumber       = "permit_number"
-        case permitPDFFile      = "permit_pdf"
+        case adminArea = "admin_area"
+        case permitNumber = "permit_number"
+        case permitPDFFile = "permit_pdf"
     }
 
     init(from decoder: Decoder) throws {

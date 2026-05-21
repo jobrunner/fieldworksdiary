@@ -1,5 +1,27 @@
 import Foundation
 
+/// Schnittstelle, gegen die `SyncRunner` testet. Produktiv konformt
+/// `SampleClient`; in Tests reicht ein Mock, der nur diese zwei
+/// Methoden implementiert (siehe `SyncRunnerTests`).
+protocol SamplePushClient {
+    func createSample(
+        lat: Double,
+        lon: Double,
+        accuracy: Double?,
+        altitude: Double?,
+        collectedFrom: Date,
+        notes: String?,
+        marked: Bool,
+        code: String?,
+        clientUuid: String?,
+        clientUpdatedAt: Date?
+    ) async throws -> Sample
+
+    func fetchSample(id: String) async throws -> Sample
+}
+
+extension SampleClient: SamplePushClient {}
+
 /// Pushes pending local samples up to PocketBase.
 ///
 /// Push contract (Phase 3b):
@@ -20,12 +42,16 @@ import Foundation
 @MainActor
 final class SyncRunner: ObservableObject {
     let store: LocalSampleStore
+    let photoStore: LocalPhotoStore?
     let endpointProvider: () -> String
     let authProvider: () -> AuthSession?
     let onSampleSynced: (String) -> Void
+    /// Factory für den HTTP-Client. Produktiv konstruiert das jedes
+    /// Mal ein frisches `SampleClient` mit dem aktuellen Endpoint;
+    /// Tests injizieren einen Mock.
+    let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient
 
     @Published private(set) var inFlight = 0
-    @Published private(set) var lastError: String?
 
     private var passTask: Task<Void, Never>?
     private var retryTimer: Task<Void, Never>?
@@ -33,16 +59,26 @@ final class SyncRunner: ObservableObject {
     /// Time between automatic retry passes when there are pending or
     /// failed rows. Bumped to 5s in tests.
     private let retryInterval: Duration
+    /// Wartezeit zwischen Enrichment-Polls. 1.5 s in Prod, in Tests
+    /// auf 0 setzbar, damit `pollEnrichment` nicht künstlich blockt.
+    private let enrichmentPollInterval: Duration
 
     init(store: LocalSampleStore,
+         photoStore: LocalPhotoStore? = nil,
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthSession? = { nil },
          retryInterval: Duration = .seconds(30),
-         onSampleSynced: @escaping (String) -> Void = { _ in }) {
+         enrichmentPollInterval: Duration = .seconds(1.5),
+         clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
+         onSampleSynced: @escaping (String) -> Void = { _ in })
+    {
         self.store = store
+        self.photoStore = photoStore
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
         self.retryInterval = retryInterval
+        self.enrichmentPollInterval = enrichmentPollInterval
+        self.clientFactory = clientFactory
         self.onSampleSynced = onSampleSynced
         startRetryLoop()
     }
@@ -80,18 +116,18 @@ final class SyncRunner: ObservableObject {
         do {
             pending = try store.fetchPending()
         } catch {
-            lastError = error.localizedDescription
+            Log.sync.error("fetchPending failed: \(error.localizedDescription)")
             return
         }
         if pending.isEmpty { return }
 
-        let client = SampleClient(endpoint: endpoint, auth: authProvider())
+        let client = clientFactory(endpoint, authProvider())
         for sample in pending {
             await push(sample, via: client)
         }
     }
 
-    private func push(_ sample: LocalSample, via client: SampleClient) async {
+    private func push(_ sample: LocalSample, via client: SamplePushClient) async {
         var working = sample
         working.syncStatus = .syncing
         working.syncError = nil
@@ -107,6 +143,8 @@ final class SyncRunner: ObservableObject {
                 accuracy: sample.accuracyM,
                 altitude: sample.altitudeM,
                 collectedFrom: sample.collectedFrom,
+                notes: sample.notes.isEmpty ? nil : sample.notes,
+                marked: sample.marked,
                 code: sample.code,
                 clientUuid: sample.id,
                 clientUpdatedAt: sample.updatedAt
@@ -140,19 +178,77 @@ final class SyncRunner: ObservableObject {
             // the excursion-side hydration runs in parallel.
             onSampleSynced(created.excursion)
 
+            // Push any photos that were captured for this sample
+            // before the sync round-trip. We have the backend id now,
+            // so each photo gets its own multipart POST.
+            await pushPhotos(for: working, backendSampleID: created.id, endpoint: endpointProvider())
+
             await pollEnrichment(id: created.id, sample: working, via: client)
         } catch {
             working.syncStatus = .failed
             working.syncError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             try? store.update(working)
-            lastError = working.syncError
+            Log.sync.error("sample push failed: \(working.syncError ?? "")")
         }
     }
 
-    private func pollEnrichment(id: String, sample: LocalSample, via client: SampleClient) async {
+    /// Uploads every pending photo for `sample` to the backend. Each
+    /// photo is its own multipart POST; we mark them `.synced`
+    /// individually so a partial network failure leaves the rest as
+    /// `.failed` for the retry loop. Idempotency is via the per-photo
+    /// `client_uuid` — re-uploading the same photo doesn't duplicate.
+    private func pushPhotos(for sample: LocalSample, backendSampleID: String, endpoint: String) async {
+        guard let photoStore else { return }
+        let pending: [LocalPhoto]
+        do {
+            pending = try photoStore.fetchBySample(sample.id)
+                .filter { $0.syncStatus == .pending || $0.syncStatus == .failed }
+        } catch {
+            Log.sync.error("photo fetch failed: \(error.localizedDescription)")
+            return
+        }
+        if pending.isEmpty { return }
+
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let client = PhotoClient(endpoint: trimmed, auth: authProvider())
+
+        for photo in pending {
+            await pushOnePhoto(photo, backendSampleID: backendSampleID, via: client)
+        }
+    }
+
+    private func pushOnePhoto(_ photo: LocalPhoto, backendSampleID: String, via client: PhotoClient) async {
+        guard let photoStore else { return }
+        var working = photo
+        working.syncStatus = .syncing
+        working.syncError = nil
+        try? photoStore.update(working)
+
+        do {
+            let data = try PhotoStorage.readData(relativePath: photo.localPath)
+            let resp = try await client.upload(
+                sampleBackendID: backendSampleID,
+                clientUUID: photo.clientUuid,
+                clientUpdatedAt: photo.clientUpdatedAt,
+                jpegData: data
+            )
+            working.backendId = resp.id
+            working.syncStatus = .synced
+            try photoStore.update(working)
+        } catch {
+            working.syncStatus = .failed
+            working.syncError = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            try? photoStore.update(working)
+            Log.sync.error("photo push failed: \(working.syncError ?? "")")
+        }
+    }
+
+    private func pollEnrichment(id: String, sample: LocalSample, via client: SamplePushClient) async {
         var working = sample
-        for _ in 0..<6 {
-            try? await Task.sleep(for: .seconds(1.5))
+        for _ in 0 ..< 6 {
+            try? await Task.sleep(for: enrichmentPollInterval)
             if let s = try? await client.fetchSample(id: id) {
                 let locality = s.adminUnits?.locality
                 let mtbSheet = s.mtb?.sheetNumber

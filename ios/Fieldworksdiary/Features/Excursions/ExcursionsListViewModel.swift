@@ -55,5 +55,7 @@ final class ExcursionsListViewModel: ObservableObject {
 }
 
 private extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
+    }
 }

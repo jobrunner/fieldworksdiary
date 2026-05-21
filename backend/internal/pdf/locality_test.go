@@ -53,7 +53,7 @@ func TestBodyLines_MinimalData(t *testing.T) {
 
 func TestBodyLines_NoAltitude(t *testing.T) {
 	l := SampleLabel{
-		Lat:           49.79, Lon: 9.95, HasCoords: true,
+		Lat: 49.79, Lon: 9.95, HasCoords: true,
 		HasAltitude:   false,
 		CollectedFrom: time.Date(2026, 5, 12, 10, 0, 0, 0, time.UTC),
 	}
@@ -128,9 +128,11 @@ func TestRenderLocalityLabels_MultiUpA4_ProducesPDF(t *testing.T) {
 
 func TestRenderDeterminationLabels_RendersAllKinds(t *testing.T) {
 	labels := []DeterminationLabel{
-		{Code: "260512/1", SpeciesText: "Otiorhynchus ligustici", Kind: "det",
+		{
+			Code: "260512/1", SpeciesText: "Otiorhynchus ligustici", Kind: "det",
 			PersonAbbrev: "J. Brunner",
-			DeterminedOn: time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC)},
+			DeterminedOn: time.Date(2026, 5, 12, 0, 0, 0, 0, time.UTC),
+		},
 		{Code: "260512/2", SpeciesText: "Curculio nucum", Kind: "vid"},
 	}
 	data, err := RenderDeterminationLabels(labels, LayoutA6Single)

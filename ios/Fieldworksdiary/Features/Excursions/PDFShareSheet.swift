@@ -1,10 +1,12 @@
-import SwiftUI
 import QuickLook
+import SwiftUI
 
 /// Tiny identifier wrapper so a URL can drive a `sheet(item:)`.
 struct IdentifiableURL: Identifiable {
     let url: URL
-    var id: URL { url }
+    var id: URL {
+        url
+    }
 }
 
 /// QuickLook preview with a system share button in the toolbar — the
@@ -27,6 +29,7 @@ struct PDFShareSheet: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         ShareLink(item: url) {
                             Image(systemName: "square.and.arrow.up")
+                                .accessibilityLabel("Teilen")
                         }
                     }
                 }
@@ -42,15 +45,25 @@ private struct QuickLookView: UIViewControllerRepresentable {
         controller.dataSource = context.coordinator
         return controller
     }
+
     func updateUIViewController(_ controller: QLPreviewController, context: Context) {
         controller.reloadData()
     }
-    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(url: url)
+    }
 
     final class Coordinator: NSObject, QLPreviewControllerDataSource {
         let url: URL
-        init(url: URL) { self.url = url }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        init(url: URL) {
+            self.url = url
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            1
+        }
+
         func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
             url as NSURL
         }

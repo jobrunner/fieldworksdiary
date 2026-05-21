@@ -1,32 +1,19 @@
 import SwiftUI
 
+/// Root scene: gates on auth, hands the signed-in user to the new
+/// home dashboard (Phase 14). The legacy `MainTabs` is retained in
+/// `MainTabs.swift` for now — it isn't referenced from here, and will
+/// be removed once the dashboard has fully proven itself in the field.
 struct RootView: View {
     @EnvironmentObject var auth: AuthSession
 
     var body: some View {
         Group {
             if auth.isSignedIn {
-                MainTabs()
+                HomeView()
             } else {
                 WelcomeView()
             }
-        }
-    }
-}
-
-private struct MainTabs: View {
-    var body: some View {
-        TabView {
-            AddSampleView()
-                .tabItem { Label("Neu", systemImage: "plus.circle.fill") }
-            ExcursionsListView()
-                .tabItem { Label("Exkursionen", systemImage: "calendar") }
-            LocalitiesListView()
-                .tabItem { Label("Fundorte", systemImage: "mappin.and.ellipse") }
-            HealthView()
-                .tabItem { Label("Status", systemImage: "heart.text.square") }
-            SettingsView()
-                .tabItem { Label("Einstellungen", systemImage: "gearshape") }
         }
     }
 }

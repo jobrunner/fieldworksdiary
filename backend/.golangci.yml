@@ -1,0 +1,60 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck         # ungeprüfte Errors
+    - govet            # Stdlib-Static-Analysis
+    - ineffassign      # tote Zuweisungen
+    - staticcheck      # umfassende Static-Analyse (inkl. ehem. gosimple/unused/stylecheck)
+    - unused           # toter Code
+    - gosec            # Security-Issues (SQL-Injection, weak crypto, ...)
+    - errorlint        # Error-Wrapping (%w) und Type-Switches
+    - bodyclose        # http.Response.Body nicht geschlossen
+    - nilerr           # `if err != nil { return nil }` ohne Error-Propagation
+    - revive           # Style + Best-Practice (Ersatz für golint)
+    - misspell         # Tippfehler in Kommentaren/Strings
+    - copyloopvar      # Loop-Variable-Capture (Go 1.22+)
+
+  settings:
+    gosec:
+      excludes:
+        # G104 (errors unhandled) deckt errcheck bereits ab — Duplikate vermeiden.
+        - G104
+    revive:
+      rules:
+        - name: exported
+          disabled: true   # zu laut für einen App-Server ohne Public-API
+        - name: package-comments
+          disabled: true
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+
+  exclusions:
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+    paths:
+      - migrations/      # PocketBase-generierter Migrationscode
+      - pb_data/         # SQLite-Runtime-Daten
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - go.mett.io/fwd-backend
+
+output:
+  formats:
+    text:
+      path: stdout
+      colors: true

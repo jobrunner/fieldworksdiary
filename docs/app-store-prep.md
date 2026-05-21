@@ -7,7 +7,7 @@ selbst ist nach Phase 11d soweit.
 ## 1. Apple Developer Account
 
 - [ ] Apple Developer Program-Mitgliedschaft aktiv ($99 / Jahr).
-- [ ] Bundle ID `com.weevilapp.Weevilapp` im Developer-Portal
+- [ ] Bundle ID `org.fieldworksdiary.prod` im Developer-Portal
       registriert (oder eine neue, falls die App vor Submit umbenannt
       wird).
 - [ ] Capability **Sign in with Apple** auf der Bundle ID aktiviert.
@@ -15,7 +15,7 @@ selbst ist nach Phase 11d soweit.
 ## 2. Sign-in-with-Apple-Setup (Backend-seitig)
 
 - [ ] Service ID im Developer-Portal anlegen (z. B.
-      `com.weevilapp.Weevilapp.signin`).
+      `org.fieldworksdiary.prod.signin`).
 - [ ] Domain & Return URLs eintragen — Return URL ist der
       Self-Hosted-Endpoint plus `/api/oauth2-redirect`.
 - [ ] Private Key (`.p8`) erzeugen, Team ID und Key ID notieren.
@@ -28,7 +28,7 @@ selbst ist nach Phase 11d soweit.
 ## 3. Xcode-Projekt
 
 - [x] `Sign in with Apple`-Entitlement in
-      `ios/Weevilapp/Weevilapp.entitlements`.
+      `ios/Fieldworksdiary/Fieldworksdiary.entitlements`.
 - [x] `CODE_SIGN_ENTITLEMENTS` in `ios/project.yml` gesetzt.
 - [x] `PrivacyInfo.xcprivacy` im App-Target.
 - [ ] In `ios/project.yml` (oder per Xcode → Signing & Capabilities)

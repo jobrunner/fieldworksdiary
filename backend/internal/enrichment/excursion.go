@@ -5,9 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/jbrunner/weevilapp/backend/internal/astro"
-	"github.com/jbrunner/weevilapp/backend/internal/grouping"
-	"github.com/jbrunner/weevilapp/backend/internal/services"
+	"go.mett.io/fwd-backend/internal/astro"
+	"go.mett.io/fwd-backend/internal/grouping"
+	"go.mett.io/fwd-backend/internal/services"
 
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
@@ -77,7 +77,8 @@ func (e *Enricher) recomputeExcursionDerived(excID string) {
 	}
 
 	if err := dao.SaveRecord(exc); err != nil {
-		e.log().Warn("astro: save failed",
+		e.log().Warn(
+			"astro: save failed",
 			slog.String("id", excID),
 			slog.Any("err", err),
 		)
@@ -160,4 +161,3 @@ func berlinTZ() *time.Location {
 	}
 	return loc
 }
-

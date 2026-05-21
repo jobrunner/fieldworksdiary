@@ -7,7 +7,7 @@
 package services
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -36,7 +36,7 @@ type Geocache struct {
 // identical lookups land on the same row.
 func CoordinateKey(lat, lon float64, lang string) string {
 	raw := fmt.Sprintf("%.5f|%.5f|%s", lat, lon, lang)
-	sum := sha1.Sum([]byte(raw))
+	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 

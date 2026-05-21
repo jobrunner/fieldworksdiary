@@ -8,12 +8,12 @@ struct LocalityDetailView: View {
 
     var body: some View {
         ScrollView {
-            if let l = local {
+            if let locality = local {
                 VStack(alignment: .leading, spacing: 16) {
-                    headerCard(l)
-                    if !l.notes.isEmpty {
+                    headerCard(locality)
+                    if !locality.notes.isEmpty {
                         GroupBox("Notizen") {
-                            Text(l.notes)
+                            Text(locality.notes)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -23,7 +23,7 @@ struct LocalityDetailView: View {
                 ProgressView().padding()
             }
         }
-        .navigationTitle(local?.name.isEmpty == false ? local!.name : "Fundort")
+        .navigationTitle(navigationTitleText)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -32,21 +32,26 @@ struct LocalityDetailView: View {
             }
         }
         .task { reload() }
-        .sheet(isPresented: $editing, onDismiss: { reload() }) {
-            if let l = local {
-                LocalityEditView(editing: l)
+        .sheet(isPresented: $editing, onDismiss: reload) {
+            if let locality = local {
+                LocalityEditView(editing: locality)
             }
         }
     }
 
-    @ViewBuilder
-    private func headerCard(_ l: LocalLocality) -> some View {
+    private var navigationTitleText: String {
+        if let name = local?.name, !name.isEmpty { return name }
+        return "Fundort"
+    }
+
+    private func headerCard(_ locality: LocalLocality) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
-                if let lat = l.centroidLat, let lon = l.centroidLon {
+                if let lat = locality.centroidLat, let lon = locality.centroidLon {
                     HStack(spacing: 6) {
                         Image(systemName: "mappin.and.ellipse")
                             .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
                         Text(String(format: "%.6f, %.6f", lat, lon))
                             .font(.body.monospacedDigit())
                     }
@@ -54,8 +59,8 @@ struct LocalityDetailView: View {
                     Text("Keine Koordinate gesetzt")
                         .foregroundStyle(.secondary)
                 }
-                if let r = l.radiusM {
-                    Text("Radius \(Int(r)) m")
+                if let radius = locality.radiusM {
+                    Text("Radius \(Int(radius)) m")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jbrunner/weevilapp/backend/internal/api"
-	"github.com/jbrunner/weevilapp/backend/internal/enrichment"
-	"github.com/jbrunner/weevilapp/backend/internal/hooks"
-	"github.com/jbrunner/weevilapp/backend/internal/services"
-	_ "github.com/jbrunner/weevilapp/backend/migrations"
+	"go.mett.io/fwd-backend/internal/api"
+	"go.mett.io/fwd-backend/internal/enrichment"
+	"go.mett.io/fwd-backend/internal/hooks"
+	"go.mett.io/fwd-backend/internal/services"
+	_ "go.mett.io/fwd-backend/migrations"
 
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"

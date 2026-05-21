@@ -39,7 +39,8 @@ func init() {
 		coll.Schema.AddField(&schema.SchemaField{
 			Name: "admin_area", Type: schema.FieldTypeText,
 		})
-		coll.Indexes = append(coll.Indexes,
+		coll.Indexes = append(
+			coll.Indexes,
 			"CREATE INDEX idx_excursions_doy ON excursions (day_of_year)",
 			"CREATE INDEX idx_excursions_country ON excursions (country)",
 			"CREATE INDEX idx_excursions_admin_area ON excursions (admin_area)",
@@ -60,9 +61,9 @@ func init() {
 		// three at the tail of the array.
 		newIndexes := make(types.JsonArray[string], 0, len(coll.Indexes))
 		drop := map[string]bool{
-			"CREATE INDEX idx_excursions_doy ON excursions (day_of_year)":         true,
-			"CREATE INDEX idx_excursions_country ON excursions (country)":         true,
-			"CREATE INDEX idx_excursions_admin_area ON excursions (admin_area)":   true,
+			"CREATE INDEX idx_excursions_doy ON excursions (day_of_year)":       true,
+			"CREATE INDEX idx_excursions_country ON excursions (country)":       true,
+			"CREATE INDEX idx_excursions_admin_area ON excursions (admin_area)": true,
 		}
 		for _, idx := range coll.Indexes {
 			if !drop[idx] {

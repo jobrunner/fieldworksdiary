@@ -12,28 +12,28 @@ import Security
 struct KeychainStore {
     let service: String
 
-    static let `default` = KeychainStore(service: "com.weevilapp.Weevilapp.auth")
+    static let `default` = Self(service: "org.fieldworksdiary.auth")
 
     func setString(_ value: String, forKey key: String) {
         delete(key: key)
         let data = Data(value.utf8)
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecValueData as String:   data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
         ]
         SecItemAdd(query as CFDictionary, nil)
     }
 
     func string(forKey key: String) -> String? {
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
-            kSecReturnData as String:  true,
-            kSecMatchLimit as String:  kSecMatchLimitOne,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
         ]
         var item: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -43,9 +43,9 @@ struct KeychainStore {
 
     func delete(key: String) {
         let query: [String: Any] = [
-            kSecClass as String:       kSecClassGenericPassword,
+            kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
+            kSecAttrAccount as String: key
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -57,8 +57,8 @@ struct KeychainStore {
     }
 
     enum Keys {
-        static let token  = "auth_token"
+        static let token = "auth_token"
         static let userId = "auth_user_id"
-        static let email  = "auth_email"
+        static let email = "auth_email"
     }
 }

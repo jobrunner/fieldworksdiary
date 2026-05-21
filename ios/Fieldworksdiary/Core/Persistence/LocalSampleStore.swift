@@ -18,7 +18,8 @@ final class LocalSampleStore {
     init(database: Database,
          userId: String = "default",
          cutoffHour: Int = 5,
-         timeZone: TimeZone = TimeZone(identifier: "Europe/Berlin") ?? .current) {
+         timeZone: TimeZone = TimeZone(identifier: "Europe/Berlin") ?? .current)
+    {
         self.database = database
         self.userId = userId
         self.cutoffHour = cutoffHour
@@ -27,12 +28,19 @@ final class LocalSampleStore {
 
     /// Inserts a new sample with locally-allocated provisional code.
     /// Returns the persisted record.
+    ///
+    /// If `overrideCode` is non-nil, that code is used verbatim and the
+    /// local sequence counter is not advanced (matches the backend
+    /// contract: the user-typed code goes on the tube; a server-side
+    /// collision is resolved via `original_code`).
     func createLocal(
         lat: Double,
         lon: Double,
         accuracy: Double? = nil,
         altitude: Double? = nil,
-        collectedFrom: Date = Date()
+        collectedFrom: Date = Date(),
+        notes: String = "",
+        overrideCode: String? = nil
     ) throws -> LocalSample {
         let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
         let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
@@ -40,8 +48,13 @@ final class LocalSampleStore {
         let timeZone = self.timeZone
 
         return try database.writer.write { db in
-            let seq = try Self.nextSequence(db, userId: userId, dayKey: dayKey)
-            let code = Codes.formatCode(day: day, sequence: seq, timeZone: timeZone)
+            let code: String
+            if let overrideCode, !overrideCode.isEmpty {
+                code = overrideCode
+            } else {
+                let seq = try Self.nextSequence(db, userId: userId, dayKey: dayKey)
+                code = Codes.formatCode(day: day, sequence: seq, timeZone: timeZone)
+            }
             let now = Date()
             var sample = LocalSample(
                 id: UUID().uuidString,
@@ -56,6 +69,8 @@ final class LocalSampleStore {
                 accuracyM: accuracy,
                 altitudeM: altitude,
                 collectedFrom: collectedFrom,
+                notes: notes,
+                marked: false,
                 excursion: nil,
                 adminUnitsLocality: nil,
                 adminUnitsCountry: nil,
@@ -71,11 +86,81 @@ final class LocalSampleStore {
         }
     }
 
-    /// Returns all samples in newest-first order. For a future
-    /// observed list, switch the caller to `observeAll()`.
+    /// All samples flagged with `marked = true`. Ordered newest-first
+    /// (Phase 14b).
+    func fetchMarked() throws -> [LocalSample] {
+        try database.reader.read { db in
+            try LocalSample
+                .filter(Column("marked") == true)
+                .order(Column("collected_from").desc)
+                .fetchAll(db)
+        }
+    }
+
+    func countMarked() throws -> Int {
+        try database.reader.read { db in
+            try LocalSample
+                .filter(Column("marked") == true)
+                .fetchCount(db)
+        }
+    }
+
+    /// Flips the star on a single sample. Stays local-only; the
+    /// caller decides whether to push an immediate PATCH (e.g. via
+    /// `SampleClient.setMarked`) when the network is up.
+    func setMarked(id: String, marked: Bool) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE local_samples SET marked = ?, updated_at = ? WHERE id = ?",
+                arguments: [marked, Date(), id]
+            )
+        }
+    }
+
+    /// All samples ordered newest-first by `collected_from`. Backs the
+    /// top-level Samples list (Phase 14).
     func fetchAll() throws -> [LocalSample] {
         try database.reader.read { db in
-            try LocalSample.order(Column("created_at").desc).fetchAll(db)
+            try LocalSample
+                .order(Column("collected_from").desc)
+                .fetchAll(db)
+        }
+    }
+
+    /// Returns the code that *would* be assigned to the next sample
+    /// for `collectedFrom`'s collecting day. Non-destructive — the
+    /// counter doesn't advance. Used to seed the code field in the
+    /// editor so the user sees a sensible default.
+    func peekNextCode(for collectedFrom: Date = Date()) -> String {
+        let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
+        let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
+        let userId = self.userId
+        let next = (try? database.reader.read { db -> Int in
+            if let row = try SequenceRow.fetchOne(
+                db,
+                sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
+                arguments: [userId, dayKey]
+            ) {
+                return row.lastSeq + 1
+            }
+            return 1
+        }) ?? 1
+        return Codes.formatCode(day: day, sequence: next, timeZone: timeZone)
+    }
+
+    /// Most recently collected sample (regardless of sync state). Used
+    /// on the home dashboard to show "Recently Sample".
+    func mostRecent() throws -> LocalSample? {
+        try database.reader.read { db in
+            try LocalSample
+                .order(Column("collected_from").desc)
+                .fetchOne(db)
+        }
+    }
+
+    func count() throws -> Int {
+        try database.reader.read { db in
+            try LocalSample.fetchCount(db)
         }
     }
 
@@ -101,18 +186,10 @@ final class LocalSampleStore {
         try database.reader.read { db in
             try LocalSample
                 .filter(Column("sync_status") == SyncStatus.pending.rawValue ||
-                        Column("sync_status") == SyncStatus.failed.rawValue)
+                    Column("sync_status") == SyncStatus.failed.rawValue)
                 .order(Column("created_at"))
                 .fetchAll(db)
         }
-    }
-
-    /// Streams the full sample list. SwiftUI views can bridge this to
-    /// an `@Published` via a Task.
-    func observeAll() -> AsyncValueObservation<[LocalSample]> {
-        AsyncValueObservation(observation: ValueObservation.tracking { db in
-            try LocalSample.order(Column("created_at").desc).fetchAll(db)
-        }, reader: database.reader)
     }
 
     func update(_ sample: LocalSample) throws {
@@ -183,7 +260,8 @@ final class LocalSampleStore {
 
     private func findExisting(_ db: GRDB.Database, clientUuid: String?, backendId: String) throws -> LocalSample? {
         if let clientUuid, !clientUuid.isEmpty,
-           let byUuid = try LocalSample.fetchOne(db, key: clientUuid) {
+           let byUuid = try LocalSample.fetchOne(db, key: clientUuid)
+        {
             return byUuid
         }
         return try LocalSample
@@ -209,6 +287,8 @@ final class LocalSampleStore {
         local.accuracyM = r.accuracyM ?? local.accuracyM
         local.altitudeM = r.altitudeM ?? local.altitudeM
         if let from = r.collectedFrom { local.collectedFrom = from }
+        if let n = r.notes { local.notes = n }
+        local.marked = r.marked
         local.excursion = r.excursion
         local.adminUnitsLocality = r.adminUnits?.locality
         local.adminUnitsCountry = r.adminUnits?.country
@@ -226,7 +306,7 @@ final class LocalSampleStore {
             // for the same row matches up. If the row was created on
             // another device and never had a client_uuid, fall back to
             // the backend id so the local row still has a stable key.
-            id: (r.clientUuid?.isEmpty == false ? r.clientUuid! : r.id),
+            id: (r.clientUuid.flatMap { $0.isEmpty ? nil : $0 }) ?? r.id,
             backendId: r.id,
             code: r.code,
             backendCode: nil,
@@ -238,6 +318,8 @@ final class LocalSampleStore {
             accuracyM: r.accuracyM,
             altitudeM: r.altitudeM,
             collectedFrom: r.collectedFrom ?? now,
+            notes: r.notes ?? "",
+            marked: r.marked,
             excursion: r.excursion,
             adminUnitsLocality: r.adminUnits?.locality,
             adminUnitsCountry: r.adminUnits?.country,
@@ -260,11 +342,7 @@ final class LocalSampleStore {
     }
 
     private static func bumpSequence(_ db: GRDB.Database, userId: String, dayKey: String, atLeast n: Int) throws {
-        struct Row: FetchableRecord, Decodable {
-            let lastSeq: Int
-            enum CodingKeys: String, CodingKey { case lastSeq = "last_seq" }
-        }
-        if let row = try Row.fetchOne(
+        if let row = try SequenceRow.fetchOne(
             db,
             sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
             arguments: [userId, dayKey]
@@ -285,11 +363,7 @@ final class LocalSampleStore {
 
     /// Atomically increments and returns the per-(user, day) counter.
     private static func nextSequence(_ db: GRDB.Database, userId: String, dayKey: String) throws -> Int {
-        struct Row: FetchableRecord, Decodable {
-            let lastSeq: Int
-            enum CodingKeys: String, CodingKey { case lastSeq = "last_seq" }
-        }
-        if let row = try Row.fetchOne(
+        if let row = try SequenceRow.fetchOne(
             db,
             sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
             arguments: [userId, dayKey]
@@ -310,6 +384,11 @@ final class LocalSampleStore {
     }
 }
 
+private struct SequenceRow: FetchableRecord, Decodable {
+    let lastSeq: Int
+    enum CodingKeys: String, CodingKey { case lastSeq = "last_seq" }
+}
+
 /// Thin AsyncSequence facade over GRDB's ValueObservation. Makes it
 /// trivial to drive an `@Published` list in a SwiftUI view model:
 ///
@@ -324,7 +403,7 @@ struct AsyncValueObservation<T>: AsyncSequence {
         AsyncStream { continuation in
             let cancellable = observation.start(in: reader) { error in
                 continuation.finish()
-                _ = error  // swallow; caller decides if it cares
+                _ = error // swallow; caller decides if it cares
             } onChange: { value in
                 continuation.yield(value)
             }

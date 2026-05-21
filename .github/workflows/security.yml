@@ -1,0 +1,217 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Nightly um 03:17 UTC — versetzt, damit wir nicht in Rush-Hour-Slots laufen.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write   # für SARIF-Upload nach GitHub Code Scanning
+
+jobs:
+  gitleaks:
+    name: Secrets-Scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scannt die History
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  trivy-fs:
+    name: Trivy Filesystem-Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy fs (vuln + secret + misconfig)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: '.'
+          format: sarif
+          output: trivy-fs.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - name: Upload Trivy fs SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  trivy-image:
+    name: Trivy Image-Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build image (load to local daemon)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: fieldworksdiary:scan
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: fieldworksdiary:scan
+          format: sarif
+          output: trivy-image.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - name: Upload Trivy image SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+  govulncheck:
+    name: Go-Vulnerabilities
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    container: semgrep/semgrep
+    # Nightly + Push, aber kein PR-Block (continue-on-error in den
+    # SARIF-Upload-Step verlagern, wenn sich False-Positives häufen).
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run semgrep
+        run: |
+          semgrep scan \
+            --config p/golang \
+            --config p/swift \
+            --config p/security-audit \
+            --config p/secrets \
+            --exclude 'backend/pb_data' \
+            --exclude 'pb_data_staging' \
+            --exclude 'pb_data_prod' \
+            --exclude 'dist' \
+            --exclude 'ios/Fieldworksdiary.xcodeproj' \
+            --exclude 'ios/build' \
+            --exclude 'ios/FieldworksdiaryTests/__Snapshots__' \
+            --severity ERROR \
+            --error \
+            --sarif --output semgrep.sarif
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  zizmor:
+    name: GitHub-Actions-Audit (zizmor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Default-Verhalten von `checkout` schreibt einen Token in
+          # `.git/config`, der allen späteren Steps zugänglich ist —
+          # zizmor flaggt das (artipacked) zurecht. Wir brauchen den
+          # Token hier nicht; explizit deaktivieren.
+          persist-credentials: false
+
+      - name: Install zizmor
+        # `pipx` ist auf ubuntu-latest vorinstalliert. Soft-Pin auf
+        # die 1.x-Serie — Dependabot kennt pipx-Installs nicht, also
+        # gelegentlich manuell aktualisieren, wenn neue Audits
+        # interessant aussehen.
+        run: pipx install 'zizmor>=1.0,<2.0'
+
+      - name: Run zizmor
+        env:
+          # Aktiviert die Online-Audits (z. B. ref-confusion gegen
+          # die echten Repos der referenzierten Actions). Read-Only
+          # reicht — `permissions: contents: read` (oben) gibt dem
+          # automatischen `GITHUB_TOKEN` genau das.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # **Bewusst non-blocking** beim Einführen. Die existierenden
+        # Workflows haben ~20 legitime Findings (`artipacked`,
+        # `excessive-permissions`, `unpinned-images`), die wir
+        # phasenweise abarbeiten wollen, ohne PRs währenddessen rot
+        # zu sein. Findings landen über SARIF in Code Scanning und
+        # sind dort sichtbar. `continue-on-error: false` setzen,
+        # sobald die Liste leer ist.
+        continue-on-error: true
+        # `--persona regular` ist Default; `pedantic` würde auch
+        # Style-Issues melden. Konfig siehe `.github/zizmor.yml`.
+        run: |
+          zizmor --format sarif --output zizmor.sarif .
+
+      - name: Upload zizmor SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+  sbom-and-licenses:
+    name: SBOM + License-Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache: true
+          cache-dependency-path: backend/go.sum
+
+      - name: Install cyclonedx-gomod + go-licenses
+        run: |
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
+          go install github.com/google/go-licenses@latest
+
+      - name: Generate SBOM (CycloneDX)
+        working-directory: backend
+        run: |
+          mkdir -p ../dist
+          cyclonedx-gomod mod -json -licenses -output ../dist/sbom-backend.cdx.json
+
+      - name: License-Check
+        working-directory: backend
+        run: |
+          go-licenses check ./... \
+            --ignore go.mett.io/fwd-backend \
+            --ignore github.com/jmespath/go-jmespath
+
+      - name: License-Report (CSV)
+        working-directory: backend
+        run: |
+          go-licenses report ./... > ../dist/licenses-backend.csv
+
+      - name: Upload SBOM + Lizenz-Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-and-licenses
+          path: dist/
+          retention-days: 90

@@ -28,7 +28,7 @@ struct ExportClient {
 
         let (tempURL, response) = try await URLSession.shared.download(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-        guard (200..<300).contains(status) else {
+        guard (200 ..< 300).contains(status) else {
             let body = (try? Data(contentsOf: tempURL))
                 .flatMap { String(data: $0, encoding: .utf8) } ?? ""
             try? FileManager.default.removeItem(at: tempURL)
@@ -54,7 +54,7 @@ struct ExportClient {
         // Strip the prefix `filename="` and trailing `"`.
         let start = match.index(match.startIndex, offsetBy: "filename=\"".count)
         let end = match.index(before: match.endIndex)
-        return String(match[start..<end])
+        return String(match[start ..< end])
     }
 
     private func defaultFilename() -> String {

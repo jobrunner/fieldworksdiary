@@ -15,11 +15,11 @@ struct PersonPickerView: View {
     @State private var presentingNew = false
 
     private var filtered: [Person] {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if q.isEmpty { return people }
-        return people.filter {
-            $0.fullName.lowercased().contains(q) ||
-            $0.abbreviation.lowercased().contains(q)
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.isEmpty { return people }
+        return people.filter { person in
+            person.fullName.lowercased().contains(normalized) ||
+                person.abbreviation.lowercased().contains(normalized)
         }
     }
 
@@ -56,8 +56,11 @@ struct PersonPickerView: View {
                     }
                 }
             }
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: "Name oder Kürzel")
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Name oder Kürzel"
+            )
             .navigationTitle("Person wählen")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -77,21 +80,21 @@ struct PersonPickerView: View {
         }
     }
 
-    @ViewBuilder
-    private func row(for p: Person) -> some View {
+    private func row(for person: Person) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading) {
-                Text(p.fullName.isEmpty ? "(ohne Namen)" : p.fullName)
-                if !p.abbreviation.isEmpty {
-                    Text(p.abbreviation)
+                Text(person.fullName.isEmpty ? "(ohne Namen)" : person.fullName)
+                if !person.abbreviation.isEmpty {
+                    Text(person.abbreviation)
                         .font(.footnote.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer()
-            if selected?.id == p.id {
+            if selected?.id == person.id {
                 Image(systemName: "checkmark")
                     .foregroundStyle(.tint)
+                    .accessibilityLabel("Ausgewählt")
             }
         }
     }

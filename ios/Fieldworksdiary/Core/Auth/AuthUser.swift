@@ -13,9 +13,9 @@ struct AuthUser: Decodable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, email
-        case displayName             = "display_name"
+        case displayName = "display_name"
         case abbreviation
-        case dayCutoffHour           = "day_cutoff_hour"
+        case dayCutoffHour = "day_cutoff_hour"
         case defaultExcursionSplitKm = "default_excursion_split_km"
     }
 

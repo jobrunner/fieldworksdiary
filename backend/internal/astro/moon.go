@@ -26,8 +26,10 @@ type MoonInfo struct {
 }
 
 // Reference new moon: 2000-01-06 18:14 UT  (JD ≈ 2451550.26).
-const synodicMonth = 29.530588853
-const refNewMoonJD = 2451550.26
+const (
+	synodicMonth = 29.530588853
+	refNewMoonJD = 2451550.26
+)
 
 // MoonPhase returns the synodic phase of the moon at time t, in
 // [0, 1). The reference instant is the new moon on 2000-01-06 18:14

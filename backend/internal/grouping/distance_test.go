@@ -75,7 +75,7 @@ func TestNearestLocalityWithin_BeyondRadiusReturnsNil(t *testing.T) {
 
 func TestNearestLocalityWithin_TwoOverlappingPicksCloser(t *testing.T) {
 	near := LocalityCandidate{ID: "a", Name: "Nah", Lat: 49.7913, Lon: 9.9534, RadiusM: 2000}
-	far  := LocalityCandidate{ID: "b", Name: "Fern", Lat: 49.7950, Lon: 9.9534, RadiusM: 2000} // ~411 m north of near
+	far := LocalityCandidate{ID: "b", Name: "Fern", Lat: 49.7950, Lon: 9.9534, RadiusM: 2000} // ~411 m north of near
 
 	got := NearestLocalityWithin(49.7920, 9.9534, []LocalityCandidate{far, near})
 	if got == nil || got.ID != "a" {

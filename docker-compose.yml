@@ -1,9 +1,27 @@
+# Base-Compose für **lokale Entwicklung**.
+# Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml    up -d
+# Staging:     docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# Konvention:
+#   - Container-Name + Volume-Name pro Env unterschiedlich (Isolation!)
+#   - Port pro Env unterschiedlich, damit parallel auf einem Host läuft
+#   - `image:` für prod/staging zeigt auf eine Registry-Referenz; lokal
+#     benutzen wir `build:` direkt vom Source-Tree.
+
 services:
   backend:
     build: ./backend
-    container_name: weevilapp-backend
+    container_name: fieldworksdiary-backend-dev
     ports:
       - "8090:8090"
     volumes:
       - ./backend/pb_data:/app/pb_data
     restart: unless-stopped
+    environment:
+      APP_ENV: dev
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s

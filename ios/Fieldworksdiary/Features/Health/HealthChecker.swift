@@ -49,7 +49,7 @@ final class HealthChecker: ObservableObject {
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+            if let http = response as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) {
                 status = .ok
                 detail = url.absoluteString
             } else {

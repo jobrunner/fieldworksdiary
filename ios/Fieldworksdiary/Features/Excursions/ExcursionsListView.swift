@@ -4,14 +4,18 @@ struct ExcursionsListView: View {
     @EnvironmentObject var container: AppContainer
 
     var body: some View {
-        ExcursionsListScreen(
-            store: container.excursions,
-            hydrator: container.hydrator
-        )
+        NavigationStack {
+            ExcursionsListScreen(
+                store: container.excursions,
+                hydrator: container.hydrator
+            )
+        }
     }
 }
 
-private struct ExcursionsListScreen: View {
+// Internal so HomeView can embed it inside the dashboard's own
+// NavigationStack without nesting a second one.
+struct ExcursionsListScreen: View {
     @StateObject private var viewModel: ExcursionsListViewModel
     @State private var presentingFilter = false
 
@@ -22,41 +26,41 @@ private struct ExcursionsListScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle("Exkursionen")
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            presentingFilter = true
-                        } label: {
-                            Image(systemName: viewModel.filter.isActive
-                                  ? "line.3.horizontal.decrease.circle.fill"
-                                  : "line.3.horizontal.decrease.circle")
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task { await viewModel.refresh() }
-                        } label: {
-                            if viewModel.isHydrating {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                            }
-                        }
-                        .disabled(viewModel.isHydrating)
+        content
+            .navigationTitle("Exkursionen")
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        presentingFilter = true
+                    } label: {
+                        Image(systemName: viewModel.filter.isActive
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle")
+                            .accessibilityLabel("Filter")
                     }
                 }
-                .onAppear { viewModel.start() }
-                .refreshable { await viewModel.refresh() }
-                .sheet(isPresented: $presentingFilter) {
-                    ExcursionsFilterSheet(
-                        filter: $viewModel.filter,
-                        countries: viewModel.knownCountries
-                    )
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await viewModel.refresh() }
+                    } label: {
+                        if viewModel.isHydrating {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .accessibilityLabel("Aktualisieren")
+                        }
+                    }
+                    .disabled(viewModel.isHydrating)
                 }
-        }
+            }
+            .onAppear { viewModel.start() }
+            .refreshable { await viewModel.refresh() }
+            .sheet(isPresented: $presentingFilter) {
+                ExcursionsFilterSheet(
+                    filter: $viewModel.filter,
+                    countries: viewModel.knownCountries
+                )
+            }
     }
 
     @ViewBuilder
@@ -82,6 +86,7 @@ private struct ExcursionsListScreen: View {
     private var filterChip: some View {
         HStack(spacing: 6) {
             Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                .accessibilityHidden(true)
             Text("\(viewModel.visible.count) von \(viewModel.all.count) gefiltert")
                 .font(.footnote)
             Spacer()
@@ -135,7 +140,6 @@ private struct ExcursionsListScreen: View {
         .listStyle(.plain)
     }
 
-    @ViewBuilder
     private func row(for excursion: LocalExcursion) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -165,8 +169,8 @@ private struct ExcursionsListScreen: View {
         .padding(.vertical, 4)
     }
 
-    private func displayName(_ e: LocalExcursion) -> String {
-        if !e.name.isEmpty { return e.name }
-        return "Sammeltag \(e.collectingDay)"
+    private func displayName(_ excursion: LocalExcursion) -> String {
+        if !excursion.name.isEmpty { return excursion.name }
+        return "Sammeltag \(excursion.collectingDay)"
     }
 }

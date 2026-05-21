@@ -1,5 +1,5 @@
+@testable import Fieldworksdiary
 import XCTest
-@testable import Weevilapp
 
 final class ExcursionsFilterTests: XCTestCase {
     private func excursion(
@@ -12,10 +12,15 @@ final class ExcursionsFilterTests: XCTestCase {
             name: "Test",
             collectingDay: day,
             nightExcursion: false,
-            startedAt: nil, endedAt: nil,
-            centroidLat: nil, centroidLon: nil,
-            adminUnitsJson: nil, mtbJson: nil, astroJson: nil,
-            locality: nil, suggestedLocality: nil,
+            startedAt: nil,
+            endedAt: nil,
+            centroidLat: nil,
+            centroidLon: nil,
+            adminUnitsJson: nil,
+            mtbJson: nil,
+            astroJson: nil,
+            locality: nil,
+            suggestedLocality: nil,
             dayOfYear: doy,
             country: country,
             adminArea: nil,
@@ -29,10 +34,10 @@ final class ExcursionsFilterTests: XCTestCase {
         XCTAssertTrue(filter.matches(excursion(country: nil)))
     }
 
-    func testAbsoluteRange_InsideMatches() {
+    func testAbsoluteRange_InsideMatches() throws {
         let cal = Calendar(identifier: .gregorian)
-        let from = cal.date(from: DateComponents(year: 2026, month: 5, day: 1))!
-        let to   = cal.date(from: DateComponents(year: 2026, month: 5, day: 31))!
+        let from = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 1)))
+        let to = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 5, day: 31)))
         var filter = ExcursionsFilter()
         filter.date = .absolute(from: from, to: to)
         XCTAssertTrue(filter.matches(excursion(day: "2026-05-10")))
@@ -53,7 +58,7 @@ final class ExcursionsFilterTests: XCTestCase {
 
     func testSeasonalRange_WrapsAcrossYear() {
         var filter = ExcursionsFilter()
-        filter.date = .seasonal(fromDOY: 349, toDOY: 15)  // 15.12.–15.01.
+        filter.date = .seasonal(fromDOY: 349, toDOY: 15) // 15.12.–15.01.
         XCTAssertTrue(filter.matches(excursion(doy: 349)))
         XCTAssertTrue(filter.matches(excursion(doy: 360)))
         XCTAssertTrue(filter.matches(excursion(doy: 1)))
@@ -76,7 +81,7 @@ final class ExcursionsFilterTests: XCTestCase {
         filter.country = "Spanien"
         XCTAssertTrue(filter.matches(excursion(doy: 115, country: "Spanien")))
         XCTAssertFalse(filter.matches(excursion(doy: 115, country: "Deutschland"))) // wrong country
-        XCTAssertFalse(filter.matches(excursion(doy: 200, country: "Spanien")))     // wrong DOY
+        XCTAssertFalse(filter.matches(excursion(doy: 200, country: "Spanien"))) // wrong DOY
     }
 
     func testDayOfYearFromMonthDay() {

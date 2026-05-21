@@ -95,15 +95,15 @@ func renderMultiUpA4(count int, draw func(int, *gofpdf.Fpdf, float64, float64, f
 	tr := pdf.UnicodeTranslatorFromDescriptor("")
 
 	const (
-		pageW   = 210.0
-		pageH   = 297.0
-		margin  = 10.0
-		cols    = 4
-		rows    = 8
-		innerW  = pageW - 2*margin
-		innerH  = pageH - 2*margin
-		cellW   = innerW / cols
-		cellH   = innerH / rows
+		pageW  = 210.0
+		pageH  = 297.0
+		margin = 10.0
+		cols   = 4
+		rows   = 8
+		innerW = pageW - 2*margin
+		innerH = pageH - 2*margin
+		cellW  = innerW / cols
+		cellH  = innerH / rows
 	)
 
 	pdf.AddPage()

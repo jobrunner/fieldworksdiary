@@ -1,0 +1,21 @@
+# Overlay für die Production-Umgebung.
+# Aufruf:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
+#
+# Erwartet, dass das Image bereits in der Registry liegt (CI tagged + pusht
+# nach Push auf main).
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/jbrunner/fieldworksdiary:prod}
+    container_name: fieldworksdiary-backend-prod
+    ports: !override
+      - "8090:8090"
+    volumes: !override
+      - ./pb_data_prod:/app/pb_data
+    environment:
+      APP_ENV: production
+    labels:
+      env: production
+      managed-by: docker-compose

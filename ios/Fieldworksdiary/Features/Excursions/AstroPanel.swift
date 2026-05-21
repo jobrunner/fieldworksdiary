@@ -21,6 +21,7 @@ struct AstroPanel: View {
             Image(systemName: "sun.max.fill")
                 .foregroundStyle(.orange)
                 .imageScale(.large)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Sonne").font(.subheadline.weight(.semibold))
                 HStack(spacing: 12) {
@@ -50,6 +51,7 @@ struct AstroPanel: View {
             Image(systemName: moonIcon)
                 .foregroundStyle(.indigo)
                 .imageScale(.large)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Mond").font(.subheadline.weight(.semibold))
                 HStack(spacing: 8) {
@@ -81,6 +83,7 @@ struct AstroPanel: View {
             Image(systemName: astro.moonAboveHorizonDuringExcursion ? "moon.fill" : "moon")
                 .foregroundStyle(astro.moonAboveHorizonDuringExcursion ? .yellow : .secondary)
                 .imageScale(.large)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Während der Exkursion").font(.subheadline.weight(.semibold))
                 if astro.moonAboveHorizonDuringExcursion {
@@ -100,18 +103,18 @@ struct AstroPanel: View {
     // MARK: - Helpers
 
     private func format(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.timeZone = timeZone
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        let formatter = DateFormatter()
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 
     private func presenceLabel(maxAlt: Double) -> String {
         switch maxAlt {
         case ..<0: return "Mond war nicht über dem Horizont."
-        case 0..<10: return "Mond war anwesend, niedrig stehend."
-        case 10..<30: return "Mond war anwesend, mittlere Höhe."
-        default:     return "Mond war hochstehend — Lichtfang erschwert."
+        case 0 ..< 10: return "Mond war anwesend, niedrig stehend."
+        case 10 ..< 30: return "Mond war anwesend, mittlere Höhe."
+        default: return "Mond war hochstehend — Lichtfang erschwert."
         }
     }
 
@@ -119,14 +122,14 @@ struct AstroPanel: View {
         // Map phase 0..1 to a system icon. Approximate.
         let p = astro.moonPhase
         switch p {
-        case 0..<0.05, 0.95...1.0: return "moonphase.new.moon"
-        case 0.05..<0.20: return "moonphase.waxing.crescent"
-        case 0.20..<0.30: return "moonphase.first.quarter"
-        case 0.30..<0.45: return "moonphase.waxing.gibbous"
-        case 0.45..<0.55: return "moonphase.full.moon"
-        case 0.55..<0.70: return "moonphase.waning.gibbous"
-        case 0.70..<0.80: return "moonphase.last.quarter"
-        default:          return "moonphase.waning.crescent"
+        case 0 ..< 0.05, 0.95 ... 1.0: return "moonphase.new.moon"
+        case 0.05 ..< 0.20: return "moonphase.waxing.crescent"
+        case 0.20 ..< 0.30: return "moonphase.first.quarter"
+        case 0.30 ..< 0.45: return "moonphase.waxing.gibbous"
+        case 0.45 ..< 0.55: return "moonphase.full.moon"
+        case 0.55 ..< 0.70: return "moonphase.waning.gibbous"
+        case 0.70 ..< 0.80: return "moonphase.last.quarter"
+        default: return "moonphase.waning.crescent"
         }
     }
 }

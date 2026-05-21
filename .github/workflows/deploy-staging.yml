@@ -1,0 +1,212 @@
+name: Deploy Staging
+
+# Trigger: jeder Push auf den `staging`-Branch. Auto-Deploy, kein
+# Approval — Staging soll schnell wackeln dürfen.
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false   # Sequenziell deployen, nicht parallel
+
+permissions:
+  contents: read
+  packages: write     # für ghcr.io-Push
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/fieldworksdiary
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Backend
+  # ──────────────────────────────────────────────────────────────
+  backend-image:
+    name: Build & Push Backend-Image
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login zu GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadaten (Tags + Labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=staging
+            type=raw,value=staging-${{ github.sha }}
+            type=sha,prefix=staging-,format=short
+
+      - name: Build & Push
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Trivy-Scan auf das frische Image (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.IMAGE }}:staging-${{ github.sha }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+  backend-deploy:
+    name: Deploy Backend zu Staging-Host
+    needs: backend-image
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: SSH-Deploy
+        # Skip mit clear-message, wenn Secrets noch nicht gesetzt sind.
+        # So failt der erste Workflow-Lauf nicht mit kryptischer Meldung.
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "::warning::DEPLOY_HOST nicht gesetzt — skip Deploy. Siehe docs/ENVIRONMENTS.md."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ vars.DEPLOY_PORT || 22 }} ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+          ssh -i ~/.ssh/id_ed25519 \
+              -p ${{ vars.DEPLOY_PORT || 22 }} \
+              ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+              bash -s <<'REMOTE'
+            set -euo pipefail
+            cd ${{ vars.DEPLOY_PATH || '/srv/fieldworksdiary' }}
+            export BACKEND_IMAGE=${{ env.IMAGE }}:staging-${{ github.sha }}
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --no-build
+            docker image prune -f --filter "label=env=staging"
+          REMOTE
+
+      - name: Health-Check
+        run: |
+          URL="${{ vars.STAGING_URL }}/api/health"
+          if [ "${URL%/api/health}" = "/api/health" ]; then
+            echo "::warning::STAGING_URL nicht gesetzt — skip Health-Check."
+            exit 0
+          fi
+          for i in {1..30}; do
+            if curl -fsS "$URL" >/dev/null; then echo "✓ Backend healthy"; exit 0; fi
+            sleep 2
+          done
+          echo "::error::Backend nach 60 s nicht healthy"; exit 1
+
+  # ──────────────────────────────────────────────────────────────
+  # iOS — TestFlight-Beta (Internal)
+  # ──────────────────────────────────────────────────────────────
+  ios-beta:
+    name: iOS Staging-Build → TestFlight
+    runs-on: macos-15
+    environment:
+      name: staging-ios
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tooling
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate Xcode-Projekt
+        working-directory: ios
+        run: xcodegen generate
+
+      - name: Vorbedingung-Check (Secrets gesetzt?)
+        id: precheck
+        run: |
+          if [ -z "${{ secrets.ASC_API_KEY_ID }}" ]; then
+            echo "::warning::ASC_API_KEY_* Secrets nicht gesetzt — TestFlight-Upload wird übersprungen. Siehe docs/ENVIRONMENTS.md."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Archiv bauen
+        if: steps.precheck.outputs.ready == 'true'
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project Fieldworksdiary.xcodeproj \
+            -scheme Fieldworksdiary-Staging \
+            -configuration Staging \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/Fieldworksdiary-Staging.xcarchive \
+            archive \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            | xcbeautify --renderer github-actions
+
+      - name: ExportOptions.plist erzeugen
+        if: steps.precheck.outputs.ready == 'true'
+        working-directory: ios
+        run: |
+          cat > ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: ASC-API-Key materialisieren
+        if: steps.precheck.outputs.ready == 'true'
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.ASC_API_KEY_BASE64 }}" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8
+
+      - name: IPA exportieren + zu TestFlight hochladen
+        if: steps.precheck.outputs.ready == 'true'
+        working-directory: ios
+        env:
+          API_KEY: ${{ secrets.ASC_API_KEY_ID }}
+          API_ISSUER: ${{ secrets.ASC_API_KEY_ISSUER_ID }}
+        run: |
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/Fieldworksdiary-Staging.xcarchive \
+            -exportPath build/Fieldworksdiary-Staging \
+            -exportOptionsPlist ExportOptions.plist \
+            -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_${API_KEY}.p8 \
+            -authenticationKeyID "$API_KEY" \
+            -authenticationKeyIssuerID "$API_ISSUER" \
+            | xcbeautify --renderer github-actions
+
+      - name: Build-Artifact (für manuelle Inspektion)
+        if: always() && steps.precheck.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-staging-ipa
+          path: ios/build/Fieldworksdiary-Staging/*.ipa
+          retention-days: 30

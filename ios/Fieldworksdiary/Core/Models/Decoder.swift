@@ -10,8 +10,8 @@ extension JSONDecoder {
         d.dateDecodingStrategy = .custom { decoder in
             let str = try decoder.singleValueContainer().decode(String.self)
             if let date = Self.parseDate(str) { return date }
-            throw DecodingError.dataCorruptedError(
-                in: try decoder.singleValueContainer(),
+            throw try DecodingError.dataCorruptedError(
+                in: decoder.singleValueContainer(),
                 debugDescription: "Unrecognised date string: \(str)"
             )
         }

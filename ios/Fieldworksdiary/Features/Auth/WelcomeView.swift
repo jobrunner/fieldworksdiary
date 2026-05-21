@@ -11,7 +11,9 @@ struct WelcomeView: View {
 
     enum Destination: String, Identifiable {
         case login, register, reset, settings
-        var id: String { rawValue }
+        var id: String {
+            rawValue
+        }
     }
 
     var body: some View {
@@ -22,8 +24,13 @@ struct WelcomeView: View {
                     Image(systemName: "ant.fill")
                         .font(.system(size: 56))
                         .foregroundStyle(.tint)
-                    Text("Fieldworksdiary")
-                        .font(.largeTitle.weight(.semibold))
+                        .accessibilityHidden(true)
+                    HStack(spacing: 8) {
+                        Text("Fieldworksdiary")
+                            .font(.largeTitle.weight(.semibold))
+                        EnvBadge(environment: config.environment)
+                    }
+                    .accessibilityElement(children: .combine)
                     Text("Felderfassung für entomologische Aufsammlungen")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -44,7 +51,7 @@ struct WelcomeView: View {
                     }
                 } else {
                     VStack(spacing: 12) {
-                        AppleSignInButton(onError: { appleError = $0 })
+                        AppleSignInButton { appleError = $0 }
                             .frame(maxWidth: .infinity)
 
                         HStack {
@@ -71,10 +78,13 @@ struct WelcomeView: View {
                         }
                         .buttonStyle(.bordered)
 
-                        Button("Passwort vergessen?") {
+                        Button {
                             presenting = .reset
+                        } label: {
+                            Text("Passwort vergessen?")
+                                .font(.footnote)
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .font(.footnote)
                         .padding(.top, 6)
                     }
                     .padding(.horizontal)
@@ -97,9 +107,9 @@ struct WelcomeView: View {
             .padding()
             .sheet(item: $presenting) { dest in
                 switch dest {
-                case .login:    LoginView()
+                case .login: LoginView()
                 case .register: RegisterView()
-                case .reset:    PasswordResetView()
+                case .reset: PasswordResetView()
                 case .settings: SettingsView()
                 }
             }
