@@ -1,6 +1,6 @@
 module go.mett.io/fwd-backend
 
-go 1.25.0
+go 1.26.3
 
 require (
 	github.com/jung-kurt/gofpdf v1.16.2
