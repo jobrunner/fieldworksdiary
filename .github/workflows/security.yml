@@ -24,6 +24,12 @@ jobs:
   gitleaks:
     name: Secrets-Scan (gitleaks)
     runs-on: ubuntu-latest
+    permissions:
+      # gitleaks-action ruft `/repos/…/pulls/N/commits` ab, um nur den
+      # PR-Delta zu scannen statt der ganzen History. Ohne diese Scope
+      # bekommt der Step 403 bei PR-Runs (auch dependabot-PRs).
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v6
         with:
