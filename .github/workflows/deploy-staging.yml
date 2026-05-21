@@ -106,6 +106,10 @@ jobs:
 
       - name: Health-Check
         run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "::warning::DEPLOY_HOST nicht gesetzt — Deploy übersprungen, deshalb auch Health-Check skip."
+            exit 0
+          fi
           URL="${{ vars.STAGING_URL }}/api/health"
           if [ "${URL%/api/health}" = "/api/health" ]; then
             echo "::warning::STAGING_URL nicht gesetzt — skip Health-Check."
