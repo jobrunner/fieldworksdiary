@@ -29,7 +29,18 @@ final class SnapshotsTests: XCTestCase {
             .frame(width: size.width, height: size.height)
             .fixedSize()
 
-        assertSnapshot(of: view, as: .image(layout: .fixed(width: size.width, height: size.height)))
+        // Precision-Toleranzen erlauben kleine Pixel-Diffs zwischen
+        // Renderer-Versionen (lokales Xcode ≠ CI-Xcode/-Simulator).
+        // 0.99/0.97 sind die Point-Free-Empfehlungen für stabile
+        // SwiftUI-Smoketests; höhere Werte führen zu Flakiness.
+        assertSnapshot(
+            of: view,
+            as: .image(
+                precision: 0.99,
+                perceptualPrecision: 0.97,
+                layout: .fixed(width: size.width, height: size.height)
+            )
+        )
     }
 }
 
