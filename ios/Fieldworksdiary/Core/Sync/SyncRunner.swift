@@ -1,22 +1,27 @@
 import Foundation
 
+/// Payload-Bundle für `SamplePushClient.createSample`. Spiegelt die
+/// Felder des PocketBase-Sample-Records, die der Client beim Push
+/// schickt — `client_uuid` und `client_updated_at` sind Teil des
+/// Idempotenz-Vertrags (siehe Konfliktauflösung in CLAUDE.md).
+struct SampleCreateInput {
+    var lat: Double
+    var lon: Double
+    var accuracy: Double?
+    var altitude: Double?
+    var collectedFrom: Date
+    var notes: String?
+    var marked: Bool
+    var code: String?
+    var clientUuid: String?
+    var clientUpdatedAt: Date?
+}
+
 /// Schnittstelle, gegen die `SyncRunner` testet. Produktiv konformt
 /// `SampleClient`; in Tests reicht ein Mock, der nur diese zwei
 /// Methoden implementiert (siehe `SyncRunnerTests`).
 protocol SamplePushClient {
-    func createSample(
-        lat: Double,
-        lon: Double,
-        accuracy: Double?,
-        altitude: Double?,
-        collectedFrom: Date,
-        notes: String?,
-        marked: Bool,
-        code: String?,
-        clientUuid: String?,
-        clientUpdatedAt: Date?
-    ) async throws -> Sample
-
+    func createSample(_ input: SampleCreateInput) async throws -> Sample
     func fetchSample(id: String) async throws -> Sample
 }
 
@@ -137,7 +142,7 @@ final class SyncRunner: ObservableObject {
             inFlight += 1
             defer { inFlight -= 1 }
 
-            let created = try await client.createSample(
+            let created = try await client.createSample(SampleCreateInput(
                 lat: sample.lat,
                 lon: sample.lon,
                 accuracy: sample.accuracyM,
@@ -148,7 +153,7 @@ final class SyncRunner: ObservableObject {
                 code: sample.code,
                 clientUuid: sample.id,
                 clientUpdatedAt: sample.updatedAt
-            )
+            ))
 
             working.backendId = created.id
             working.excursion = created.excursion

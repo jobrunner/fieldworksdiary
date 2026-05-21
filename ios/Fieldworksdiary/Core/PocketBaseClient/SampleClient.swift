@@ -25,35 +25,24 @@ struct SampleClient {
         self.auth = auth
     }
 
-    func createSample(
-        lat: Double,
-        lon: Double,
-        accuracy: Double?,
-        altitude: Double?,
-        collectedFrom: Date,
-        notes: String? = nil,
-        marked: Bool = false,
-        code: String? = nil,
-        clientUuid: String? = nil,
-        clientUpdatedAt: Date? = nil
-    ) async throws -> Sample {
+    func createSample(_ input: SampleCreateInput) async throws -> Sample {
         let url = try makeURL(path: "/api/collections/samples/records")
 
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         var body: [String: Any] = [
-            "lat": lat,
-            "lon": lon,
-            "collected_from": isoFormatter.string(from: collectedFrom)
+            "lat": input.lat,
+            "lon": input.lon,
+            "collected_from": isoFormatter.string(from: input.collectedFrom)
         ]
-        if let accuracy { body["accuracy_m"] = accuracy }
-        if let altitude { body["altitude_m"] = altitude }
-        if let notes, !notes.isEmpty { body["notes"] = notes }
-        if marked { body["marked"] = true }
-        if let code, !code.isEmpty { body["code"] = code }
-        if let clientUuid, !clientUuid.isEmpty { body["client_uuid"] = clientUuid }
-        if let clientUpdatedAt {
+        if let accuracy = input.accuracy { body["accuracy_m"] = accuracy }
+        if let altitude = input.altitude { body["altitude_m"] = altitude }
+        if let notes = input.notes, !notes.isEmpty { body["notes"] = notes }
+        if input.marked { body["marked"] = true }
+        if let code = input.code, !code.isEmpty { body["code"] = code }
+        if let clientUuid = input.clientUuid, !clientUuid.isEmpty { body["client_uuid"] = clientUuid }
+        if let clientUpdatedAt = input.clientUpdatedAt {
             body["client_updated_at"] = isoFormatter.string(from: clientUpdatedAt)
         }
 
