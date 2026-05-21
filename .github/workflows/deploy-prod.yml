@@ -54,7 +54,7 @@ jobs:
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Build & Push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: backend
           file: backend/Dockerfile
