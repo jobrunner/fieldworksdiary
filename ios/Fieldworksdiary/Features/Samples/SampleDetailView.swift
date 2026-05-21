@@ -29,7 +29,9 @@ struct SampleDetailView: View {
 
     private let berlin = TimeZone(identifier: "Europe/Berlin") ?? TimeZone.current
 
-    private var sample: LocalSample? { loadedSample }
+    private var sample: LocalSample? {
+        loadedSample
+    }
 
     var body: some View {
         ScrollView {

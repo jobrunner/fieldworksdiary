@@ -13,7 +13,7 @@ struct LocalitiesListView: View {
     }
 }
 
-// Internal so HomeView can embed it in its own NavigationStack.
+/// Internal so HomeView can embed it in its own NavigationStack.
 struct LocalitiesListScreen: View {
     @StateObject private var viewModel: LocalitiesListViewModel
     @State private var presentingNew = false

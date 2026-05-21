@@ -26,7 +26,9 @@ final class SampleEditorViewModel: ObservableObject {
         let id: String
         let image: UIImage
 
-        static func == (lhs: PendingPhoto, rhs: PendingPhoto) -> Bool { lhs.id == rhs.id }
+        static func == (lhs: PendingPhoto, rhs: PendingPhoto) -> Bool {
+            lhs.id == rhs.id
+        }
     }
 
     @Published var code: String = ""
@@ -65,7 +67,7 @@ final class SampleEditorViewModel: ObservableObject {
         self.photoStore = photoStore
         self.excursionStore = excursionStore
         self.sync = sync
-        self.location = LocationProvider()
+        location = LocationProvider()
 
         if let sampleID, let existing = try? store.fetchById(sampleID) {
             adoptExisting(existing)
@@ -79,7 +81,9 @@ final class SampleEditorViewModel: ObservableObject {
 
     deinit { observerTask?.cancel() }
 
-    var isExistingSample: Bool { savedSample != nil }
+    var isExistingSample: Bool {
+        savedSample != nil
+    }
 
     var canSave: Bool {
         if isExistingSample { return false }

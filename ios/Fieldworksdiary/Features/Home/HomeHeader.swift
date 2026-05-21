@@ -50,7 +50,9 @@ struct HomeHeader: View {
     private var verticalLayout: some View {
         VStack(alignment: .leading, spacing: AppSpacing.lg) {
             infoColumn
-            HStack { Spacer(); fab }
+            HStack { Spacer()
+                fab
+            }
         }
     }
 

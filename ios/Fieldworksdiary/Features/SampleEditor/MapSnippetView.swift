@@ -35,7 +35,6 @@ struct MapSnippetView: View {
         }
     }
 
-    @ViewBuilder
     private func content(for coordinate: CLLocationCoordinate2D) -> some View {
         ZStack {
             if let image {

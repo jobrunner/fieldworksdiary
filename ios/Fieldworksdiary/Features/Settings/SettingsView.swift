@@ -8,7 +8,7 @@ struct SettingsView: View {
     }
 }
 
-// Internal so HomeView can embed it in its own NavigationStack.
+/// Internal so HomeView can embed it in its own NavigationStack.
 struct SettingsScreen: View {
     @EnvironmentObject var config: AppConfig
     @EnvironmentObject var auth: AuthSession
@@ -154,11 +154,11 @@ struct SettingsScreen: View {
                 Label("Datenschutzerklärung", systemImage: "hand.raised")
             }
             #if DEBUG
-            NavigationLink {
-                DesignCatalogView()
-            } label: {
-                Label("Design-Katalog", systemImage: "paintpalette")
-            }
+                NavigationLink {
+                    DesignCatalogView()
+                } label: {
+                    Label("Design-Katalog", systemImage: "paintpalette")
+                }
             #endif
         } header: {
             Text("Rechtliches")

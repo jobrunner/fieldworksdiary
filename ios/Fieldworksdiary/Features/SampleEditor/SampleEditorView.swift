@@ -236,7 +236,6 @@ private struct SampleEditorContent: View {
         .accessibilityLabel(locationA11yLabel)
     }
 
-    @ViewBuilder
     private var adminRow: some View {
         HStack(alignment: .top, spacing: 16) {
             Color.clear.frame(width: 40, height: 1)

@@ -11,8 +11,8 @@ struct SamplesListView: View {
     }
 }
 
-// Internal so HomeView can embed it inside the dashboard's
-// NavigationStack without nesting a second one.
+/// Internal so HomeView can embed it inside the dashboard's
+/// NavigationStack without nesting a second one.
 struct SamplesListScreen: View {
     @EnvironmentObject var container: AppContainer
     @State private var samples: [LocalSample] = []
@@ -29,7 +29,6 @@ struct SamplesListScreen: View {
         .task { reload() }
     }
 
-    @ViewBuilder
     private var list: some View {
         List {
             ForEach(groupedByDay(), id: \.day) { group in

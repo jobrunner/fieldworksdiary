@@ -88,8 +88,8 @@ private struct GalleryTile: View {
                     HStack(spacing: 2) {
                         Spacer()
                         Image(systemName: photo.syncStatus == .failed
-                              ? "exclamationmark.triangle.fill"
-                              : "arrow.triangle.2.circlepath")
+                            ? "exclamationmark.triangle.fill"
+                            : "arrow.triangle.2.circlepath")
                             .font(.caption2)
                             .padding(4)
                             .background(.thinMaterial, in: Circle())

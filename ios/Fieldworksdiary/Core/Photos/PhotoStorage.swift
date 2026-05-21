@@ -9,7 +9,7 @@ import UIKit
 /// Compression policy: JPEG quality 0.85 at max 2400px on the long
 /// edge. Yields ~600 KB–1.2 MB per image — small enough for patchy
 /// cellular but enough detail for habitat/substrate verification.
-struct PhotoStorage {
+enum PhotoStorage {
     static let jpegQuality: CGFloat = 0.85
     static let maxLongEdge: CGFloat = 2400
 

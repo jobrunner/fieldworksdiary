@@ -9,11 +9,7 @@ import SwiftUI
 /// its content. Pass any view — header, value rows, buttons — and
 /// the card just provides the visual frame.
 struct AppCard<Content: View>: View {
-    let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
+    @ViewBuilder let content: Content
 
     var body: some View {
         content

@@ -13,8 +13,8 @@ struct ExcursionsListView: View {
     }
 }
 
-// Internal so HomeView can embed it inside the dashboard's own
-// NavigationStack without nesting a second one.
+/// Internal so HomeView can embed it inside the dashboard's own
+/// NavigationStack without nesting a second one.
 struct ExcursionsListScreen: View {
     @StateObject private var viewModel: ExcursionsListViewModel
     @State private var presentingFilter = false

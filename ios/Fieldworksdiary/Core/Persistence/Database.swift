@@ -151,9 +151,9 @@ final class Database {
         }
     }
 
-    // Phase 14: photos attached to samples, plus free-text notes on the
-    // sample itself. Photos live in their own table so an upload can be
-    // retried independently of the sample push.
+    /// Phase 14: photos attached to samples, plus free-text notes on the
+    /// sample itself. Photos live in their own table so an upload can be
+    /// retried independently of the sample push.
     private static func migrateV7(_ db: GRDB.Database) throws {
         try db.alter(table: "local_samples") { t in
             t.add(column: "notes", .text).notNull().defaults(to: "")
@@ -174,8 +174,8 @@ final class Database {
         try db.create(indexOn: "local_photos", columns: ["sync_status"])
     }
 
-    // Phase 14b: user-facing star flag for samples. Defaults to false
-    // for all existing rows.
+    /// Phase 14b: user-facing star flag for samples. Defaults to false
+    /// for all existing rows.
     private static func migrateV8(_ db: GRDB.Database) throws {
         try db.alter(table: "local_samples") { t in
             t.add(column: "marked", .boolean).notNull().defaults(to: false)

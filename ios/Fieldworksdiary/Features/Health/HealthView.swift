@@ -8,7 +8,7 @@ struct HealthView: View {
     }
 }
 
-// Internal so HomeView can embed it in its own NavigationStack.
+/// Internal so HomeView can embed it in its own NavigationStack.
 struct HealthScreen: View {
     @EnvironmentObject var config: AppConfig
     @StateObject private var checker = HealthChecker()

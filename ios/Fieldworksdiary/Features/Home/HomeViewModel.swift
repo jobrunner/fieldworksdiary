@@ -42,7 +42,7 @@ final class HomeViewModel: ObservableObject {
     /// the backend default (and the per-user override that will land
     /// with Phase 14b's settings UI).
     private let cutoffHour: Int = 5
-    private let timeZone: TimeZone = TimeZone(identifier: "Europe/Berlin") ?? .current
+    private let timeZone: TimeZone = .init(identifier: "Europe/Berlin") ?? .current
 
     init(
         auth: AuthSession,

@@ -12,7 +12,9 @@ import UIKit
 struct CameraPicker: UIViewControllerRepresentable {
     let onImage: (UIImage?) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator(onImage: onImage) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onImage: onImage)
+    }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()

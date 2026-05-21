@@ -38,6 +38,7 @@ enum AppColor {
     static let brandPrimaryMuted = Color("BrandPrimaryMuted")
 
     // MARK: - Surfaces
+
     // System wrappers — let iOS handle Light/Dark/Contrast for us.
 
     /// Default app background.
@@ -73,6 +74,7 @@ enum AppColor {
     static let outlineSubtle = Color(uiColor: .opaqueSeparator)
 
     // MARK: - Status
+
     // System semantic colours — they already adapt to Increase
     // Contrast and meet AA against system backgrounds.
 
@@ -82,6 +84,7 @@ enum AppColor {
     static let info = Color(uiColor: .systemBlue)
 
     // MARK: - Sync state (app-specific aliases)
+
     // Centralised here so the four sync states stay visually consistent
     // across `SampleEditor`, `SampleDetail` and `SamplesList`.
 

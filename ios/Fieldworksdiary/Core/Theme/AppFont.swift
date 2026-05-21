@@ -8,11 +8,13 @@ import SwiftUI
 /// at the Design Catalog (Debug → Settings → Design-Katalog).
 enum AppFont {
     // MARK: - Display
+
     /// 34pt @ default. Used by hero text and the few standalone
     /// numeric displays (e.g. the sample code on the success card).
     static let screenTitle = Font.largeTitle.weight(.bold)
 
     // MARK: - Sections
+
     /// 22pt. Top-of-section headings inside a screen.
     static let sectionTitle = Font.title2.weight(.semibold)
 
@@ -22,6 +24,7 @@ enum AppFont {
     static let sectionHeading = Font.caption.weight(.semibold)
 
     // MARK: - Body
+
     static let headline = Font.headline
     static let body = Font.body
     static let bodyEmphasized = Font.body.weight(.semibold)
@@ -32,6 +35,7 @@ enum AppFont {
     static let captionEmphasized = Font.caption.weight(.semibold)
 
     // MARK: - Monospaced (sample codes, coordinates)
+
     static let code = Font.body.monospaced()
     static let codeEmphasized = Font.body.monospaced().weight(.semibold)
     /// Used for the headline sample code on the editor's success card.
