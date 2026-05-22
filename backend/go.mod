@@ -5,7 +5,7 @@ go 1.26.3
 require (
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
-	github.com/pocketbase/dbx v1.10.1
+	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.22.14
 )
 
