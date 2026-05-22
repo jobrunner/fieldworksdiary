@@ -13,6 +13,13 @@ updates:
       pocketbase:
         patterns:
           - "github.com/pocketbase/*"
+    ignore:
+      # echo/v5 wird transitiv von pocketbase 0.22.x gepinnt
+      # (5.0.0-pre); ein Bump auf 5.1+ bricht das pocketbase-
+      # internal API. Sobald wir pocketbase selbst aktualisieren,
+      # kommt das passende echo mit. Bis dahin: keine Standalone-
+      # Bumps. Siehe geschlossener PR #8.
+      - dependency-name: "github.com/labstack/echo/v5"
     cooldown:
       default-days: 7
 
