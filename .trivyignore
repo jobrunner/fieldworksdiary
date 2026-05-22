@@ -1,0 +1,30 @@
+# .trivyignore — bewusst akzeptierte oder verzögerte Findings.
+#
+# Format pro Zeile:
+#   <CVE-ID|MISCONFIG-ID> exp:<YYYY-MM-DD>  # Grund
+#
+# `exp:<datum>` ist eine Trivy-Konvention seit v0.50: Findings werden
+# bis zu diesem Datum unterdrückt; danach werden sie wieder gemeldet.
+# Ohne `exp:` gilt der Eintrag dauerhaft — nur einsetzen, wenn das
+# Finding nachweislich nicht relevant ist (z. B. False-Positive).
+#
+# Beim Hinzufügen IMMER Begründung als Kommentar dranschreiben.
+# Beim Refresh: nicht stumpf das Datum hochsetzen — re-evaluieren.
+
+# ── Misconfigs ────────────────────────────────────────────────
+
+# DS-0002 (Dockerfile ohne USER directive) — siehe TODO im
+# backend/Dockerfile. Nicht-Root-Switch braucht koordiniertes Setup
+# der pb_data-Bind-Mount-Owner auf den Docker-Hosts. Eigener
+# Workstream geplant.
+AVD-DS-0002 exp:2026-09-01  # Tracked als Non-Root-Runtime-Workstream
+
+# ── Vulnerabilities ───────────────────────────────────────────
+
+# GHSA-xmrv-pmrh-hhx2: DoS via Panic in aws-sdk-go-v2 eventstream
+# parser. Fix wäre v1.7.8; aktuell v1.6.2, transitiv durch
+# pocketbase v0.22.x gepinnt. Kommt mit pocketbase-Bump.
+# Risk-Assessment: wir nutzen aws-sdk-go-v2 nur als pocketbase-
+# Dep für S3-Storage-Backend (nicht aktiv konfiguriert), kein
+# Live-Eingangs-Vektor.
+GHSA-xmrv-pmrh-hhx2 exp:2026-08-01  # Pocketbase-Bump-Track
