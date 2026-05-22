@@ -24,15 +24,20 @@ scan:
     - ios/FieldworksdiaryTests/__Snapshots__
     - dist
 
-# Severity-Filter — gilt für alle Scan-Typen. HIGH/CRITICAL ist der
-# Stand vor Phase 2; in einem Folge-Commit auf MEDIUM erweitert.
+# Severity-Filter — gilt für alle Scan-Typen.
+# - Advisory-Scans (security.yml): nutzen diesen broader Filter,
+#   damit MEDIUM-Severity-Vulns mit realem Impact (z. B. auth-bypass
+#   ~ CVSS 6.x) sichtbar bleiben.
+# - Deploy-Gate-Scans (deploy-prod.yml, deploy-staging.yml):
+#   überschreiben am Step auf HIGH,CRITICAL — Mediums sollen Deploys
+#   nicht hart-blocken, nur Awareness erzeugen.
 severity:
+  - MEDIUM
   - HIGH
   - CRITICAL
 
 vulnerability:
-  # Vulns ohne verfügbaren Fix werden für Vulnerability-Gate
-  # ausgeblendet — wir können sie eh nicht patchen. Wird in der
-  # advisory-security.yml-Pipeline später per Step-Override wieder
-  # eingeschaltet, damit Sichtbarkeit für Mitigations bleibt.
-  ignore-unfixed: true
+  # Default-Sichtbarkeit auch für unfixable Vulns (Mitigation-
+  # Tracking). Deploy-Gate überschreibt am Step auf `true` — dort
+  # wäre Lärm sonst sinnlos blockierend.
+  ignore-unfixed: false

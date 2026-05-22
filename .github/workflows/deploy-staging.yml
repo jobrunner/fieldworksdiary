@@ -72,6 +72,10 @@ jobs:
         with:
           image-ref: fieldworksdiary:staging-${{ github.sha }}
           trivy-config: trivy.yaml
+          # Staging-Gate analog Prod: nur HIGH/CRITICAL + fixable
+          # blockiert. Siehe deploy-prod.yml für Rationale.
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
 
       - name: Push (nur nach grünem Scan)

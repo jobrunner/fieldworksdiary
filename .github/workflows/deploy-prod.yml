@@ -76,6 +76,12 @@ jobs:
         with:
           image-ref: fieldworksdiary:prod-${{ github.sha }}
           trivy-config: trivy.yaml
+          # Deploy-Gate strenger als trivy.yaml-Default:
+          # nur HIGH/CRITICAL blockiert, unfixable Vulns sind kein
+          # Block-Grund (Mediums + unfixable sind im advisory-Scan
+          # in security.yml sichtbar).
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
 
       - name: Push (nur nach grünem Scan)
