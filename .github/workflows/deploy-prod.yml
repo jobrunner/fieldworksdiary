@@ -71,9 +71,8 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}:prod-${{ github.sha }}
-          severity: HIGH,CRITICAL
+          trivy-config: trivy.yaml
           exit-code: '1'
-          ignore-unfixed: true
 
   backend-deploy:
     name: Deploy Backend zu Prod-Host

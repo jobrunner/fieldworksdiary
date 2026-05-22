@@ -1,0 +1,38 @@
+# Zentrale Trivy-Defaults. Wird in CI via `trivy-config: trivy.yaml`
+# und lokal via `trivy --config trivy.yaml` geladen. Job-spezifische
+# Overrides (z. B. exit-code für Prod-Gate) bleiben am Step.
+
+scan:
+  # Alle drei nutzbaren Scanner aktiv:
+  # - vuln      Vulnerability-DB
+  # - misconfig Konfig-Probleme (Dockerfile, K8s, Terraform, …)
+  # - secret   Eingebettete Secrets in Binaries und Files
+  scanners:
+    - vuln
+    - misconfig
+    - secret
+
+  # Verzeichnisse, die nichts zum Audit beitragen — keine Quellen,
+  # keine Manifests, nur Runtime- oder Build-Artefakte.
+  skip-dirs:
+    - backend/pb_data
+    - pb_data_staging
+    - pb_data_prod
+    - ios/Fieldworksdiary.xcodeproj
+    - ios/DerivedData
+    - ios/build
+    - ios/FieldworksdiaryTests/__Snapshots__
+    - dist
+
+# Severity-Filter — gilt für alle Scan-Typen. HIGH/CRITICAL ist der
+# Stand vor Phase 2; in einem Folge-Commit auf MEDIUM erweitert.
+severity:
+  - HIGH
+  - CRITICAL
+
+vulnerability:
+  # Vulns ohne verfügbaren Fix werden für Vulnerability-Gate
+  # ausgeblendet — wir können sie eh nicht patchen. Wird in der
+  # advisory-security.yml-Pipeline später per Step-Override wieder
+  # eingeschaltet, damit Sichtbarkeit für Mitigations bleibt.
+  ignore-unfixed: true

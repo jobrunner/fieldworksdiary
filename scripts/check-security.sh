@@ -38,19 +38,18 @@ else
   missing "zizmor (Install: pipx install 'zizmor>=1.0,<2.0' oder brew install zizmor)"
 fi
 
-section "trivy fs (Filesystem-Vulnerability-Scan)"
+section "trivy fs (vuln + misconfig + secret)"
 if command -v trivy >/dev/null 2>&1; then
-  # HIGH/CRITICAL only; --ignore-unfixed weil unfixable CVEs nur Lärm sind.
+  # Konfig (severity, scanners, skip-dirs, ignore-unfixed) zentral in
+  # ./trivy.yaml — gleiche Quelle wie CI.
   if trivy fs \
       --quiet \
-      --severity HIGH,CRITICAL \
-      --ignore-unfixed \
+      --config "$ROOT/trivy.yaml" \
       --exit-code 1 \
-      --skip-dirs backend/pb_data,ios/Fieldworksdiary.xcodeproj,ios/DerivedData \
       "$ROOT"; then
-    ok "Keine HIGH/CRITICAL Vulns"
+    ok "Keine HIGH/CRITICAL Findings"
   else
-    bad "Vulns gefunden (Output oben)"
+    bad "Findings gefunden (Output oben)"
   fi
 else
   missing "trivy"
