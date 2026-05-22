@@ -54,7 +54,27 @@ jobs:
             type=raw,value=staging-${{ github.sha }}
             type=sha,prefix=staging-,format=short
 
-      - name: Build & Push
+      # Scan-before-push: lokal bauen + laden, scannen, dann
+      # publishen. Der gha-Cache wird zwischen beiden Builds geteilt,
+      # der Push-Build hat damit faktisch 0 Build-Zeit.
+      - name: Build (lokal, für Scan)
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: fieldworksdiary:staging-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Trivy-Scan auf das frische Image (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: fieldworksdiary:staging-${{ github.sha }}
+          trivy-config: trivy.yaml
+          exit-code: '1'
+
+      - name: Push (nur nach grünem Scan)
         uses: docker/build-push-action@v7
         with:
           context: backend
@@ -64,13 +84,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
-
-      - name: Trivy-Scan auf das frische Image (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE }}:staging-${{ github.sha }}
-          trivy-config: trivy.yaml
-          exit-code: '1'
 
   backend-deploy:
     name: Deploy Backend zu Staging-Host

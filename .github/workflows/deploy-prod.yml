@@ -56,7 +56,29 @@ jobs:
             type=sha,prefix=prod-,format=short
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
-      - name: Build & Push
+      # Scan-before-push: erst lokal bauen + laden, scannen, dann
+      # nur bei grünem Scan veröffentlichen. So landet kein
+      # kompromittiertes Image im Registry, das sich versehentlich
+      # pullen ließe. Der gha-Cache wird zwischen beiden Builds
+      # geteilt, der Push-Build hat damit faktisch 0 Build-Zeit.
+      - name: Build (lokal, für Scan)
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          file: backend/Dockerfile
+          load: true
+          tags: fieldworksdiary:prod-${{ github.sha }}
+          cache-from: type=gha,scope=backend-prod
+          cache-to: type=gha,scope=backend-prod,mode=max
+
+      - name: "Trivy-Scan (Prod-Gate: keine HIGH/CRITICAL)"
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: fieldworksdiary:prod-${{ github.sha }}
+          trivy-config: trivy.yaml
+          exit-code: '1'
+
+      - name: Push (nur nach grünem Scan)
         uses: docker/build-push-action@v7
         with:
           context: backend
@@ -66,13 +88,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=backend-prod
           cache-to: type=gha,scope=backend-prod,mode=max
-
-      - name: "Trivy-Scan (Prod-Gate: keine HIGH/CRITICAL)"
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.IMAGE }}:prod-${{ github.sha }}
-          trivy-config: trivy.yaml
-          exit-code: '1'
 
   backend-deploy:
     name: Deploy Backend zu Prod-Host
