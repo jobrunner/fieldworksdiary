@@ -17,11 +17,46 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R6.2 done** (2026-05-26, Branch
-`refactor/R6.2-ios-remap-events`). Der iOS-Client zieht jetzt
-die `locality_remap_events`-Stream und applied jeden Eintrag
-lokal — Samples re-pointen, Duplikat-Locality löschen,
-`Notification.localityRemapApplied` posten (UI-Toast in R8).
+**R6.3 done** (2026-05-26, Branch
+`refactor/R6.3-offline-fusion`). Pure-Swift-Algorithmus für die
+triviale Client-Fusion (Spec §5.1) ist da. Sechs Unit-Tests
+decken die Spec-§5.5-Fälle plus Boundary, Tie-Breaker
+"nearest wins", und `excludingID` (für Re-Fuse-after-edit) ab.
+
+R6.3 liefert:
+
+- **`Core/Geo/LocalityFusion.swift`** — Namespaced enum mit
+  `Candidate{id,latitude,longitude}` und `offlineFuseLocality(
+  sampleLat, sampleLon, candidates, radius=50, excludingID)`.
+  Pure-Swift, file-private Haversine, keine Abhängigkeiten zum
+  Persistence- oder Wire-Layer. Plattform-identisch zu dem,
+  was Android/Web später implementieren — kein Drift-Risiko.
+- **6 Unit-Tests** (`LocalityFusionTests`): 30 m east attach,
+  200 m east kein Match, leere Liste kein Match, ~49 m
+  Boundary attach (floating-point-stabil), zwei Kandidaten →
+  Nearest gewinnt, `excludingID` skipt Self.
+
+**Was NICHT in R6.3 ist:** Die Integration des Algorithmus in
+den AddSample-Flow ist eigene Arbeit. Sie zieht:
+- ein `LocalityClient`-Update auf Spec-aligned Field-Namen
+  (heute noch `centroid_lat`/`centroid_lon`/`radius_m`),
+- eine Outbox-Mutation `.locality/.create` plus
+  SyncRunner-Dispatch dafür,
+- UI-Strings + sehr leichte Sheet-Logik für „neue Locality?"
+  vs. „bestehende übernehmen".
+
+Diese Integration gehört zu R8 (UI-Refactor) oder einem
+dedizierten R6.4. R6 (Locality-Fusion) ist mit R6.1/R6.2/R6.3
+in seinem Phase-5-Scope (Spec §5.1/5.2/5.3) komplett — der
+Algorithmus-Pfad ist Server-und Client-seitig live, der
+Remap-Event-Pull funktioniert, der Offline-Algorithmus ist
+verfügbar und getestet.
+
+Nächste Phase: **R7** (Placemark-Pipeline / Reverse-Geocoding-
+Hook + Manual-Override-Endpoint, Spec §6) oder **R8**
+(UI-Refactor, inkl. Fusion-Integration im AddSample-Flow,
+Remap-Toast, FlagAmbiguous-Badge). Reihenfolge offen — R7
+braucht weder Fusion-UI noch Outbox-Erweiterungen.
 
 R6.2 liefert:
 
@@ -149,7 +184,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R5b | SyncRunner ↔ Outbox-Verdrahtung | done | R5 | – |
 | R6.1 | Locality-Fusion Server-Side | done | R5 | – |
 | R6.2 | iOS RemapEventsPuller + applyRemap | done | R6.1 | – |
-| R6.3 | iOS Offline-Fusion im AddSample-Flow | pending | R6.1 | R8, R10 |
+| R6.3 | iOS Offline-Fusion (Algorithmus + Tests) | done | R6.1 | R8 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
