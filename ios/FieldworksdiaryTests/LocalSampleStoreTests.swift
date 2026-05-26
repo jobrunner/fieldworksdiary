@@ -29,7 +29,7 @@ final class LocalSampleStoreTests: XCTestCase {
             lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
         )
-        XCTAssertEqual(sample.code, "260519/1")
+        XCTAssertEqual(sample.sampleID, "260519/1")
         XCTAssertEqual(sample.syncStatus, .pending)
         XCTAssertEqual(sample.userId, "user-a")
         XCTAssertNil(sample.backendId)
@@ -38,14 +38,14 @@ final class LocalSampleStoreTests: XCTestCase {
     func testCreateLocal_IncrementsSequenceForSameDay() throws {
         _ = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
         let second = try store.createLocal(lat: 49.80, lon: 9.95, collectedFrom: date(2026, 5, 19, 15))
-        XCTAssertEqual(second.code, "260519/2")
+        XCTAssertEqual(second.sampleID, "260519/2")
     }
 
     func testCreateLocal_DifferentDaysHaveSeparateSequences() throws {
         let day1 = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
         let day2 = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 20, 14))
-        XCTAssertEqual(day1.code, "260519/1")
-        XCTAssertEqual(day2.code, "260520/1")
+        XCTAssertEqual(day1.sampleID, "260519/1")
+        XCTAssertEqual(day2.sampleID, "260520/1")
     }
 
     func testCreateLocal_RespectsCutoffHour_BelongsToPreviousDay() throws {
@@ -54,7 +54,7 @@ final class LocalSampleStoreTests: XCTestCase {
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 3)
         )
-        XCTAssertEqual(sample.code, "260518/1")
+        XCTAssertEqual(sample.sampleID, "260518/1")
         XCTAssertEqual(sample.collectingDay, "2026-05-18")
     }
 
@@ -69,7 +69,7 @@ final class LocalSampleStoreTests: XCTestCase {
         }
         XCTAssertEqual(stored.count, 1)
         XCTAssertEqual(stored[0].backendId, "backend-1")
-        XCTAssertEqual(stored[0].code, "260519/5")
+        XCTAssertEqual(stored[0].sampleID, "260519/5")
         XCTAssertEqual(stored[0].syncStatus, .synced)
     }
 
@@ -85,7 +85,7 @@ final class LocalSampleStoreTests: XCTestCase {
         try store.update(updated)
 
         // Server schickt das Sample mit clientUuid = local.id zurück.
-        let remote = makeRemoteSample(id: "backend-abc", code: local.code, clientUuid: local.id)
+        let remote = makeRemoteSample(id: "backend-abc", code: local.sampleID, clientUuid: local.id)
         try store.upsert([remote])
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
@@ -109,7 +109,7 @@ final class LocalSampleStoreTests: XCTestCase {
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
         XCTAssertNil(stored.backendId, "pending row must not be overwritten by upsert")
-        XCTAssertEqual(stored.code, local.code, "code must not change while push in flight")
+        XCTAssertEqual(stored.sampleID, local.sampleID, "code must not change while push in flight")
     }
 
     func testUpsert_AppliesServerCodeReassignmentAsBackendCode() throws {
@@ -125,13 +125,13 @@ final class LocalSampleStoreTests: XCTestCase {
         let remote = makeRemoteSample(
             id: "backend-1",
             code: "260519/7",
-            originalCode: local.code,
+            originalCode: local.sampleID,
             clientUuid: local.id
         )
         try store.upsert([remote])
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.code, "260519/1", "local code (= auf Röhrchen) bleibt erhalten")
+        XCTAssertEqual(stored.sampleID, "260519/1", "local code (= auf Röhrchen) bleibt erhalten")
         XCTAssertEqual(stored.backendCode, "260519/7", "Server-Reassignment landet in backendCode")
         XCTAssertEqual(stored.originalCode, "260519/1", "Audit-Trail: was auf der Röhre stand")
     }
@@ -147,7 +147,7 @@ final class LocalSampleStoreTests: XCTestCase {
             lat: 50.0, lon: 10.0,
             collectedFrom: date(2026, 5, 19, 16)
         )
-        XCTAssertEqual(next.code, "260519/6", "Sequenz nach Hydrate hochgezogen")
+        XCTAssertEqual(next.sampleID, "260519/6", "Sequenz nach Hydrate hochgezogen")
     }
 
     // MARK: - reset
@@ -163,7 +163,7 @@ final class LocalSampleStoreTests: XCTestCase {
 
         // Sequenz darf nach reset auf /1 anfangen, nicht auf /3.
         let fresh = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
-        XCTAssertEqual(fresh.code, "260519/1", "Sequenz nach reset zurückgesetzt")
+        XCTAssertEqual(fresh.sampleID, "260519/1", "Sequenz nach reset zurückgesetzt")
     }
 
     // MARK: - fetchPending
@@ -211,12 +211,15 @@ final class LocalSampleStoreTests: XCTestCase {
         let json = """
         {
           "id": "\(id)",
-          "code": "\(code)",
+          "sample_id": "\(code)",
           "original_code": "\(originalCode ?? "")",
           "fieldtrip": "ft-1",
-          "lat": 49.79,
-          "lon": 9.94,
-          "collected_from": "2026-05-19T14:00:00.000Z",
+          "latitude": 49.79,
+          "longitude": 9.94,
+          "begin_date": "2026-05-19T14:00:00.000Z",
+          "location_source": "location_service",
+          "time_zone": "Europe/Berlin",
+          "version": 1,
           "client_uuid": "\(clientUuid ?? "")",
           "client_updated_at": "2026-05-19T14:00:00.000Z"
         }

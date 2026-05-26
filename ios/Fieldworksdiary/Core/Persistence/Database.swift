@@ -56,6 +56,7 @@ final class Database {
         migrator.registerMigration("v7_local_photos_and_sample_notes", migrate: migrateV7)
         migrator.registerMigration("v8_local_samples_marked", migrate: migrateV8)
         migrator.registerMigration("v9_rename_excursions_to_fieldtrips", migrate: migrateV9)
+        migrator.registerMigration("v10_spec_alignment_r3", migrate: migrateV10)
         try migrator.migrate(writer)
     }
 
@@ -197,5 +198,86 @@ final class Database {
         try db.alter(table: "local_samples") { t in
             t.rename(column: "excursion", to: "fieldtrip")
         }
+    }
+
+    /// Phase R3 (refactor): Spec-Alignment. Same shape as the
+    /// PocketBase migrations 1700000015–1700000018:
+    ///
+    /// 1. New `local_placemarks` table — cached parsed reverse-
+    ///    geocoding results, deduplicated by content hash.
+    /// 2. `local_samples` column renames + new sync-related cols.
+    /// 3. `local_fieldtrips` column renames + notes/version.
+    /// 4. `local_localities` gains explicit point-location columns
+    ///    plus sync fields; the legacy `centroid_*` cols stay
+    ///    readable until the data migration in R10.
+    private static func migrateV10(_ db: GRDB.Database) throws {
+        // 1. local_placemarks
+        try db.create(table: "local_placemarks") { t in
+            t.column("id", .text).primaryKey()
+            t.column("country", .text).notNull()
+            t.column("administrative_area", .text)
+            t.column("sub_administrative_area", .text)
+            t.column("locality", .text)
+            t.column("sub_locality", .text)
+            t.column("postal_code", .text)
+            t.column("name", .text)
+            t.column("thoroughfare", .text)
+            t.column("geocoding_source", .text).notNull().defaults(to: "backend-service")
+            t.column("geocoding_service_version", .text)
+            t.column("geocoding_date", .datetime)
+            t.column("dedup_hash", .text).notNull()
+            t.column("backend_updated_at", .datetime).notNull()
+        }
+        try db.create(indexOn: "local_placemarks", columns: ["dedup_hash"], options: .unique)
+
+        // 2. local_samples — rename existing columns and add new.
+        try db.alter(table: "local_samples") { t in
+            t.rename(column: "code", to: "sample_id")
+            t.rename(column: "lat", to: "latitude")
+            t.rename(column: "lon", to: "longitude")
+            t.rename(column: "accuracy_m", to: "horizontal_accuracy")
+            t.rename(column: "altitude_m", to: "altitude")
+            t.rename(column: "collected_from", to: "begin_date")
+            t.add(column: "end_date", .datetime)
+            t.add(column: "is_all_day", .boolean).notNull().defaults(to: false)
+            t.add(column: "time_zone", .text).notNull().defaults(to: "Europe/Berlin")
+            t.add(column: "vertical_accuracy", .double)
+            t.add(column: "location_source", .integer).notNull().defaults(to: 0)
+            t.add(column: "locality", .text)
+            t.add(column: "version", .integer).notNull().defaults(to: 1)
+        }
+
+        // 3. local_fieldtrips — name/started_at/ended_at renames,
+        //    plus notes + version.
+        try db.alter(table: "local_fieldtrips") { t in
+            t.rename(column: "name", to: "title")
+            t.rename(column: "started_at", to: "begin_date")
+            t.rename(column: "ended_at", to: "end_date")
+            t.add(column: "notes", .text).notNull().defaults(to: "")
+            t.add(column: "version", .integer).notNull().defaults(to: 1)
+        }
+
+        // 4. local_localities — explicit coords + sync fields. Legacy
+        //    centroid_* stays read-only for now.
+        try db.alter(table: "local_localities") { t in
+            t.add(column: "latitude", .double)
+            t.add(column: "longitude", .double)
+            t.add(column: "altitude", .double)
+            t.add(column: "horizontal_accuracy", .double)
+            t.add(column: "vertical_accuracy", .double)
+            t.add(column: "location_source", .integer).notNull().defaults(to: 0)
+            t.add(column: "location_number", .text)
+            t.add(column: "placemark", .text)
+            t.add(column: "version", .integer).notNull().defaults(to: 1)
+            t.add(column: "client_uuid", .text)
+            t.add(column: "client_updated_at", .datetime)
+        }
+        try db.execute(sql: """
+            UPDATE local_localities
+            SET latitude = centroid_lat,
+                longitude = centroid_lon
+            WHERE latitude IS NULL
+        """)
+        try db.create(indexOn: "local_localities", columns: ["latitude", "longitude"])
     }
 }

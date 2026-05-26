@@ -46,7 +46,7 @@ final class LocalFieldtripStore {
     func observeAll() -> AsyncValueObservation<[LocalFieldtrip]> {
         AsyncValueObservation(observation: ValueObservation.tracking { db in
             try LocalFieldtrip
-                .order(Column("collecting_day").desc, Column("started_at").desc)
+                .order(Column("collecting_day").desc, Column("begin_date").desc)
                 .fetchAll(db)
         }, reader: database.reader)
     }

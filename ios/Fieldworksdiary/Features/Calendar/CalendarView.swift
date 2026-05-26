@@ -227,7 +227,7 @@ private struct DaySamplesScreen: View {
                         SampleDetailView(sampleID: sample.id)
                     } label: {
                         HStack(spacing: 12) {
-                            Text(sample.backendCode ?? sample.code)
+                            Text(sample.backendCode ?? sample.sampleID)
                                 .font(.body.monospaced().weight(.semibold))
                             if let locality = sample.adminUnitsLocality {
                                 Text(locality)

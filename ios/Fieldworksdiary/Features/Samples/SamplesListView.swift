@@ -56,7 +56,7 @@ struct SamplesListScreen: View {
 
     private func row(for sample: LocalSample) -> some View {
         HStack(spacing: 12) {
-            Text(sample.backendCode ?? sample.code)
+            Text(sample.backendCode ?? sample.sampleID)
                 .font(.body.monospaced().weight(.semibold))
             VStack(alignment: .leading, spacing: 2) {
                 if let locality = sample.adminUnitsLocality {
@@ -115,7 +115,7 @@ struct SamplesListScreen: View {
     private func groupedByDay() -> [DayGroup] {
         let buckets = Dictionary(grouping: samples, by: { $0.collectingDay })
         return buckets.keys.sorted(by: >).map { key in
-            DayGroup(day: formatDay(key), samples: buckets[key]?.sorted { $0.collectedFrom > $1.collectedFrom } ?? [])
+            DayGroup(day: formatDay(key), samples: buckets[key]?.sorted { $0.beginDate > $1.beginDate } ?? [])
         }
     }
 

@@ -17,12 +17,21 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R2 done** (2026-05-26, Branch
-`refactor/R2-rename-excursion-to-fieldtrip` — drei Commits:
-docs, backend, ios + docs/openapi). Nächste Phase: **R3** —
-PocketBase-Schema-Erweiterungen
-(`placemarks`/`localities`/`samples`/`fieldtrips`). R0 und R1
-sind abgeschlossen.
+**R3 + R4 done** (2026-05-26, Branch
+`refactor/R3-R4-schema-and-models`). Schema-Adds + Renames für
+`placemarks`/`localities`/`samples`/`fieldtrips` und die
+zugehörigen iOS-Modelle wurden in einem PR zusammengeführt, weil
+ein Bruch zwischen R3 (Backend) und R4 (iOS) den Live-Build der
+App vorübergehend zerschossen hätte (Spec-§ vs. Phase-Schnitt).
+
+Migrationen 1700000015–1700000018 + GRDB v10. Backend
+`go test ./...` grün, iOS `xcodebuild` grün, alle Logik-Tests
+grün; ein Snapshot-Test (`testPrimaryButton`) failed durch
+Xcode-Renderer-Drift, nicht durch die Refactor-Änderungen.
+
+Nächste Phase: **R5** — Sync-Schicht (Outbox + `version`-
+Konflikt-Handling + ADR zu Realtime vs. Polling). R0 / R1 / R2
+abgeschlossen.
 
 ---
 
@@ -79,8 +88,8 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R0 | Inventur | done | – | – |
 | R1 | Designfragen / Decisions | done | R0 | – |
 | R2 | Rename Excursion → Fieldtrip | done | R1 | alle folgenden |
-| R3 | PB-Schema-Erweiterungen | pending | R2 | R4, R5, R6, R7 |
-| R4 | iOS-Modelle synchron | pending | R3 | R5, R6, R8 |
+| R3 | PB-Schema-Erweiterungen | done | R2 | R4, R5, R6, R7 |
+| R4 | iOS-Modelle synchron | done | R3 | R5, R6, R8 |
 | R5 | Sync: Outbox + Version + (Realtime-ADR) | pending | R3, R4 | R6 |
 | R6 | Locality-Fusion (Server-first) | pending | R5 | R8, R10 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |

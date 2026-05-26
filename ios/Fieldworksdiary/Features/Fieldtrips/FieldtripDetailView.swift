@@ -337,7 +337,7 @@ struct FieldtripDetailView: View {
 
     private func sampleRow(_ sample: LocalSample) -> some View {
         HStack {
-            Text(sample.code)
+            Text(sample.sampleID)
                 .font(.system(.body, design: .monospaced).weight(.medium))
             Spacer()
             if sample.adminUnitsLocality == nil && sample.syncStatus != .synced {
@@ -356,7 +356,7 @@ struct FieldtripDetailView: View {
     }
 
     private func displayName(_ fieldtrip: LocalFieldtrip) -> String {
-        if !fieldtrip.name.isEmpty { return fieldtrip.name }
+        if !fieldtrip.title.isEmpty { return fieldtrip.title }
         return "Sammeltag \(fieldtrip.collectingDay)"
     }
 
@@ -371,7 +371,7 @@ struct FieldtripDetailView: View {
                         .accessibilityLabel("Nacht-Exkursion")
                 }
             }
-            if let started = current.startedAt, let ended = current.endedAt {
+            if let started = current.beginDate, let ended = current.endDate {
                 Text("\(formatDateTime(started)) – \(formatDateTime(ended))")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)

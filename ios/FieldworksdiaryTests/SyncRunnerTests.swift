@@ -33,7 +33,7 @@ final class SyncRunnerTests: XCTestCase {
         let mock = MockClient()
         mock.createResponse = remoteSample(
             id: "backend-1",
-            code: local.code,
+            code: local.sampleID,
             fieldtrip: "ft-1",
             locality: "Würzburg"
         )
@@ -63,7 +63,7 @@ final class SyncRunnerTests: XCTestCase {
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
         )
-        XCTAssertEqual(local.code, "260519/1")
+        XCTAssertEqual(local.sampleID, "260519/1")
 
         let mock = MockClient()
         mock.createResponse = remoteSample(
@@ -76,7 +76,7 @@ final class SyncRunnerTests: XCTestCase {
         await runUntilQuiescent(runner)
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.code, "260519/1", "Lokaler Code (= auf Röhrchen) bleibt")
+        XCTAssertEqual(stored.sampleID, "260519/1", "Lokaler Code (= auf Röhrchen) bleibt")
         XCTAssertEqual(stored.backendCode, "260519/7", "Server-Code separat festgehalten")
         XCTAssertEqual(stored.originalCode, "260519/1", "originalCode dokumentiert den Konflikt")
         XCTAssertEqual(stored.syncStatus, .synced)
@@ -90,14 +90,14 @@ final class SyncRunnerTests: XCTestCase {
         let mock = MockClient()
         mock.createResponse = remoteSample(
             id: "backend-1",
-            code: local.code,
+            code: local.sampleID,
             fieldtrip: "ft-1"
         )
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.code, local.code)
+        XCTAssertEqual(stored.sampleID, local.sampleID)
         XCTAssertNil(stored.backendCode, "Bei Honorierung kein backendCode")
     }
 
@@ -129,10 +129,10 @@ final class SyncRunnerTests: XCTestCase {
             collectedFrom: date(2026, 5, 19, 14)
         )
         let mock = MockClient()
-        mock.createResponse = remoteSample(id: "backend-1", code: local.code, fieldtrip: "ft-1")
+        mock.createResponse = remoteSample(id: "backend-1", code: local.sampleID, fieldtrip: "ft-1")
         mock.fetchResponse = remoteSample(
             id: "backend-1",
-            code: local.code,
+            code: local.sampleID,
             fieldtrip: "ft-1",
             locality: "Würzburg",
             mtbSheet: "6225"
@@ -204,12 +204,15 @@ final class SyncRunnerTests: XCTestCase {
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
-            "code": code,
+            "sample_id": code,
             "fieldtrip": fieldtrip,
-            "lat": 49.79,
-            "lon": 9.94,
-            "collected_from": "2026-05-19T14:00:00.000Z",
-            "client_updated_at": "2026-05-19T14:00:00.000Z"
+            "latitude": 49.79,
+            "longitude": 9.94,
+            "begin_date": "2026-05-19T14:00:00.000Z",
+            "client_updated_at": "2026-05-19T14:00:00.000Z",
+            "location_source": "location_service",
+            "time_zone": "Europe/Berlin",
+            "version": 1
         ]
         if let originalCode { dict["original_code"] = originalCode }
         if let locality {

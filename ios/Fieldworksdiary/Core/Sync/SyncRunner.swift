@@ -143,31 +143,33 @@ final class SyncRunner: ObservableObject {
             defer { inFlight -= 1 }
 
             let created = try await client.createSample(SampleCreateInput(
-                lat: sample.lat,
-                lon: sample.lon,
-                accuracy: sample.accuracyM,
-                altitude: sample.altitudeM,
-                collectedFrom: sample.collectedFrom,
+                lat: sample.latitude ?? 0,
+                lon: sample.longitude ?? 0,
+                accuracy: sample.horizontalAccuracy,
+                altitude: sample.altitude,
+                collectedFrom: sample.beginDate,
                 notes: sample.notes.isEmpty ? nil : sample.notes,
                 marked: sample.marked,
-                code: sample.code,
+                code: sample.sampleID,
                 clientUuid: sample.id,
                 clientUpdatedAt: sample.updatedAt
             ))
 
             working.backendId = created.id
             working.fieldtrip = created.fieldtrip
+            working.locality = created.locality
+            working.version = created.version
             working.adminUnitsLocality = created.adminUnits?.locality
             working.adminUnitsCountry = created.adminUnits?.country
             working.mtbSheetNumber = created.mtb?.sheetNumber
             working.mtbSheetName = created.mtb?.sheetName
 
-            if created.code != sample.code {
+            if created.sampleID != sample.sampleID {
                 // Server reassigned on conflict. The original is what
                 // the user wrote on the tube; the server's reassigned
-                // code is the authoritative database value.
-                working.backendCode = created.code
-                working.originalCode = created.originalCode ?? sample.code
+                // id is the authoritative database value.
+                working.backendCode = created.sampleID
+                working.originalCode = created.originalCode ?? sample.sampleID
             } else {
                 working.backendCode = nil
                 // Server honored — but it might still return

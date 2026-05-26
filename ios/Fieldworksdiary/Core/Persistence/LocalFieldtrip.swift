@@ -7,11 +7,11 @@ import GRDB
 /// nested field in SQL.
 struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
     var id: String
-    var name: String
+    var title: String
     var collectingDay: String
     var nightFieldtrip: Bool
-    var startedAt: Date?
-    var endedAt: Date?
+    var beginDate: Date?
+    var endDate: Date?
     var centroidLat: Double?
     var centroidLon: Double?
     var adminUnitsJson: String?
@@ -24,14 +24,16 @@ struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Ident
     var adminArea: String?
     var permitNumber: String?
     var permitPDFFile: String?
+    var notes: String
+    var version: Int
     var backendUpdatedAt: Date
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, title
         case collectingDay = "collecting_day"
         case nightFieldtrip = "night_fieldtrip"
-        case startedAt = "started_at"
-        case endedAt = "ended_at"
+        case beginDate = "begin_date"
+        case endDate = "end_date"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
         case adminUnitsJson = "admin_units_json"
@@ -44,6 +46,7 @@ struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Ident
         case adminArea = "admin_area"
         case permitNumber = "permit_number"
         case permitPDFFile = "permit_pdf_file"
+        case notes, version
         case backendUpdatedAt = "backend_updated_at"
     }
 
@@ -78,11 +81,11 @@ extension LocalFieldtrip {
     /// surface "last refreshed at" if we want it later.
     init(from remote: Fieldtrip) {
         id = remote.id
-        name = remote.name
+        title = remote.title
         collectingDay = remote.collectingDay
         nightFieldtrip = remote.nightFieldtrip
-        startedAt = remote.startedAt
-        endedAt = remote.endedAt
+        beginDate = remote.beginDate
+        endDate = remote.endDate
         centroidLat = remote.centroidLat
         centroidLon = remote.centroidLon
         adminUnitsJson = Self.encode(remote.adminUnits)
@@ -95,6 +98,8 @@ extension LocalFieldtrip {
         adminArea = remote.adminArea
         permitNumber = remote.permitNumber
         permitPDFFile = remote.permitPDFFile
+        notes = remote.notes ?? ""
+        version = remote.version
         backendUpdatedAt = Date()
     }
 

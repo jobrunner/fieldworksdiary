@@ -52,7 +52,7 @@ struct SampleDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(sample?.code ?? "Probe")
+        .navigationTitle(sample?.sampleID ?? "Probe")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let sample {
@@ -106,10 +106,10 @@ struct SampleDetailView: View {
     private func codeCard(_ sample: LocalSample) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
-                Text(sample.code)
+                Text(sample.sampleID)
                     .font(.system(size: 40, weight: .bold, design: .monospaced))
-                if let backendCode = sample.backendCode, backendCode != sample.code {
-                    Text("Server: \(backendCode) — Original \(sample.code)")
+                if let backendCode = sample.backendCode, backendCode != sample.sampleID {
+                    Text("Server: \(backendCode) — Original \(sample.sampleID)")
                         .font(.footnote)
                         .foregroundStyle(.orange)
                 }
@@ -121,15 +121,17 @@ struct SampleDetailView: View {
     private func metadataCard(_ sample: LocalSample) -> some View {
         GroupBox("Probe") {
             VStack(alignment: .leading, spacing: 6) {
-                Label(String(format: "%.6f, %.6f", sample.lat, sample.lon),
-                      systemImage: "mappin.and.ellipse")
-                    .font(.body.monospacedDigit())
-                if let acc = sample.accuracyM {
+                if let lat = sample.latitude, let lon = sample.longitude {
+                    Label(String(format: "%.6f, %.6f", lat, lon),
+                          systemImage: "mappin.and.ellipse")
+                        .font(.body.monospacedDigit())
+                }
+                if let acc = sample.horizontalAccuracy {
                     Text(String(format: "± %.0f m", acc))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Label(formatDateTime(sample.collectedFrom), systemImage: "calendar")
+                Label(formatDateTime(sample.beginDate), systemImage: "calendar")
                     .font(.footnote)
                 if let locality = sample.adminUnitsLocality {
                     Label(locality, systemImage: "globe.europe.africa")

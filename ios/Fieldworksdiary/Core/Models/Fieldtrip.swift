@@ -27,13 +27,27 @@ struct Astro: Codable, Equatable {
     }
 }
 
+/// A Fieldtrip is the bracket around a collecting day. R3 renamed
+/// the user-visible columns to align with the Spec:
+///
+///   - `name` → `title`
+///   - `started_at` → `begin_date`
+///   - `ended_at`   → `end_date`
+///
+/// New: `notes` (free text) and `version` (monotone sync counter).
+///
+/// "Carry-on" columns (centroid, mtb, astro, admin_units, permit,
+/// denormalised filter cols) stay where they are — see NEW-2 in the
+/// gap analysis.
 struct Fieldtrip: Decodable, Identifiable, Equatable {
     let id: String
-    let name: String
+    /// User-visible title. Defaults to "Sammeltag DD.MM.YYYY" if the
+    /// hook hasn't been able to upgrade it from the locality yet.
+    let title: String
     let collectingDay: String
     let nightFieldtrip: Bool
-    let startedAt: Date?
-    let endedAt: Date?
+    let beginDate: Date?
+    let endDate: Date?
     let centroidLat: Double?
     let centroidLon: Double?
     let adminUnits: AdminUnits?
@@ -51,34 +65,34 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
     /// PDF for archive.
     let permitNumber: String?
     let permitPDFFile: String?
+    let notes: String?
+    let version: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, title, mtb, astro, locality, country
         case collectingDay = "collecting_day"
         case nightFieldtrip = "night_fieldtrip"
-        case startedAt = "started_at"
-        case endedAt = "ended_at"
+        case beginDate = "begin_date"
+        case endDate = "end_date"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
         case adminUnits = "admin_units"
-        case mtb, astro
-        case locality
         case suggestedLocality = "suggested_locality"
         case dayOfYear = "day_of_year"
-        case country
         case adminArea = "admin_area"
         case permitNumber = "permit_number"
         case permitPDFFile = "permit_pdf"
+        case notes, version
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
-        name = (try? c.decode(String.self, forKey: .name)) ?? ""
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
         collectingDay = try c.decode(String.self, forKey: .collectingDay)
         nightFieldtrip = (try? c.decode(Bool.self, forKey: .nightFieldtrip)) ?? false
-        startedAt = try? c.decode(Date.self, forKey: .startedAt)
-        endedAt = try? c.decode(Date.self, forKey: .endedAt)
+        beginDate = try? c.decode(Date.self, forKey: .beginDate)
+        endDate = try? c.decode(Date.self, forKey: .endDate)
         let lat = try? c.decode(Double.self, forKey: .centroidLat)
         let lon = try? c.decode(Double.self, forKey: .centroidLon)
         centroidLat = (lat == 0 ? nil : lat)
@@ -100,6 +114,9 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
         permitNumber = pn.isEmpty ? nil : pn
         let pf = (try? c.decode(String.self, forKey: .permitPDFFile)) ?? ""
         permitPDFFile = pf.isEmpty ? nil : pf
+        let nt = (try? c.decode(String.self, forKey: .notes)) ?? ""
+        notes = nt.isEmpty ? nil : nt
+        version = (try? c.decode(Int.self, forKey: .version)) ?? 1
     }
 }
 

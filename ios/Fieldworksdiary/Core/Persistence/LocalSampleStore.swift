@@ -59,19 +59,26 @@ final class LocalSampleStore {
             var sample = LocalSample(
                 id: UUID().uuidString,
                 backendId: nil,
-                code: code,
+                sampleID: code,
                 backendCode: nil,
                 originalCode: nil,
                 userId: userId,
                 collectingDay: dayKey,
-                lat: lat,
-                lon: lon,
-                accuracyM: accuracy,
-                altitudeM: altitude,
-                collectedFrom: collectedFrom,
+                latitude: lat,
+                longitude: lon,
+                horizontalAccuracy: accuracy,
+                verticalAccuracy: nil,
+                altitude: altitude,
+                beginDate: collectedFrom,
+                endDate: nil,
+                isAllDay: false,
+                timeZone: timeZone.identifier,
                 notes: notes,
                 marked: false,
                 fieldtrip: nil,
+                locality: nil,
+                locationSource: LocationSource.locationService.rawValue,
+                version: 1,
                 adminUnitsLocality: nil,
                 adminUnitsCountry: nil,
                 mtbSheetNumber: nil,
@@ -92,7 +99,7 @@ final class LocalSampleStore {
         try database.reader.read { db in
             try LocalSample
                 .filter(Column("marked") == true)
-                .order(Column("collected_from").desc)
+                .order(Column("begin_date").desc)
                 .fetchAll(db)
         }
     }
@@ -122,7 +129,7 @@ final class LocalSampleStore {
     func fetchAll() throws -> [LocalSample] {
         try database.reader.read { db in
             try LocalSample
-                .order(Column("collected_from").desc)
+                .order(Column("begin_date").desc)
                 .fetchAll(db)
         }
     }
@@ -153,7 +160,7 @@ final class LocalSampleStore {
     func mostRecent() throws -> LocalSample? {
         try database.reader.read { db in
             try LocalSample
-                .order(Column("collected_from").desc)
+                .order(Column("begin_date").desc)
                 .fetchOne(db)
         }
     }
@@ -177,7 +184,7 @@ final class LocalSampleStore {
         try database.reader.read { db in
             try LocalSample
                 .filter(Column("fieldtrip") == fieldtripID)
-                .order(Column("collected_from"))
+                .order(Column("begin_date"))
                 .fetchAll(db)
         }
     }
@@ -217,7 +224,7 @@ final class LocalSampleStore {
 
         try database.writer.write { db in
             for r in remote {
-                guard let collectedFrom = r.collectedFrom else { continue }
+                guard let collectedFrom = r.beginDate else { continue }
                 let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
                 let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
 
@@ -239,7 +246,7 @@ final class LocalSampleStore {
                 // Keep the sequence counter in sync with hydrated codes
                 // so future offline allocations don't collide with
                 // already-assigned numbers on the same day.
-                if let seq = sequenceNumber(in: r.code) {
+                if let seq = sequenceNumber(in: r.sampleID) {
                     try Self.bumpSequence(db, userId: userId, dayKey: dayKey, atLeast: seq)
                 }
             }
@@ -271,25 +278,32 @@ final class LocalSampleStore {
 
     private func apply(remote r: Sample, to local: inout LocalSample, dayKey: String, userId: String) {
         local.backendId = r.id
-        // Server may have reassigned the code on collision; respect
-        // that as the new authoritative code.
-        if local.code != r.code {
-            local.backendCode = r.code
-            local.originalCode = r.originalCode ?? local.code
+        // Server may have reassigned the sample_id on collision;
+        // respect that as the new authoritative id.
+        if local.sampleID != r.sampleID {
+            local.backendCode = r.sampleID
+            local.originalCode = r.originalCode ?? local.sampleID
         } else {
             local.backendCode = nil
             local.originalCode = r.originalCode
         }
         local.userId = userId
         local.collectingDay = dayKey
-        local.lat = r.lat
-        local.lon = r.lon
-        local.accuracyM = r.accuracyM ?? local.accuracyM
-        local.altitudeM = r.altitudeM ?? local.altitudeM
-        if let from = r.collectedFrom { local.collectedFrom = from }
+        local.latitude = r.latitude ?? local.latitude
+        local.longitude = r.longitude ?? local.longitude
+        local.horizontalAccuracy = r.horizontalAccuracy ?? local.horizontalAccuracy
+        local.verticalAccuracy = r.verticalAccuracy ?? local.verticalAccuracy
+        local.altitude = r.altitude ?? local.altitude
+        if let from = r.beginDate { local.beginDate = from }
+        local.endDate = r.endDate ?? local.endDate
+        local.isAllDay = r.isAllDay
+        local.timeZone = r.timeZone
         if let n = r.notes { local.notes = n }
         local.marked = r.marked
         local.fieldtrip = r.fieldtrip
+        local.locality = r.locality
+        local.locationSource = r.locationSource.rawValue
+        local.version = r.version
         local.adminUnitsLocality = r.adminUnits?.locality
         local.adminUnitsCountry = r.adminUnits?.country
         local.mtbSheetNumber = r.mtb?.sheetNumber
@@ -308,26 +322,33 @@ final class LocalSampleStore {
             // the backend id so the local row still has a stable key.
             id: (r.clientUuid.flatMap { $0.isEmpty ? nil : $0 }) ?? r.id,
             backendId: r.id,
-            code: r.code,
+            sampleID: r.sampleID,
             backendCode: nil,
             originalCode: r.originalCode,
             userId: userId,
             collectingDay: dayKey,
-            lat: r.lat,
-            lon: r.lon,
-            accuracyM: r.accuracyM,
-            altitudeM: r.altitudeM,
-            collectedFrom: r.collectedFrom ?? now,
+            latitude: r.latitude,
+            longitude: r.longitude,
+            horizontalAccuracy: r.horizontalAccuracy,
+            verticalAccuracy: r.verticalAccuracy,
+            altitude: r.altitude,
+            beginDate: r.beginDate ?? now,
+            endDate: r.endDate,
+            isAllDay: r.isAllDay,
+            timeZone: r.timeZone,
             notes: r.notes ?? "",
             marked: r.marked,
             fieldtrip: r.fieldtrip,
+            locality: r.locality,
+            locationSource: r.locationSource.rawValue,
+            version: r.version,
             adminUnitsLocality: r.adminUnits?.locality,
             adminUnitsCountry: r.adminUnits?.country,
             mtbSheetNumber: r.mtb?.sheetNumber,
             mtbSheetName: r.mtb?.sheetName,
             syncStatus: .synced,
             syncError: nil,
-            createdAt: r.collectedFrom ?? now,
+            createdAt: r.beginDate ?? now,
             updatedAt: r.clientUpdatedAt ?? now
         )
     }

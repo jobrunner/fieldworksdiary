@@ -170,7 +170,7 @@ struct FieldtripsListScreen: View {
     }
 
     private func displayName(_ fieldtrip: LocalFieldtrip) -> String {
-        if !fieldtrip.name.isEmpty { return fieldtrip.name }
+        if !fieldtrip.title.isEmpty { return fieldtrip.title }
         return "Sammeltag \(fieldtrip.collectingDay)"
     }
 }

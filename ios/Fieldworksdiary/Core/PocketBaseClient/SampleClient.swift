@@ -32,15 +32,18 @@ struct SampleClient {
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         var body: [String: Any] = [
-            "lat": input.lat,
-            "lon": input.lon,
-            "collected_from": isoFormatter.string(from: input.collectedFrom)
+            "latitude": input.lat,
+            "longitude": input.lon,
+            "begin_date": isoFormatter.string(from: input.collectedFrom),
+            "location_source": LocationSource.locationService.wireValue,
+            "time_zone": "Europe/Berlin",
+            "version": 1
         ]
-        if let accuracy = input.accuracy { body["accuracy_m"] = accuracy }
-        if let altitude = input.altitude { body["altitude_m"] = altitude }
+        if let accuracy = input.accuracy { body["horizontal_accuracy"] = accuracy }
+        if let altitude = input.altitude { body["altitude"] = altitude }
         if let notes = input.notes, !notes.isEmpty { body["notes"] = notes }
         if input.marked { body["marked"] = true }
-        if let code = input.code, !code.isEmpty { body["code"] = code }
+        if let code = input.code, !code.isEmpty { body["sample_id"] = code }
         if let clientUuid = input.clientUuid, !clientUuid.isEmpty { body["client_uuid"] = clientUuid }
         if let clientUpdatedAt = input.clientUpdatedAt {
             body["client_updated_at"] = isoFormatter.string(from: clientUpdatedAt)
@@ -84,7 +87,7 @@ struct SampleClient {
         var components = URLComponents(string: trimmed.appending("/api/collections/samples/records"))
         components?.queryItems = [
             URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "-collected_from")
+            URLQueryItem(name: "sort", value: "-begin_date")
         ]
         guard let url = components?.url else {
             throw SampleClientError.invalidEndpoint

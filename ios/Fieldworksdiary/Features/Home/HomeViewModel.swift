@@ -83,9 +83,9 @@ final class HomeViewModel: ObservableObject {
         let today = Codes.collectingDay(Date(), cutoffHour: cutoffHour, timeZone: timeZone)
         let key = Codes.collectingDayKey(today, timeZone: timeZone)
         guard let ft = try? fieldtrips.fetchByCollectingDay(key) else { return nil }
-        let title = ft.name.isEmpty
+        let title = ft.title.isEmpty
             ? "Sammeltag \(formattedShort(ft.collectingDay))"
-            : ft.name
+            : ft.title
         let localityName = localityName(for: ft.locality)
         return ActiveFieldtrip(id: ft.id, title: title, localityName: localityName)
     }
@@ -94,7 +94,7 @@ final class HomeViewModel: ObservableObject {
         guard let sample = try? samples.mostRecent() else { return nil }
         return RecentSample(
             id: sample.id,
-            code: sample.backendCode ?? sample.code,
+            code: sample.backendCode ?? sample.sampleID,
             locality: sample.adminUnitsLocality
         )
     }

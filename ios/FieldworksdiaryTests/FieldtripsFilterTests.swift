@@ -9,11 +9,11 @@ final class FieldtripsFilterTests: XCTestCase {
     ) -> LocalFieldtrip {
         LocalFieldtrip(
             id: UUID().uuidString,
-            name: "Test",
+            title: "Test",
             collectingDay: day,
             nightFieldtrip: false,
-            startedAt: nil,
-            endedAt: nil,
+            beginDate: nil,
+            endDate: nil,
             centroidLat: nil,
             centroidLon: nil,
             adminUnitsJson: nil,
@@ -24,6 +24,10 @@ final class FieldtripsFilterTests: XCTestCase {
             dayOfYear: doy,
             country: country,
             adminArea: nil,
+            permitNumber: nil,
+            permitPDFFile: nil,
+            notes: "",
+            version: 1,
             backendUpdatedAt: Date()
         )
     }

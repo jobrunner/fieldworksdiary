@@ -361,7 +361,7 @@ private struct SampleEditorContent: View {
     }
 
     private var fieldtripName: String? {
-        if let ft = viewModel.savedFieldtrip, !ft.name.isEmpty { return ft.name }
+        if let ft = viewModel.savedFieldtrip, !ft.title.isEmpty { return ft.title }
         if let id = viewModel.savedSample?.fieldtrip, !id.isEmpty { return "Sammeltag" }
         return nil
     }
@@ -396,7 +396,7 @@ private struct SampleEditorContent: View {
     }()
 
     private var longDateText: String {
-        let date = viewModel.savedSample?.collectedFrom ?? Date()
+        let date = viewModel.savedSample?.beginDate ?? Date()
         return Self.dayFormatter.string(from: date)
     }
 

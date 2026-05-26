@@ -59,7 +59,7 @@ struct PhotosGalleryScreen: View {
         // Sample-code lookup is best-effort; if the parent sample
         // hasn't been loaded yet we just say "Foto".
         if let sample = try? container.store.fetchById(photo.sampleId) {
-            return "Foto zu Probe \(sample.backendCode ?? sample.code)"
+            return "Foto zu Probe \(sample.backendCode ?? sample.sampleID)"
         }
         return "Foto"
     }

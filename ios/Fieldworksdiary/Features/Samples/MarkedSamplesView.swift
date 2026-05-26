@@ -42,7 +42,7 @@ struct MarkedSamplesScreen: View {
             Image(systemName: "star.fill")
                 .foregroundStyle(.yellow)
                 .accessibilityHidden(true)
-            Text(sample.backendCode ?? sample.code)
+            Text(sample.backendCode ?? sample.sampleID)
                 .font(.body.monospaced().weight(.semibold))
             VStack(alignment: .leading, spacing: 2) {
                 if let locality = sample.adminUnitsLocality {
@@ -59,7 +59,7 @@ struct MarkedSamplesScreen: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Markierte Probe \(sample.backendCode ?? sample.code)")
+        .accessibilityLabel("Markierte Probe \(sample.backendCode ?? sample.sampleID)")
     }
 
     private func reload() {
