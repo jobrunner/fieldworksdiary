@@ -108,7 +108,7 @@ paths:
     post:
       summary: Fundort-Labels (PDF) generieren
       description: |
-        Erzeugt ein PDF mit den Fundort-Daten (Locality + Excursion +
+        Erzeugt ein PDF mit den Fundort-Daten (Locality + Fieldtrip +
         Astro + MTB) für die angegebenen Samples. Das Backend
         persistiert das Ergebnis in der `label_pdfs`-Collection,
         die Antwort enthält die ID, unter der das File später wieder
@@ -173,7 +173,7 @@ paths:
       description: |
         Liefert ein ZIP-Archiv mit (a) einer `data.json`, die alle
         Records des authentifizierten Users enthält (Samples,
-        Excursions, Localities, People, Determinations, LabelPDFs),
+        Fieldtrips, Localities, People, Determinations, LabelPDFs),
         und (b) allen referenzierten PDF-Files (Permits, Labels) aus
         dem PocketBase-Storage.
 

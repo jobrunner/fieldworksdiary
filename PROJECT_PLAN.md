@@ -78,7 +78,7 @@ Fundort  ─┬── Exkursion ── Aufsammlung (Sample) ── Determination
 - **Sample** (`samples`) – die einzelne Aufsammlung, kommt aufs Röhrchen.
   Trägt den Code `YYMMDD/N`. (DB-Bezeichnung englisch wegen Namenskollision
   mit PocketBase-Begriff „Collection".)
-- **Excursion** (`excursions`) – ein Sammeltag (mit konfigurierbarem
+- **Fieldtrip** (`fieldtrips`) – ein Sammeltag (mit konfigurierbarem
   Rollover). Default: alle Samples eines Sammeltags = eine Exkursion.
 - **Locality / Fundort** (`localities`) – zeitübergreifende Lokalität
   (z. B. „NSG Bla Blubbern"). Sammelt alle Exkursionen an diesem Ort.
@@ -92,7 +92,7 @@ Fundort  ─┬── Exkursion ── Aufsammlung (Sample) ── Determination
 | `id` | text (PB) | |
 | `code` | text, unique | `260509/3` |
 | `original_code` | text | nur gesetzt, wenn umnummeriert |
-| `excursion` | relation → excursions | required |
+| `fieldtrip` | relation → fieldtrips | required |
 | `collected_from` | datetime | required |
 | `collected_to` | datetime | nullable; null = punktuell |
 | `date_precision` | enum | `instant` \| `day` \| `range_dates` \| `range_datetimes` |
@@ -109,7 +109,7 @@ Fundort  ─┬── Exkursion ── Aufsammlung (Sample) ── Determination
 | `client_uuid` | text | für Sync-Idempotenz |
 | `client_updated_at` | datetime | für Konfliktauflösung |
 
-#### `excursions`
+#### `fieldtrips`
 
 | Feld | Typ | Notizen |
 |---|---|---|
@@ -117,7 +117,7 @@ Fundort  ─┬── Exkursion ── Aufsammlung (Sample) ── Determination
 | `name` | text | default = Reverse-Geocode-Locality |
 | `started_at`, `ended_at` | datetime | umschließt alle Samples |
 | `collecting_day` | date | mit Rollover berechnet |
-| `night_excursion` | bool | true wenn `ended_at` Mitternacht überschreitet |
+| `night_fieldtrip` | bool | true wenn `ended_at` Mitternacht überschreitet |
 | `centroid_lat`, `centroid_lon` | number | inkrementell aktualisiert |
 | `bbox` | json | `{min_lat, max_lat, min_lon, max_lon}` |
 | `admin_units` | json | meist gleich wie Fundort |
@@ -187,7 +187,7 @@ genannt werden müssen.
 | `display_name` | text | für Default-leg./det. |
 | `linked_person` | relation → people | für Etiketten |
 | `day_cutoff_hour` | number | default 5 (= 05:00) |
-| `default_excursion_split_km` | number | default 15 |
+| `default_fieldtrip_split_km` | number | default 15 |
 
 ---
 
@@ -328,7 +328,7 @@ nachgepflegt.
 
 API-Details müssen recherchiert werden. Vorgesehen:
 
-- Plant-Snapshot wird pro `excursion.plants[]` gespeichert.
+- Plant-Snapshot wird pro `fieldtrip.plants[]` gespeichert.
 - Foto-Upload aus der App; Plant-ID wird zugeordnet, sobald die
   FloraIncognita-Antwort kommt.
 
@@ -346,7 +346,7 @@ ein Go-Port von suncalc (`github.com/sixdouglas/suncalc` o. ä.) für
 Sun/Moon-Position; falls Lizenz/Wartung problematisch, Eigenbau
 basierend auf NOAA-Solar und Meeus-Mondalgorithmus.
 
-`excursion.astro` ist ein JSON-Snapshot, der bei jedem
+`fieldtrip.astro` ist ein JSON-Snapshot, der bei jedem
 Centroid-/Zeitfenster-Update vom Hook neu berechnet wird:
 
 ```json
@@ -359,7 +359,7 @@ Centroid-/Zeitfenster-Update vom Hook neu berechnet wird:
   "moon_illumination":   0.78,
   "moon_rise":           "2026-05-09T22:14:00+02:00",
   "moon_set":            "2026-05-10T06:03:00+02:00",
-  "moon_above_horizon_during_excursion": true,
+  "moon_above_horizon_during_fieldtrip": true,
   "moon_altitude_max_during_deg":        38.4
 }
 ```
@@ -367,7 +367,7 @@ Centroid-/Zeitfenster-Update vom Hook neu berechnet wird:
 Felder im Detail:
 
 - `sunrise` / `sunset` / `civil_twilight_end` — am `centroid` für
-  den `collecting_day`. Werden in der Excursion-Detail-Ansicht
+  den `collecting_day`. Werden in der Fieldtrip-Detail-Ansicht
   angezeigt (Anforderung „Sammeltag mit Sonnenaufgang/-untergang in
   einer Ansicht").
 - `moon_phase` — 0..1 (0 = Neumond, 0.25 = erstes Viertel,
@@ -376,17 +376,17 @@ Felder im Detail:
 - `moon_illumination` — Anteil der beleuchteten Mondscheibe.
 - `moon_rise` / `moon_set` — am `collecting_day` (kann auf den
   Folgetag fallen, dann ISO-Datetime entsprechend).
-- `moon_above_horizon_during_excursion` — **die kritische Frage für
+- `moon_above_horizon_during_fieldtrip` — **die kritische Frage für
   Lichtfang:** stand der Mond zwischen `started_at` und `ended_at` zu
   irgendeinem Zeitpunkt über dem Horizont? Berechnet via Mond-Altitude
-  über das Excursion-Zeitfenster (Schrittweite z. B. 5 min, oder
-  analytisch via Mondrise/-set vs. Excursion-Range).
+  über das Fieldtrip-Zeitfenster (Schrittweite z. B. 5 min, oder
+  analytisch via Mondrise/-set vs. Fieldtrip-Range).
 - `moon_altitude_max_during_deg` — maximale Mondhöhe in Grad während
   der Exkursion. Indikator dafür, wie „wirksam hell" der Mond war
   (Mond knapp über Horizont stört Lichtfang weniger als hoch stehend).
 
-Trigger für Neuberechnung: Sample-Insert/-Delete einer Excursion
-(verändert Centroid und Zeitfenster), Excursion-Update (manuelle
+Trigger für Neuberechnung: Sample-Insert/-Delete einer Fieldtrip
+(verändert Centroid und Zeitfenster), Fieldtrip-Update (manuelle
 Korrektur von Zeit/Ort).
 
 Default-iOS-Verhalten: wartet auf Backend-Wert (Server-of-Truth). Falls
@@ -442,7 +442,7 @@ mode = "seasonal": doy(collecting_day) BETWEEN doy(<from>) AND doy(<to>)
 ```
 
 Seasonal-Filter braucht eine berechnete Spalte `doy` auf `samples` und
-`excursions` (PocketBase: per Hook beim Insert/Update setzen).
+`fieldtrips` (PocketBase: per Hook beim Insert/Update setzen).
 
 ### 8.2 Geographisch
 
@@ -521,7 +521,7 @@ fieldworksdiary/
 │   │   ├── App/                   (Entry-Point, AppConfig, Endpoint-Setting)
 │   │   ├── Features/
 │   │   │   ├── AddSample/         (das „+"-Sheet)
-│   │   │   ├── ExcursionList/
+│   │   │   ├── FieldtripList/
 │   │   │   ├── LocalityList/
 │   │   │   ├── Map/
 │   │   │   └── Determination/
@@ -561,13 +561,13 @@ die der Sinnhaftigkeit für Tests.
 
 ### Phase 1 – Core-Schema und Code-Vergabe (Tag 2–3)
 
-- Migrationen für `samples`, `excursions`, `localities`, `users`,
+- Migrationen für `samples`, `fieldtrips`, `localities`, `users`,
   `sample_sequences`
 - Hook `OnRecordCreate("samples")`:
   - Sammeltag berechnen
   - Exkursion finden oder erzeugen
   - Code vergeben
-  - Sample mit Excursion verknüpfen
+  - Sample mit Fieldtrip verknüpfen
 - iOS: „+"-Screen, der ein Sample mit nur GPS-Koordinaten + Code anlegt
   (online, ohne Sync-Layer noch)
 - Akzeptanzkriterium: Mehrere Samples eines Tages landen automatisch
@@ -577,18 +577,18 @@ die der Sinnhaftigkeit für Tests.
 
 - `internal/services/labelloc.go` und `mtb.go` mit Cache
 - `internal/astro/`: pure Sonnen-/Mondzeiten-Berechnung am
-  Excursion-Centroid, plus `MoonAboveHorizonDuring(window, lat, lon)`
+  Fieldtrip-Centroid, plus `MoonAboveHorizonDuring(window, lat, lon)`
   und `MaxMoonAltitudeDuring(window, lat, lon)` (siehe §6.5). Tests
   > 80 % Coverage analog zu `codes/` und `grouping/`.
 - Anreicherungs-Hooks (asynchron, in Goroutine):
   - nach Sample-Insert: Geocoding + MTB
-  - nach Excursion-Update (Centroid- oder Zeitfenster-Änderung): Astro
-    neu rechnen, in `excursion.astro` schreiben
+  - nach Fieldtrip-Update (Centroid- oder Zeitfenster-Änderung): Astro
+    neu rechnen, in `fieldtrip.astro` schreiben
 - iOS zeigt angereicherte Daten (Locality, MTB, Sonnen-/Mondzeiten)
   sobald sie da sind
 - Akzeptanzkriterium: Sample zeigt nach < 2 s den Ortsstring und MTB;
-  Excursion zeigt Sonnenauf-/-untergang und Mondphase, und für eine
-  Test-Nachtexkursion ist `moon_above_horizon_during_excursion` korrekt
+  Fieldtrip zeigt Sonnenauf-/-untergang und Mondphase, und für eine
+  Test-Nachtexkursion ist `moon_above_horizon_during_fieldtrip` korrekt
   gegen eine bekannte Referenz (z. B. timeanddate.com) verifiziert.
 
 ### Phase 3 – Offline-First (Tag 6–9)
@@ -637,7 +637,7 @@ die der Sinnhaftigkeit für Tests.
 
 ### Phase 8 – Genehmigungen (Tag 21)
 
-- `permit_number` und `permit_pdf` auf `excursions`
+- `permit_number` und `permit_pdf` auf `fieldtrips`
 - iOS: PDF-Upload zur Exkursion
 - Etiketten-Template kann optional Permit-Nummer enthalten
 
@@ -660,7 +660,7 @@ nur partiell unter Test-Schutz stehen. Ziel: Refactors in Hot-Pfaden
 fangen rote Tests statt stiller Bugs, A11y-Audit deckt die volle
 Kategorien-Liste ab.
 
-- Tests für iOS-Hydrators (`ExcursionsHydrator`, `LocalitiesHydrator`,
+- Tests für iOS-Hydrators (`FieldtripsHydrator`, `LocalitiesHydrator`,
   `SamplesHydrator`) — derzeit ungetestet
 - Tests für `AuthSession` + `AuthClient` (Token-Restore, Apple-Sign-In-
   Pfad inkl. Refresh)
@@ -723,7 +723,7 @@ erweitert. Phase 12 (Color-Tokens + A11y-Audit) wird hier integriert.
    `mtb` bleibt leer, kein Fehler.)
 3. **Mehrere Sammler pro Exkursion:** Brauchen wir das? (`leg.` ist meist
    der App-User, aber gemeinsame Touren kommen vor.) Vermutlich
-   `excursion.collectors []relation` ergänzen.
+   `fieldtrip.collectors []relation` ergänzen.
 4. **Foto-Speicherort:** PocketBase-File-Storage reicht initial. Bei
    wachsendem Volumen S3-kompatibler Storage erwägen.
 5. **Sicherer Endpoint-Konfig in iOS:** sollte URL signieren oder

@@ -52,7 +52,7 @@ Notizen:
 **Status: done** (verifiziert am 2026-05-10 per Smoke-Test:
 4 Samples über 3 Sammeltage, Codes `260509/1`, `260510/1`, `260510/2`,
 `260511/1` korrekt vergeben, Cutoff 5h um Mitternacht greift, gleiche
-Excursion bei gleichem Sammeltag, Zeitfenster wird je Sample
+Fieldtrip bei gleichem Sammeltag, Zeitfenster wird je Sample
 erweitert. iOS-UI: build ✓, simulator-test offen.)
 
 Ziel: Drei-Ebenen-Datenmodell im Backend, automatische Code-Vergabe und
@@ -63,7 +63,7 @@ einer Exkursion, korrekte Codes (`YYMMDD/N`).
 
 Aufgaben:
 - [x] Migration `1700000001_init_app_collections.go`: `localities`,
-      `excursions`, `samples`, `sample_sequences`
+      `fieldtrips`, `samples`, `sample_sequences`
 - [x] `internal/codes/`: pure `CollectingDay(timestamp, cutoff_hour)`
       und `FormatCode(day, seq)` — 100 % Coverage
 - [x] `internal/grouping/`: pure `FindOrCreate`, `ExpandWindow`,
@@ -71,13 +71,13 @@ Aufgaben:
 - [x] `internal/hooks/sample_create.go`: PocketBase-`Repo`-Adapter +
       atomare Sequenz-Allokation + Hook-Registrierung
 - [x] Hook `OnRecordBeforeCreateRequest("samples")` setzt `code`,
-      `excursion`, `user_id`
+      `fieldtrip`, `user_id`
 - [x] iOS: `+`-Screen mit `LocationProvider` (CoreLocation) und
       `SampleClient` (HTTP POST) → zeigt vergebenen Code
 
 Phase-1-Limitierungen, die bewusst in spätere Phasen geschoben sind:
 - `user_id = "default"` fest verdrahtet, kein Auth (Phase 3+)
-- Schema-`Required` für `code`/`excursion`/`user_id` ausgeschaltet,
+- Schema-`Required` für `code`/`fieldtrip`/`user_id` ausgeschaltet,
   weil PocketBase-Validation **vor** dem Hook läuft. Hook ist Single
   Source of Truth für diese Felder; Integritätstest = Smoke-Test.
 - Sequenz-Allokation: SELECT + INSERT/UPDATE in Transaction.
@@ -94,18 +94,18 @@ Phase-1-Limitierungen, die bewusst in spätere Phasen geschoben sind:
 Build + App-Launch im iOS-Simulator).
 
 Ziel: Asynchrone Anreicherung der Samples mit Locality (`labelloc`) und
-Messtischblatt (`mtb`); pro Excursion zusätzlich Sonnen-/Mondzeiten und
+Messtischblatt (`mtb`); pro Fieldtrip zusätzlich Sonnen-/Mondzeiten und
 Mond-Sichtbarkeitsfenster (siehe `PROJECT_PLAN.md` §6.5).
 
 Akzeptanzkriterium: Sample zeigt nach < 2 s den Ortsstring und MTB.
-Excursion zeigt Sonnenauf-/-untergang und Mondphase; für eine
-Test-Nachtexkursion ist `moon_above_horizon_during_excursion` gegen
+Fieldtrip zeigt Sonnenauf-/-untergang und Mondphase; für eine
+Test-Nachtexkursion ist `moon_above_horizon_during_fieldtrip` gegen
 eine externe Referenz verifiziert.
 
 ### 2a – Geocoding & MTB-Anreicherung (done am 2026-05-10)
 
 - [x] Migration `1700000002_phase2_enrichment_fields.go`:
-      `admin_units`, `mtb`, `astro` (json) auf `samples`/`excursions`,
+      `admin_units`, `mtb`, `astro` (json) auf `samples`/`fieldtrips`,
       neue `geocache`-Collection mit unique index (service, key)
 - [x] `internal/services/labelloc.go` mit defensivem UTF-8-Handling
       (`repairDoubleEncodedUTF8`: erkennt 4-Byte-Mojibake `0xC3 0x83
@@ -117,7 +117,7 @@ eine externe Referenz verifiziert.
 - [x] HTTP-Wrapper mit exponential backoff, kein Retry auf 4xx
 - [x] `internal/enrichment/`: After-Sample-Insert-Hook in Goroutine
       mit Recover, parallele labelloc + MTB-Calls
-- [x] Excursion-Name-Promotion: wenn Excursion noch Default-Namen hat,
+- [x] Fieldtrip-Name-Promotion: wenn Fieldtrip noch Default-Namen hat,
       auf "Würzburg — 2026-05-10" upgraden sobald Locality bekannt
 - [x] Verifiziert: 2. Sample mit gleichen Koordinaten → Cache-Hit
       (~25 ms statt ~1.5s), `mtb_found:false` für Kanaren
@@ -133,27 +133,27 @@ eine externe Referenz verifiziert.
       `MoonAboveHorizonDuring`, `MaxMoonAltitudeDuring`,
       `ScanMoonRiseSet`. Verifiziert mit bekannten Neumond-/Vollmond-
       Daten 2026-04-17 / 2026-05-01.
-- [x] `internal/astro/astro.go`: `ComputeExcursionAstro` als
+- [x] `internal/astro/astro.go`: `ComputeFieldtripAstro` als
       JSON-bereiter Wrapper.
 - [x] Tests grün, Coverage 78.3%.
 - [x] Library-Entscheidung dokumentiert: `docs/adr/0001-astro-eigenbau.md`.
-- [x] Excursion-Astro-Recompute in `internal/enrichment/excursion.go`,
+- [x] Fieldtrip-Astro-Recompute in `internal/enrichment/fieldtrip.go`,
       sequenziell nach Sample-Anreicherung. Centroid wird inkrementell
       neu berechnet (Mean aller Samples).
-- [x] Bug-Fix nebenbei: `excursionFromRecord` konvertiert PB-UTC-Zeiten
+- [x] Bug-Fix nebenbei: `fieldtripFromRecord` konvertiert PB-UTC-Zeiten
       auf Berlin TZ, damit `SpansMidnight` (und damit
-      `night_excursion`) Mitternachtsübergänge korrekt erkennt.
+      `night_fieldtrip`) Mitternachtsübergänge korrekt erkennt.
 
-End-to-end-Smoke-Test verifiziert (Würzburg 2026-05-10 Tag-Excursion):
+End-to-end-Smoke-Test verifiziert (Würzburg 2026-05-10 Tag-Fieldtrip):
 - Sonnenaufgang 05:42, Sonnenuntergang 20:51 (Referenz 05:46 / 20:48)
 - Mondphase 0.79 → "abnehmender Sichelmond", 38.7% Beleuchtung
 - Mondaufgang 03:01, Mondsichtbarkeit max. 5.1° → niedrig stehend
-- 2026-05-01 Nacht-Excursion: Vollmond 99.7% Beleuchtung, max
-  Altitude 19.3°, `night_excursion=true` korrekt
+- 2026-05-01 Nacht-Fieldtrip: Vollmond 99.7% Beleuchtung, max
+  Altitude 19.3°, `night_fieldtrip=true` korrekt
 
 ### 2c – iOS-Anzeige der angereicherten Daten (done am 2026-05-10)
 
-- [x] `Core/Models/`: `Sample`, `Excursion`, `Astro`, `AdminUnits`,
+- [x] `Core/Models/`: `Sample`, `Fieldtrip`, `Astro`, `AdminUnits`,
       `MTB` als Decodable-Structs. `try?` für JSON-Felder, weil PB für
       ungesetzte JSON-Felder `""` statt `null` zurückgibt.
 - [x] `Core/Models/Decoder.swift`: `JSONDecoder.fieldworks` mit
@@ -162,7 +162,7 @@ End-to-end-Smoke-Test verifiziert (Würzburg 2026-05-10 Tag-Excursion):
       (Astro-Felder) parst.
 - [x] `Core/PocketBaseClient/SampleClient.swift`: `createSample` +
       `fetchSample(id:)`, beide auf `Sample` zurückgebend.
-- [x] `Core/PocketBaseClient/ExcursionClient.swift`:
+- [x] `Core/PocketBaseClient/FieldtripClient.swift`:
       `listRecent(limit:)`, `fetch(id:)`.
 - [x] `AddSampleViewModel`: nach erfolgreichem POST 10×1.5 s polling
       auf `fetchSample(id:)` bis Locality oder MTB da, dann Banner
@@ -170,15 +170,15 @@ End-to-end-Smoke-Test verifiziert (Würzburg 2026-05-10 Tag-Excursion):
 - [x] `AddSampleView`: Success-Card zeigt Code (groß, monospace) +
       Locality + Country + MTB-Sheet, mit Inline-Spinner solange
       Anreicherung pending.
-- [x] `ExcursionsListView` / `ExcursionsListViewModel`: Tab
+- [x] `FieldtripsListView` / `FieldtripsListViewModel`: Tab
       "Exkursionen", lädt jüngste 50, Pull-to-Refresh, Sortierung
       `-collecting_day,-started_at`. Zeile zeigt Name, Tag, Locality,
-      MTB-Nr., Mond-Icon bei `night_excursion=true`.
-- [x] `ExcursionDetailView` mit Header (Tag, Zeitfenster, Locality,
+      MTB-Nr., Mond-Icon bei `night_fieldtrip=true`.
+- [x] `FieldtripDetailView` mit Header (Tag, Zeitfenster, Locality,
       MTB, Centroid) + `AstroPanel`-Komponente.
 - [x] `AstroPanel`: drei Sektionen (Sonne mit Auf-/Untergang +
       bürgerliche Dämmerung; Mond mit Phase, Beleuchtung %, Auf-/Untergang;
-      Während-der-Excursion mit "Mond war anwesend" + max. Höhe und
+      Während-der-Fieldtrip mit "Mond war anwesend" + max. Höhe und
       einer einordnenden Zeile wie "niedrig stehend"/"hochstehend —
       Lichtfang erschwert").
 
@@ -187,7 +187,7 @@ End-to-end im iOS-Simulator (iPhone 16 Pro, iOS 26.2 Sim):
 - GPS-Permission gewährt, Würzburg-Koordinate gesetzt → GPS-Card
   zeigt 49.791300, 9.953400 ±5 m.
 - Backend-End-to-end (curl-getrieben, da kein Touch-Automation in
-  diesem Setup): Liste zeigt Excursions korrekt sortiert, Detail-View
+  diesem Setup): Liste zeigt Fieldtrips korrekt sortiert, Detail-View
   rendert Astro-Panel mit allen Werten.
 
 Phase-2-Limitierungen (bewusst späteren Phasen vorbehalten):
@@ -241,7 +241,7 @@ Phase-3a-Limitierungen, die in 3b folgen:
   lernt der Hook, den Client-Code zu respektieren, solange er
   konfliktfrei ist; bei Konflikt wird der Originalcode in
   `original_code` gesichert.
-- Kein Listen-Reload-Mechanismus für ExcursionsList aus lokaler DB —
+- Kein Listen-Reload-Mechanismus für FieldtripsList aus lokaler DB —
   noch reine Backend-Reads.
 
 ### 3b – Sync-Push + Konfliktauflösung (done am 2026-05-11)
@@ -287,29 +287,29 @@ Bewusst nicht in 3b umgesetzt (in 3c oder später):
 
 ### 3c – Sync-Pull + Karten-Fallback (done am 2026-05-11)
 
-- [x] Migration `v2_local_excursions`: neue Tabelle mit ID/Name/Day/
+- [x] Migration `v2_local_fieldtrips`: neue Tabelle mit ID/Name/Day/
       Night/Started/Ended/Centroid + JSON-Blobs für `admin_units`,
       `mtb`, `astro` (Sub-Objekte als JSON statt vieler Spalten,
       damit derselbe Decoder wie auf dem Netzwerk-Pfad zieht).
 - [x] `AdminUnits`/`MTB`/`Astro` von Decodable auf Codable
       hochgezogen, damit sie als JSON wieder rausgeschrieben werden.
-- [x] `Core/Persistence/LocalExcursion.swift`: GRDB-Record + typed
+- [x] `Core/Persistence/LocalFieldtrip.swift`: GRDB-Record + typed
       Accessoren `adminUnits`/`mtb`/`astro` die das JSON on-demand
-      decoden, plus `init(from: Excursion)`-Konstruktor.
-- [x] `Core/Persistence/LocalExcursionStore.swift`: `upsert([Excursion])`,
+      decoden, plus `init(from: Fieldtrip)`-Konstruktor.
+- [x] `Core/Persistence/LocalFieldtripStore.swift`: `upsert([Fieldtrip])`,
       `fetchAll`/`fetchById`, `observeAll()` als AsyncSequence über
       `ValueObservation`.
-- [x] `Core/Sync/ExcursionsHydrator.swift`: `pull(limit:)` für die
+- [x] `Core/Sync/FieldtripsHydrator.swift`: `pull(limit:)` für die
       Liste, `pullOne(id)` für gezieltes Nachholen.
 - [x] `SyncRunner`-Callback `onSampleSynced(excID)`: nach Sample-Sync
-      wird die Excursion gezielt nachgepullt — damit landen
+      wird die Fieldtrip gezielt nachgepullt — damit landen
       Astro/Enrichment ohne Listen-Refresh in der lokalen DB.
-- [x] `ExcursionsListViewModel` refactor: observiert die lokale DB,
+- [x] `FieldtripsListViewModel` refactor: observiert die lokale DB,
       pullt initial in `start()`, Pull-to-Refresh kickt erneut.
-      `ExcursionsListView` zeigt jetzt LocalExcursion-Daten.
-- [x] `ExcursionDetailView` refactor: nimmt nur die ID, liest lokal
+      `FieldtripsListView` zeigt jetzt LocalFieldtrip-Daten.
+- [x] `FieldtripDetailView` refactor: nimmt nur die ID, liest lokal
       und pullt im Hintergrund. Funktioniert ohne Internet, solange
-      die Excursion zuvor synchronisiert wurde.
+      die Fieldtrip zuvor synchronisiert wurde.
 - [x] `Features/AddSample/CoordinatePickerView.swift`: SwiftUI-
       `MapReader` + `Map(position:)` + Tap-Gesture zum Pin-Setzen.
       Zeigt den aktuellen GPS-Fix als Referenz-Annotation an, plus
@@ -341,11 +341,11 @@ Bewusst NICHT in 3c umgesetzt (kommt wenn das Bedürfnis konkret ist):
 **Status: done** (am 2026-05-11). Astro-Panel war schon mit Phase 2c
 geliefert; in Phase 4 kommt Locality-CRUD + Auto-Vorschlag dazu.
 
-Ziel: Manuelle Fundorte; Auto-Vorschlag für Excursion → Locality;
-Excursion-Detail-Ansicht mit Astro-Panel.
+Ziel: Manuelle Fundorte; Auto-Vorschlag für Fieldtrip → Locality;
+Fieldtrip-Detail-Ansicht mit Astro-Panel.
 
 Akzeptanzkriterium: Mehrere Exkursionen werden korrekt einem Fundort
-zugeordnet; manuelle Korrektur möglich. Excursion-Detail zeigt für den
+zugeordnet; manuelle Korrektur möglich. Fieldtrip-Detail zeigt für den
 Sammeltag Sonnenaufgang, Sonnenuntergang, Mondphase und (bei
 Nachtexkursionen) den Mond-Sichtbarkeitsstatus.
 
@@ -374,14 +374,14 @@ Nachtexkursionen) den Mond-Sichtbarkeitsstatus.
       Property-Cases (Same Point, Würzburg-Frankfurt ~97.6 km,
       Grad-pro-Distanz an 50 °N, Grad Latitude überall).
 - [x] Migration `1700000004_phase4b_suggested_locality`: neues
-      Relations-Feld `suggested_locality` auf `excursions`.
-- [x] `internal/enrichment/excursion.go` setzt nach Astro-Recompute
+      Relations-Feld `suggested_locality` auf `fieldtrips`.
+- [x] `internal/enrichment/fieldtrip.go` setzt nach Astro-Recompute
       die `suggested_locality`, **nur wenn `locality` leer ist** —
       manuelle Zuordnungen werden nie überschrieben.
-- [x] iOS `Excursion` + `LocalExcursion` + Migration v4 mit den
+- [x] iOS `Fieldtrip` + `LocalFieldtrip` + Migration v4 mit den
       neuen Spalten `locality` und `suggested_locality`.
-- [x] `ExcursionClient.setLocality(id, locality)`: PATCH-Endpoint.
-- [x] `ExcursionDetailView` rendert drei Fälle:
+- [x] `FieldtripClient.setLocality(id, locality)`: PATCH-Endpoint.
+- [x] `FieldtripDetailView` rendert drei Fälle:
       - Locality zugeordnet → grüne Card mit Name + "Zuordnung
         entfernen"-Knopf
       - Suggestion vorhanden (locality leer) → orange Lightbulb-Card
@@ -394,7 +394,7 @@ End-to-end-Verifikation Backend (curl-Smoke-Test):
 |---|---|---|
 | 1 | Fundort + Sample 200 m östlich (im Radius 1000 m) | `suggested_locality` gesetzt |
 | 2 | Sample 5 km entfernt vom einzigen Fundort | `suggested_locality` leer |
-| 3 | Excursion mit gesetztem `locality`, neues Sample triggert Recompute | `locality` bleibt, Suggestion wird **nicht** überschrieben |
+| 3 | Fieldtrip mit gesetztem `locality`, neues Sample triggert Recompute | `locality` bleibt, Suggestion wird **nicht** überschrieben |
 
 ### Bewusst nicht in Phase 4 umgesetzt
 
@@ -419,8 +419,8 @@ Jahre auf den Kanaren" funktioniert.
 
 - [x] Migration `1700000005_phase5_filter_columns`: neue Spalten
       `day_of_year` (int 1..366), `country` (text), `admin_area` (text)
-      auf `excursions`, plus Indizes für jede einzeln.
-- [x] `internal/enrichment/excursion.go` setzt nach jeder
+      auf `fieldtrips`, plus Indizes für jede einzeln.
+- [x] `internal/enrichment/fieldtrip.go` setzt nach jeder
       Recompute-Runde alle drei Felder. `day_of_year` aus
       `time.YearDay()` der parsed `collecting_day`; `country`/
       `admin_area` aus `admin_units` via neuer Hilfsfunktion
@@ -434,8 +434,8 @@ Jahre auf den Kanaren" funktioniert.
 
 Phase-5a-Limitierungen (in 5c oder später):
 - `samples` selbst kriegen die Filter-Spalten NICHT; gefiltert wird
-  ausschließlich auf Excursion-Ebene. Sample-Listen sind Drill-down
-  über die Excursion.
+  ausschließlich auf Fieldtrip-Ebene. Sample-Listen sind Drill-down
+  über die Fieldtrip.
 - `island` / `island_group` als eigene Spalten habe ich weggelassen —
   die Kanaren-Frage löst `country='Spanien' && admin_area='Kanarische
   Inseln'`. Wenn wir später z. B. nach einer einzelnen Insel filtern
@@ -443,32 +443,32 @@ Phase-5a-Limitierungen (in 5c oder später):
 
 ### 5b – iOS-Filter-Sheet (done am 2026-05-12)
 
-- [x] Migration v5 (`v5_excursions_filter_columns`) auf der iOS-DB:
+- [x] Migration v5 (`v5_fieldtrips_filter_columns`) auf der iOS-DB:
       Spalten `day_of_year`, `country`, `admin_area` auf
-      `local_excursions`, plus Indizes.
-- [x] `Excursion` + `LocalExcursion` um die drei Felder erweitert,
-      `init(from: Excursion)` kopiert sie.
-- [x] `Features/Excursions/ExcursionsFilter.swift`: Domain-Modell mit
+      `local_fieldtrips`, plus Indizes.
+- [x] `Fieldtrip` + `LocalFieldtrip` um die drei Felder erweitert,
+      `init(from: Fieldtrip)` kopiert sie.
+- [x] `Features/Fieldtrips/FieldtripsFilter.swift`: Domain-Modell mit
       zwei orthogonalen Achsen — Datum (`.off` / `.absolute(from,to)` /
       `.seasonal(fromDOY,toDOY)`) und `country`. Saisonal mit Wrap
       (`fromDOY > toDOY` ⇒ Bereich überspannt Jahreswechsel).
-- [x] `Features/Excursions/ExcursionsFilterSheet.swift`: Sheet mit
+- [x] `Features/Fieldtrips/FieldtripsFilterSheet.swift`: Sheet mit
       Segmented-Picker für den Datumsmodus, Date-Picker für absolut,
       Monat/Tag-Picker für saisonal, Country-Picker aus den lokal
       bekannten Werten. Anwenden / Zurücksetzen.
-- [x] `ExcursionsListViewModel`: hält `all` (alle lokalen) und
+- [x] `FieldtripsListViewModel`: hält `all` (alle lokalen) und
       `visible` (gefiltert), rebuilded automatisch wenn Filter sich
       ändert oder neue Daten reinkommen.
-- [x] `ExcursionsListView`: Filter-Knopf in Toolbar (Icon ist fett
+- [x] `FieldtripsListView`: Filter-Knopf in Toolbar (Icon ist fett
       wenn Filter aktiv), Filter-Chip unter dem Header zeigt
       "n von m gefiltert" mit Aufheben-Button, separater Empty-State
       "Keine Treffer" wenn Filter alle ausschließt.
-- [x] `FieldworksdiaryTests/ExcursionsFilterTests.swift`: 7 Test-Cases
+- [x] `FieldworksdiaryTests/FieldtripsFilterTests.swift`: 7 Test-Cases
       inkl. seasonal wrap und kombinierter Filter; alle grün.
 
 End-to-end: iOS-Build + Test grün (16 Tests gesamt), Newman gegen
 frisches Backend 26/26 grün. Akzeptanzkriterium der Phase erfüllt:
-April-Mai-Bereich + Spanien liefert exakt die Kanaren-Excursion.
+April-Mai-Bereich + Spanien liefert exakt die Kanaren-Fieldtrip.
 
 ### 5c – Karten-Ansicht aller Fundorte (done am 2026-05-12)
 
@@ -488,7 +488,7 @@ April-Mai-Bereich + Spanien liefert exakt die Kanaren-Excursion.
       über die bestehende NavigationStack auf den Map-View.
 
 Bewusst weggelassen:
-- Excursion-Centroids als zweite Pin-Farbe. Lass ich für später —
+- Fieldtrip-Centroids als zweite Pin-Farbe. Lass ich für später —
   die Map-Pins für Localities sind schon ausreichend für den
   „Wo waren wir schon?"-Use-Case.
 - Heatmap. Erst sinnvoll wenn die Datenmenge groß genug ist.
@@ -522,8 +522,8 @@ Anzeige in Listen.
       `DeterminationKind`-enum (det/t/vid) inkl. labelShort/labelLong.
 - [x] `PersonClient` (list, create), `DeterminationClient`
       (list-by-sample, create, update, delete).
-- [x] `LocalSampleStore.fetchByExcursion(_:)` für Drill-down von der
-      Excursion in die Proben-Liste.
+- [x] `LocalSampleStore.fetchByFieldtrip(_:)` für Drill-down von der
+      Fieldtrip in die Proben-Liste.
 - [x] `Features/Samples/SampleDetailView.swift`: Code, Metadaten,
       "Bestimmungen"-Section mit Liste pro Sample, Tap → Edit,
       "+ Neu"-Button (gesperrt solange Sample noch nicht gesynct ist).
@@ -534,7 +534,7 @@ Anzeige in Listen.
 - [x] `PersonPickerView`: Searchable-Liste mit "Neue Person
       anlegen"-Row, der `NewPersonSheet` öffnet und die frische
       Person direkt zurückgibt.
-- [x] `ExcursionDetailView` zeigt jetzt eine "Proben"-Section mit
+- [x] `FieldtripDetailView` zeigt jetzt eine "Proben"-Section mit
       Drill-down auf `SampleDetailView`. Pending-Sync-Indikator pro
       Zeile.
 
@@ -594,12 +594,12 @@ Neudruck mit `superseded_by`-Verkettung möglich.
 - [x] `internal/api/labels.go` mit Custom-Endpoint
       `POST /api/label-pdfs/locality`. Body: `{sample_ids: [...],
       template: "default"}`. Handler lädt Samples + zugehörige
-      Excursions (batched), mappt nach `pdf.SampleLabel`, rendert,
+      Fieldtrips (batched), mappt nach `pdf.SampleLabel`, rendert,
       legt `label_pdfs`-Record an über `forms.RecordUpsert` mit
       `filesystem.NewFileFromBytes` für das PDF.
 - [x] iOS `LabelPDF`-Model, `LabelClient.generateLocality(...)` +
       `downloadPDF(label) → URL` in Cache-Verzeichnis.
-- [x] `ExcursionDetailView` bekommt unter der Proben-Liste einen
+- [x] `FieldtripDetailView` bekommt unter der Proben-Liste einen
       "Locality-Etiketten als PDF"-Button (nur aktiv solange
       mindestens ein gesynctes Sample existiert). Nach erfolgreichem
       Render öffnet sich `PDFShareSheet` mit QuickLook-Preview und
@@ -642,7 +642,7 @@ Neudruck mit `superseded_by`-Verkettung möglich.
 - [x] iOS `LabelTemplate`-enum (`defaultA6` / `multiUpA4`).
 - [x] `LabelClient.generateDetermination(...)` +
       `listForSamples(_:)` mit OR-joined `samples ?= 'id'`-Filter.
-- [x] `ExcursionDetailView` zeigt jetzt:
+- [x] `FieldtripDetailView` zeigt jetzt:
       - Segmented-Picker A6 / A4 multi-up
       - Zwei Buttons "Locality" und "Determination"
       - "Bisherige PDFs"-Section unter den Buttons, mit Tap zum
@@ -660,9 +660,9 @@ Neudruck mit `superseded_by`-Verkettung möglich.
 - **Reprint-Chain** (`superseded_by`-Feld setzen bei
   korrigiertem Re-Render). Manuelle Korrektur per PocketBase-Admin
   reicht, solange die Datenmenge übersichtlich ist.
-- **Multi-Select-UI in ExcursionDetail** für teilweises Drucken.
-  Aktuell wird automatisch über alle gesyncten Proben der Excursion
-  gerendert. Multi-Select kommt zusammen mit einer Cross-Excursion-
+- **Multi-Select-UI in FieldtripDetail** für teilweises Drucken.
+  Aktuell wird automatisch über alle gesyncten Proben der Fieldtrip
+  gerendert. Multi-Select kommt zusammen mit einer Cross-Fieldtrip-
   Batch-Ansicht ("alle 2026er Würzburg-Proben") wenn das Bedürfnis
   da ist.
 - **Konfigurierbare Templates** (Locality-String-Reihenfolge,
@@ -675,27 +675,27 @@ Neudruck mit `superseded_by`-Verkettung möglich.
 
 **Status: done** (am 2026-05-12).
 
-Ziel: Permit-Verwaltung pro Excursion.
+Ziel: Permit-Verwaltung pro Fieldtrip.
 
 ### Backend
 
-- [x] Migration `1700000008_phase8_excursion_permits`: neue Felder
+- [x] Migration `1700000008_phase8_fieldtrip_permits`: neue Felder
       `permit_number` (text) und `permit_pdf` (single file, nur
-      `application/pdf`, max 20 MiB) auf `excursions`.
+      `application/pdf`, max 20 MiB) auf `fieldtrips`.
 - [x] `internal/pdf/locality.go`: `SampleLabel` um `PermitNumber`
       erweitert, `bodyLines` hängt eine Zeile `"Genehmigung <nr>"` an
       wenn nicht leer.
 - [x] `internal/api/labels.go`: `sampleToLabel` liest
-      `excursion.permit_number` und reicht es ans Label durch.
+      `fieldtrip.permit_number` und reicht es ans Label durch.
 - [x] PDF-Unit-Test erweitert um die Permit-Zeile, alle 10 PDF-Tests
       grün.
 
 ### iOS
 
-- [x] `Excursion` + `LocalExcursion` um `permitNumber` und
+- [x] `Fieldtrip` + `LocalFieldtrip` um `permitNumber` und
       `permitPDFFile` erweitert; Migration v6 fügt die Spalten lokal
       hinzu.
-- [x] `ExcursionClient` bekommt drei neue Methoden:
+- [x] `FieldtripClient` bekommt drei neue Methoden:
       - `setPermitNumber(id, number)` — reines JSON-PATCH
       - `uploadPermitPDF(id, fileURL, permitNumber)` — Multipart-PATCH
         mit handgeschriebenem `Data`-Extension-Helper für Field und
@@ -709,7 +709,7 @@ Ziel: Permit-Verwaltung pro Excursion.
 - [x] `PermitEditSheet` kopiert die ausgewählte PDF aus dem
       Document-Picker in das eigene Caches-Verzeichnis, damit der
       Security-Scope nicht offen bleiben muss.
-- [x] `ExcursionDetailView` zeigt jetzt eine **"Genehmigung"-Section**
+- [x] `FieldtripDetailView` zeigt jetzt eine **"Genehmigung"-Section**
       direkt unter dem Locality-Block: Nummer (oder Hinweis "keine"),
       Link auf das gespeicherte PDF (lädt in Caches und öffnet via
       `PDFShareSheet` mit QuickLook), Bearbeiten-Knopf.
@@ -727,7 +727,7 @@ Ziel: Permit-Verwaltung pro Excursion.
 
 ### Bewusst nicht in Phase 8
 
-- **Mehrere Permits pro Excursion** (z. B. Bundesland + Naturschutz).
+- **Mehrere Permits pro Fieldtrip** (z. B. Bundesland + Naturschutz).
   Heute nur eine Nummer + ein PDF. Kommt mit echten Anforderungen.
 - **Permit-Validität / Ablauf-Datum** als eigenes Feld. Lass ich
   weg bis konkret gebraucht.
@@ -740,13 +740,13 @@ Ziel: Permit-Verwaltung pro Excursion.
 
 **Status: zurückgestellt** (am 2026-05-12 vom User explizit
 übersprungen). Datenmodell-Felder dafür sind schon angelegt
-(`Excursion.plants` als json, `Sample.host_plant` als text), die
+(`Fieldtrip.plants` als json, `Sample.host_plant` als text), die
 API-Integration kommt zurück sobald sie wirklich gebraucht wird.
 
 Aufgaben (wenn aktiviert):
 - [ ] API-Recherche
-- [ ] Plant-Photos als Asset bei Excursion oder Locality
-- [ ] Verknüpfung Plant-Bestimmung ↔ Excursion ↔ `Sample.host_plant`
+- [ ] Plant-Photos als Asset bei Fieldtrip oder Locality
+- [ ] Verknüpfung Plant-Bestimmung ↔ Fieldtrip ↔ `Sample.host_plant`
 
 ---
 
@@ -764,7 +764,7 @@ Aufgaben:
       - Backend: `GET /api/export` (auth-required) liefert ein ZIP
         mit `data.json` (alle Owner-Records aus 6 Collections plus
         `meta.user`) und allen angehängten PDFs unter
-        `pdfs/excursions/...` und `pdfs/labels/...`. Datei-Reads
+        `pdfs/fieldtrips/...` und `pdfs/labels/...`. Datei-Reads
         gehen über `app.NewFilesystem()` + `GetFile(BaseFilesPath)`.
       - iOS: `ExportClient.downloadExport()` (URLSession-Download in
         Temp-Datei, parst `Content-Disposition` für den Dateinamen),
@@ -807,7 +807,7 @@ Designentscheidungen (mit User abgestimmt 2026-05-12):
       droppen für Clean-Slate
 - [x] Migration `1700000010_phase11a_users_extended`: `_users` um
       display_name, abbreviation, day_cutoff_hour,
-      default_excursion_split_km, linked_person erweitert,
+      default_fieldtrip_split_km, linked_person erweitert,
       AllowEmailAuth+AllowOAuth2Auth+RequireEmail+MinPasswordLength=8,
       User-Rules: ListRule nil (admin-only), ViewRule/Update/Delete
       `id = @request.auth.id`, CreateRule offen (self-service)
@@ -821,11 +821,11 @@ Designentscheidungen (mit User abgestimmt 2026-05-12):
       auf Custom-Routes nicht befüllt), `defaultUserID` weg, alle
       Querys auf `owner` umgestellt
 - [x] `main.go` registriert `RegisterOwnerSetters`: vor-Create-Hooks
-      auf excursions/localities/people/determinations, die `owner`
+      auf fieldtrips/localities/people/determinations, die `owner`
       vom Auth-Record setzen. Mismatch (client schickt fremde
       owner-ID) → 403
-- [x] `internal/enrichment/excursion.go`: `nearestLocalityID` filtert
-      Locality-Kandidaten nach `owner = excursion.owner`, damit User A
+- [x] `internal/enrichment/fieldtrip.go`: `nearestLocalityID` filtert
+      Locality-Kandidaten nach `owner = fieldtrip.owner`, damit User A
       keinen Vorschlag aus User Bs Fundorten kriegt
 - [x] `internal/api/labels.go`: `RequireRecordAuth("users")` als
       Route-Middleware, plus `assertOwnerOnSamples` im Handler —
@@ -834,7 +834,7 @@ Designentscheidungen (mit User abgestimmt 2026-05-12):
       `newman@fieldworksdiary.local` ein, setzt `auth_token`,
       Collection-Level-`Authorization`-Header trägt es überall an
 - [x] Verifiziert: zwei User-Curl-Test (eigene Codes /1, getrennte
-      Excursions, User B sieht User As Sample nicht). Newman gegen
+      Fieldtrips, User B sieht User As Sample nicht). Newman gegen
       frisches Backend: **49/49 Assertions grün**.
 
 Issue, das ich unterwegs gefunden und gefixt habe: `apis.RequestInfo(c).AuthRecord`
@@ -856,11 +856,11 @@ jetzt direkt diesen Key.
       Account-Delete)
 - [x] `Core/PocketBaseClient/PBAuth.swift` als minimaler `URLRequest`-
       Extension-Hook statt eines voll-ausgebauten `PBRequest`-Builders;
-      jeder der 6 Clients (`SampleClient`, `ExcursionClient`,
+      jeder der 6 Clients (`SampleClient`, `FieldtripClient`,
       `PersonClient`, `LocalityClient`, `DeterminationClient`,
       `LabelClient`) kriegt im init eine optionale `AuthSession` und
       ruft `request.authenticate(with: auth)` vor dem URLSession-Call
-- [x] `Core/Sync/SyncRunner`, `ExcursionsHydrator`, `LocalitiesHydrator`:
+- [x] `Core/Sync/SyncRunner`, `FieldtripsHydrator`, `LocalitiesHydrator`:
       neuer `authProvider`-Closure-Parameter, propagiert Token bei
       jedem Roundtrip
 - [x] `AppContainer` hält `let auth: AuthSession`, `bootstrap()` ruft
@@ -883,14 +883,14 @@ deckt den UX-Flow heute schon end-to-end.
       `client_updated_at` erweitert; neuer `SampleListResponse`-Envelope
 - [x] `SampleClient.listRecent(limit:)` (sort=`-collected_from`,
       Server filtert via Rule auf `owner = @request.auth.id`)
-- [x] `Core/Sync/SamplesHydrator.swift` (Pull-Pendant zu Excursions/
+- [x] `Core/Sync/SamplesHydrator.swift` (Pull-Pendant zu Fieldtrips/
       Localities; single-flight via `isLoading`-Guard)
 - [x] `LocalSampleStore.upsert([Sample])`:
       Match-Reihenfolge `client_uuid → backend_id`, in-flight
       Rows (`.pending`/`.syncing`) bleiben unangetastet, `local_sequences`
       wird auf den höchsten gesehenen Code/Tag bumped, damit Offline-
       Allokation nicht mit hydratisierten Codes kollidiert
-- [x] `LocalSampleStore.reset()`, `LocalExcursionStore.reset()`,
+- [x] `LocalSampleStore.reset()`, `LocalFieldtripStore.reset()`,
       `LocalLocalityStore.reset()` (truncate per `DELETE FROM` —
       löscht zusätzlich `local_sequences`)
 - [x] `LocalSampleStore.userId` ist jetzt `var`, AppContainer schreibt
@@ -964,7 +964,7 @@ läuft mit `.all` ohne `.subtracting(...)`, Coverage in den heute
 ungetesteten Pfaden > 60 %.
 
 Aufgaben:
-- [ ] Tests für `Core/Sync/ExcursionsHydrator`, `LocalitiesHydrator`,
+- [ ] Tests für `Core/Sync/FieldtripsHydrator`, `LocalitiesHydrator`,
       `SamplesHydrator` (0 % → > 60 %)
 - [ ] Tests für `Core/Auth/AuthSession` und `Core/Auth/AuthClient`
       (Token-Restore, Apple-Sign-In, Refresh-Pfad)

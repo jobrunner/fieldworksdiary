@@ -17,10 +17,12 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R2 in progress** (Querschnitts-Rename Excursion → Fieldtrip),
-gestartet 2026-05-26 auf Branch
-`refactor/R2-rename-excursion-to-fieldtrip`. R0 und R1 sind
-abgeschlossen.
+**R2 done** (2026-05-26, Branch
+`refactor/R2-rename-excursion-to-fieldtrip` — drei Commits:
+docs, backend, ios + docs/openapi). Nächste Phase: **R3** —
+PocketBase-Schema-Erweiterungen
+(`placemarks`/`localities`/`samples`/`fieldtrips`). R0 und R1
+sind abgeschlossen.
 
 ---
 
@@ -76,7 +78,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 |---|---|---|---|---|
 | R0 | Inventur | done | – | – |
 | R1 | Designfragen / Decisions | done | R0 | – |
-| R2 | Rename Excursion → Fieldtrip | pending | R1 | alle folgenden |
+| R2 | Rename Excursion → Fieldtrip | done | R1 | alle folgenden |
 | R3 | PB-Schema-Erweiterungen | pending | R2 | R4, R5, R6, R7 |
 | R4 | iOS-Modelle synchron | pending | R3 | R5, R6, R8 |
 | R5 | Sync: Outbox + Version + (Realtime-ADR) | pending | R3, R4 | R6 |
@@ -117,7 +119,7 @@ und Outbox auch ohne Realtime einführen kann.
 
 ## R2 — Querschnitts-Rename: Excursion → Fieldtrip
 
-**Status: in progress** (seit 2026-05-26). Ziel: jeder Code-Identifier `Excursion`/
+**Status: done** (2026-05-26). Ziel: jeder Code-Identifier `Excursion`/
 `excursion`/`excursions` wird zu `Fieldtrip`/`fieldtrip`/`fieldtrips`.
 **UI-Strings auf Deutsch („Exkursion") bleiben unverändert.**
 
