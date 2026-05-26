@@ -201,13 +201,13 @@ func loadLocalityLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.SampleLabel, [
 	if err != nil {
 		return nil, nil, err
 	}
-	excByID, err := batchLoadExcursions(dao, samples)
+	ftByID, err := batchLoadFieldtrips(dao, samples)
 	if err != nil {
 		return nil, nil, err
 	}
 	labels := make([]pdf.SampleLabel, 0, len(samples))
 	for _, s := range samples {
-		labels = append(labels, sampleToLabel(s, excByID[s.GetString("excursion")]))
+		labels = append(labels, sampleToLabel(s, ftByID[s.GetString("fieldtrip")]))
 	}
 	return labels, samples, nil
 }
@@ -295,22 +295,22 @@ func determinationToLabel(s *models.Record, det *models.Record, peopleByID map[s
 	return l
 }
 
-func batchLoadExcursions(dao *daos.Dao, samples []*models.Record) (map[string]*models.Record, error) {
-	excIDs := make(map[string]struct{})
+func batchLoadFieldtrips(dao *daos.Dao, samples []*models.Record) (map[string]*models.Record, error) {
+	ftIDs := make(map[string]struct{})
 	for _, s := range samples {
-		if id := s.GetString("excursion"); id != "" {
-			excIDs[id] = struct{}{}
+		if id := s.GetString("fieldtrip"); id != "" {
+			ftIDs[id] = struct{}{}
 		}
 	}
-	ids := make([]string, 0, len(excIDs))
-	for id := range excIDs {
+	ids := make([]string, 0, len(ftIDs))
+	for id := range ftIDs {
 		ids = append(ids, id)
 	}
 	out := map[string]*models.Record{}
 	if len(ids) == 0 {
 		return out, nil
 	}
-	recs, err := dao.FindRecordsByIds("excursions", ids)
+	recs, err := dao.FindRecordsByIds("fieldtrips", ids)
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +320,7 @@ func batchLoadExcursions(dao *daos.Dao, samples []*models.Record) (map[string]*m
 	return out, nil
 }
 
-func sampleToLabel(s *models.Record, exc *models.Record) pdf.SampleLabel {
+func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
 	label := pdf.SampleLabel{
 		Code:          s.GetString("code"),
 		Lat:           s.GetFloat("lat"),
@@ -335,8 +335,8 @@ func sampleToLabel(s *models.Record, exc *models.Record) pdf.SampleLabel {
 
 	if au := decodeAdminUnits(s.GetString("admin_units")); au != nil {
 		fillAdmin(&label, au)
-	} else if exc != nil {
-		if au := decodeAdminUnits(exc.GetString("admin_units")); au != nil {
+	} else if ft != nil {
+		if au := decodeAdminUnits(ft.GetString("admin_units")); au != nil {
 			fillAdmin(&label, au)
 		}
 	}
@@ -344,8 +344,8 @@ func sampleToLabel(s *models.Record, exc *models.Record) pdf.SampleLabel {
 		label.MTBSheetNumber = mtb.SheetNumber
 		label.MTBSheetName = mtb.SheetName
 	}
-	if exc != nil {
-		label.PermitNumber = exc.GetString("permit_number")
+	if ft != nil {
+		label.PermitNumber = ft.GetString("permit_number")
 	}
 	return label
 }

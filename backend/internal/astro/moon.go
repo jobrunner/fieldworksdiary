@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// MoonInfo collects everything the excursion view cares about.
+// MoonInfo collects everything the fieldtrip view cares about.
 type MoonInfo struct {
 	// Phase is in [0, 1): 0 = new, 0.25 = first quarter, 0.5 = full,
 	// 0.75 = last quarter.
@@ -129,7 +129,7 @@ func MoonAltitude(t time.Time, lat, lon float64) float64 {
 
 // MoonAboveHorizonDuring reports whether the moon was above the
 // horizon at any point in [start, end]. Resolution is 1 minute, which
-// is well below typical excursion granularity.
+// is well below typical fieldtrip granularity.
 func MoonAboveHorizonDuring(start, end time.Time, lat, lon float64) bool {
 	if !end.After(start) {
 		return MoonAltitude(start, lat, lon) > 0

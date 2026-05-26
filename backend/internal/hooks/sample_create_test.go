@@ -78,7 +78,7 @@ func uniqueSuffix(t *testing.T) string {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// processSample — Code-Vergabe + Excursion + Sequence
+// processSample — Code-Vergabe + Fieldtrip + Sequence
 // ────────────────────────────────────────────────────────────────────
 
 func TestProcessSample_AssignsFreshCodeForFirstSampleOfDay(t *testing.T) {
@@ -98,8 +98,8 @@ func TestProcessSample_AssignsFreshCodeForFirstSampleOfDay(t *testing.T) {
 	if got := rec.GetString("owner"); got != owner.Id {
 		t.Errorf("owner = %q, want %q", got, owner.Id)
 	}
-	if rec.GetString("excursion") == "" {
-		t.Error("excursion not set")
+	if rec.GetString("fieldtrip") == "" {
+		t.Error("fieldtrip not set")
 	}
 }
 
@@ -126,13 +126,13 @@ func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
 	if got := second.GetString("code"); got != "260519/2" {
 		t.Errorf("second code = %q, want 260519/2", got)
 	}
-	if first.GetString("excursion") != second.GetString("excursion") {
-		t.Errorf("excursion mismatch: first=%q second=%q",
-			first.GetString("excursion"), second.GetString("excursion"))
+	if first.GetString("fieldtrip") != second.GetString("fieldtrip") {
+		t.Errorf("fieldtrip mismatch: first=%q second=%q",
+			first.GetString("fieldtrip"), second.GetString("fieldtrip"))
 	}
 }
 
-func TestProcessSample_DifferentOwnersGetSeparateExcursionsAndSequences(t *testing.T) {
+func TestProcessSample_DifferentOwnersGetSeparateFieldtripsAndSequences(t *testing.T) {
 	app := setupTestApp(t)
 	alice := createTestUser(t, app, "alice@example.com")
 	bob := createTestUser(t, app, "bob@example.com")
@@ -157,10 +157,10 @@ func TestProcessSample_DifferentOwnersGetSeparateExcursionsAndSequences(t *testi
 	if got := bobSample.GetString("code"); got != "260519/1" {
 		t.Errorf("bob code = %q, want 260519/1", got)
 	}
-	// Aber unterschiedliche Excursions.
-	if aliceSample.GetString("excursion") == bobSample.GetString("excursion") {
-		t.Errorf("alice und bob teilen sich eine Excursion: %q",
-			aliceSample.GetString("excursion"))
+	// Aber unterschiedliche Fieldtrips.
+	if aliceSample.GetString("fieldtrip") == bobSample.GetString("fieldtrip") {
+		t.Errorf("alice und bob teilen sich eine Fieldtrip: %q",
+			aliceSample.GetString("fieldtrip"))
 	}
 }
 
@@ -388,15 +388,15 @@ func TestAuthOwnerID_FailsWhenAuthRecordHasWrongType(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// excursionFromRecord / writeExcursion — Round-Trip + TZ
+// fieldtripFromRecord / writeFieldtrip — Round-Trip + TZ
 // ────────────────────────────────────────────────────────────────────
 
-func TestExcursionFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
+func TestFieldtripFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 	app := setupTestApp(t)
 
-	coll, err := app.Dao().FindCollectionByNameOrId("excursions")
+	coll, err := app.Dao().FindCollectionByNameOrId("fieldtrips")
 	if err != nil {
-		t.Fatalf("excursions collection: %v", err)
+		t.Fatalf("fieldtrips collection: %v", err)
 	}
 	rec := models.NewRecord(coll)
 	rec.Set("owner", "user-id")
@@ -405,7 +405,7 @@ func TestExcursionFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 	rec.Set("started_at", time.Date(2026, 5, 19, 22, 0, 0, 0, time.UTC))
 	rec.Set("ended_at", time.Date(2026, 5, 19, 23, 30, 0, 0, time.UTC))
 
-	e := excursionFromRecord(rec)
+	e := fieldtripFromRecord(rec)
 	if e.StartedAt.Location().String() != berlin.String() {
 		t.Errorf("started_at location = %q, want Europe/Berlin", e.StartedAt.Location())
 	}
@@ -417,13 +417,13 @@ func TestExcursionFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 	}
 }
 
-func TestWriteExcursion_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
+func TestWriteFieldtrip_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 	app := setupTestApp(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("excursions")
+	coll, _ := app.Dao().FindCollectionByNameOrId("fieldtrips")
 
 	// Leerer Name → wird befüllt mit "Sammeltag DD.MM.YYYY"
 	rec := models.NewRecord(coll)
-	writeExcursion(rec, &grouping.Excursion{
+	writeFieldtrip(rec, &grouping.Fieldtrip{
 		UserID: "user-id",
 		Day:    time.Date(2026, 5, 19, 0, 0, 0, 0, berlin),
 	})
@@ -434,7 +434,7 @@ func TestWriteExcursion_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 	// User-vergebener Name → bleibt erhalten
 	rec2 := models.NewRecord(coll)
 	rec2.Set("name", "Heidehöhe")
-	writeExcursion(rec2, &grouping.Excursion{
+	writeFieldtrip(rec2, &grouping.Fieldtrip{
 		UserID: "user-id",
 		Day:    time.Date(2026, 5, 19, 0, 0, 0, 0, berlin),
 	})

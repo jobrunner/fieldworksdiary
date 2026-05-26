@@ -46,10 +46,10 @@ var berlin = func() *time.Location {
 //     defence in depth — we panic-proof the hook),
 //  2. computes the collecting_day from collected_from (default = now)
 //     in Europe/Berlin under a 5 h rollover,
-//  3. finds or creates the matching excursion for (owner, day) and
+//  3. finds or creates the matching fieldtrip for (owner, day) and
 //     extends its time window to include the new sample,
 //  4. allocates the next sequence number atomically,
-//  5. populates the record's `code`, `excursion` and `owner` so
+//  5. populates the record's `code`, `fieldtrip` and `owner` so
 //     PocketBase's subsequent save sees a complete sample.
 func RegisterSampleCreate(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("samples").Add(func(e *core.RecordCreateEvent) error {
@@ -69,7 +69,7 @@ func RegisterSampleCreate(app *pocketbase.PocketBase) {
 // for B even with our rules in place, because rules apply post-write
 // on update/delete but not on create).
 func RegisterOwnerSetters(app *pocketbase.PocketBase) {
-	for _, name := range []string{"excursions", "localities", "people", "determinations", "sample_photos"} {
+	for _, name := range []string{"fieldtrips", "localities", "people", "determinations", "sample_photos"} {
 		app.OnRecordBeforeCreateRequest(name).Add(func(e *core.RecordCreateEvent) error {
 			ownerID, err := authOwnerID(e.HttpContext)
 			if err != nil {
@@ -117,16 +117,16 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 	incomingCode := strings.TrimSpace(rec.GetString("code"))
 
 	var (
-		excID     string
+		ftID      string
 		finalCode string
 	)
 	err := dao.RunInTransaction(func(txDao *daos.Dao) error {
 		repo := newPBRepo(txDao)
-		exc, err := grouping.FindOrCreate(repo, ownerID, day, collectedLocal)
+		ft, err := grouping.FindOrCreate(repo, ownerID, day, collectedLocal)
 		if err != nil {
-			return fmt.Errorf("excursion: %w", err)
+			return fmt.Errorf("fieldtrip: %w", err)
 		}
-		excID = exc.ID
+		ftID = ft.ID
 
 		if incomingCode != "" {
 			// Honor the client-supplied code unless it collides with
@@ -166,7 +166,7 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 		return err
 	}
 
-	rec.Set("excursion", excID)
+	rec.Set("fieldtrip", ftID)
 	rec.Set("owner", ownerID)
 	rec.Set("code", finalCode)
 	return nil
@@ -261,14 +261,14 @@ type pbRepo struct {
 }
 
 func newPBRepo(dao *daos.Dao) *pbRepo {
-	coll, _ := dao.FindCollectionByNameOrId("excursions")
+	coll, _ := dao.FindCollectionByNameOrId("fieldtrips")
 	return &pbRepo{dao: dao, coll: coll}
 }
 
-func (r *pbRepo) FindByUserAndDay(ownerID string, day time.Time) (*grouping.Excursion, error) {
+func (r *pbRepo) FindByUserAndDay(ownerID string, day time.Time) (*grouping.Fieldtrip, error) {
 	dayStr := day.Format("2006-01-02")
 	rec, err := r.dao.FindFirstRecordByFilter(
-		"excursions",
+		"fieldtrips",
 		"owner = {:o} && collecting_day = {:day}",
 		dbx.Params{"o": ownerID, "day": dayStr},
 	)
@@ -278,12 +278,12 @@ func (r *pbRepo) FindByUserAndDay(ownerID string, day time.Time) (*grouping.Excu
 	if err != nil {
 		return nil, err
 	}
-	return excursionFromRecord(rec), nil
+	return fieldtripFromRecord(rec), nil
 }
 
-func (r *pbRepo) Create(e *grouping.Excursion) error {
+func (r *pbRepo) Create(e *grouping.Fieldtrip) error {
 	rec := models.NewRecord(r.coll)
-	writeExcursion(rec, e)
+	writeFieldtrip(rec, e)
 	if err := r.dao.SaveRecord(rec); err != nil {
 		return err
 	}
@@ -291,37 +291,37 @@ func (r *pbRepo) Create(e *grouping.Excursion) error {
 	return nil
 }
 
-func (r *pbRepo) Update(e *grouping.Excursion) error {
-	rec, err := r.dao.FindRecordById("excursions", e.ID)
+func (r *pbRepo) Update(e *grouping.Fieldtrip) error {
+	rec, err := r.dao.FindRecordById("fieldtrips", e.ID)
 	if err != nil {
 		return err
 	}
-	writeExcursion(rec, e)
+	writeFieldtrip(rec, e)
 	return r.dao.SaveRecord(rec)
 }
 
-func excursionFromRecord(rec *models.Record) *grouping.Excursion {
+func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
 	day, _ := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), berlin)
 	// PocketBase returns datetimes in UTC. We convert to the user's
 	// TZ so grouping.SpansMidnight evaluates against local calendar
 	// dates (a 22:00→01:30 window must register as crossing
 	// midnight, even though both instants share a UTC day).
-	return &grouping.Excursion{
+	return &grouping.Fieldtrip{
 		ID:        rec.Id,
 		UserID:    rec.GetString("owner"),
 		Day:       day,
 		StartedAt: rec.GetDateTime("started_at").Time().In(berlin),
 		EndedAt:   rec.GetDateTime("ended_at").Time().In(berlin),
-		Night:     rec.GetBool("night_excursion"),
+		Night:     rec.GetBool("night_fieldtrip"),
 	}
 }
 
-func writeExcursion(rec *models.Record, e *grouping.Excursion) {
+func writeFieldtrip(rec *models.Record, e *grouping.Fieldtrip) {
 	rec.Set("owner", e.UserID)
 	rec.Set("collecting_day", e.Day.Format("2006-01-02"))
 	rec.Set("started_at", e.StartedAt)
 	rec.Set("ended_at", e.EndedAt)
-	rec.Set("night_excursion", e.Night)
+	rec.Set("night_fieldtrip", e.Night)
 	if rec.GetString("name") == "" {
 		rec.Set("name", "Sammeltag "+e.Day.Format("02.01.2006"))
 	}

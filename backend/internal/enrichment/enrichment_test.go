@@ -212,10 +212,10 @@ func (f *fakeServices) mtbClient() *services.MTB {
 	}
 }
 
-// createOwnerSampleExcursion legt einen User + eine Excursion + ein
+// createOwnerSampleFieldtrip legt einen User + eine Fieldtrip + ein
 // Sample mit (lat, lon) an. Owner-Beziehungen werden direkt gesetzt,
 // damit wir keine Hook-Cascade brauchen.
-func createOwnerSampleExcursion(t *testing.T, app *tests.TestApp, lat, lon float64) (ownerID, sampleID, excID string) {
+func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float64) (ownerID, sampleID, ftID string) {
 	t.Helper()
 	dao := app.Dao()
 
@@ -234,20 +234,20 @@ func createOwnerSampleExcursion(t *testing.T, app *tests.TestApp, lat, lon float
 		t.Fatalf("save user: %v", err)
 	}
 
-	excColl, _ := dao.FindCollectionByNameOrId("excursions")
-	exc := models.NewRecord(excColl)
-	exc.Set("owner", user.Id)
-	exc.Set("collecting_day", "2026-05-19")
-	exc.Set("started_at", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
-	exc.Set("ended_at", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
-	if err := dao.SaveRecord(exc); err != nil {
-		t.Fatalf("save excursion: %v", err)
+	ftColl, _ := dao.FindCollectionByNameOrId("fieldtrips")
+	ft := models.NewRecord(ftColl)
+	ft.Set("owner", user.Id)
+	ft.Set("collecting_day", "2026-05-19")
+	ft.Set("started_at", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
+	ft.Set("ended_at", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
+	if err := dao.SaveRecord(ft); err != nil {
+		t.Fatalf("save fieldtrip: %v", err)
 	}
 
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
 	sam := models.NewRecord(samColl)
 	sam.Set("owner", user.Id)
-	sam.Set("excursion", exc.Id)
+	sam.Set("fieldtrip", ft.Id)
 	sam.Set("code", "260519/1")
 	sam.Set("lat", lat)
 	sam.Set("lon", lon)
@@ -255,12 +255,12 @@ func createOwnerSampleExcursion(t *testing.T, app *tests.TestApp, lat, lon float
 	if err := dao.SaveRecord(sam); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
-	return user.Id, sam.Id, exc.Id
+	return user.Id, sam.Id, ft.Id
 }
 
 func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleExcursion(t, app, 49.793, 9.939)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	fakes := newFakeServices(t)
 	e := &Enricher{
@@ -290,7 +290,7 @@ func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
 
 func TestEnricher_Run_NilServicesIsNoOp(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleExcursion(t, app, 49.793, 9.939)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	e := &Enricher{App: app}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -305,7 +305,7 @@ func TestEnricher_Run_NilServicesIsNoOp(t *testing.T) {
 
 func TestEnricher_Run_LabellocFailureDoesNotBlockMTB(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleExcursion(t, app, 49.793, 9.939)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	fakes := newFakeServices(t)
 	fakes.labellocFail = true
@@ -328,11 +328,11 @@ func TestEnricher_Run_LabellocFailureDoesNotBlockMTB(t *testing.T) {
 	}
 }
 
-func TestMaybePropagateToExcursion_FillsEmptyFields(t *testing.T) {
+func TestMaybePropagateToFieldtrip_FillsEmptyFields(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, excID := createOwnerSampleExcursion(t, app, 49.793, 9.939)
+	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
-	// admin_units auf sample setzen, excursion lassen wir leer.
+	// admin_units auf sample setzen, fieldtrip lassen wir leer.
 	sample, _ := app.Dao().FindRecordById("samples", sampleID)
 	sample.Set("admin_units", `{"locality":"Würzburg","country":"DE","adminArea":"Bayern"}`)
 	if err := app.Dao().SaveRecord(sample); err != nil {
@@ -340,27 +340,27 @@ func TestMaybePropagateToExcursion_FillsEmptyFields(t *testing.T) {
 	}
 
 	e := &Enricher{App: app}
-	e.maybePropagateToExcursion(sample)
+	e.maybePropagateToFieldtrip(sample)
 
-	exc, _ := app.Dao().FindRecordById("excursions", excID)
-	if au := exc.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
-		t.Errorf("excursion.admin_units = %q, want propagated", au)
+	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
+	if au := ft.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
+		t.Errorf("fieldtrip.admin_units = %q, want propagated", au)
 	}
 	// Name war initial leer → auto-name: "Würzburg — 2026-05-19"
-	if name := exc.GetString("name"); !strings.Contains(name, "Würzburg") {
-		t.Errorf("excursion.name = %q, want auto-promoted with locality", name)
+	if name := ft.GetString("name"); !strings.Contains(name, "Würzburg") {
+		t.Errorf("fieldtrip.name = %q, want auto-promoted with locality", name)
 	}
 }
 
-func TestMaybePropagateToExcursion_PreservesManualName(t *testing.T) {
+func TestMaybePropagateToFieldtrip_PreservesManualName(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, excID := createOwnerSampleExcursion(t, app, 49.793, 9.939)
+	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	// User-vergebener Name → muss erhalten bleiben.
-	exc, _ := app.Dao().FindRecordById("excursions", excID)
-	exc.Set("name", "Heidehöhe Würzburg")
-	if err := app.Dao().SaveRecord(exc); err != nil {
-		t.Fatalf("save exc: %v", err)
+	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
+	ft.Set("name", "Heidehöhe Würzburg")
+	if err := app.Dao().SaveRecord(ft); err != nil {
+		t.Fatalf("save fieldtrip: %v", err)
 	}
 
 	sample, _ := app.Dao().FindRecordById("samples", sampleID)
@@ -370,10 +370,10 @@ func TestMaybePropagateToExcursion_PreservesManualName(t *testing.T) {
 	}
 
 	e := &Enricher{App: app}
-	e.maybePropagateToExcursion(sample)
+	e.maybePropagateToFieldtrip(sample)
 
-	exc2, _ := app.Dao().FindRecordById("excursions", excID)
-	if got := exc2.GetString("name"); got != "Heidehöhe Würzburg" {
+	ft2, _ := app.Dao().FindRecordById("fieldtrips", ftID)
+	if got := ft2.GetString("name"); got != "Heidehöhe Würzburg" {
 		t.Errorf("name = %q, want 'Heidehöhe Würzburg' (kein Overwrite)", got)
 	}
 }

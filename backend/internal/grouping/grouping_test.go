@@ -8,28 +8,28 @@ import (
 
 // fakeRepo is a tiny stub that records the calls made to it.
 type fakeRepo struct {
-	found     *Excursion
+	found     *Fieldtrip
 	findErr   error
 	createErr error
 	updateErr error
 
-	createdWith []*Excursion
-	updatedWith []*Excursion
+	createdWith []*Fieldtrip
+	updatedWith []*Fieldtrip
 }
 
-func (f *fakeRepo) FindByUserAndDay(userID string, day time.Time) (*Excursion, error) {
+func (f *fakeRepo) FindByUserAndDay(userID string, day time.Time) (*Fieldtrip, error) {
 	if f.findErr != nil {
 		return nil, f.findErr
 	}
 	return f.found, nil
 }
 
-func (f *fakeRepo) Create(e *Excursion) error {
+func (f *fakeRepo) Create(e *Fieldtrip) error {
 	f.createdWith = append(f.createdWith, e)
 	return f.createErr
 }
 
-func (f *fakeRepo) Update(e *Excursion) error {
+func (f *fakeRepo) Update(e *Fieldtrip) error {
 	f.updatedWith = append(f.updatedWith, e)
 	return f.updateErr
 }
@@ -57,8 +57,8 @@ func TestSpansMidnight(t *testing.T) {
 
 func TestExpandWindow(t *testing.T) {
 	berlin, _ := time.LoadLocation("Europe/Berlin")
-	base := func() *Excursion {
-		return &Excursion{
+	base := func() *Fieldtrip {
+		return &Fieldtrip{
 			StartedAt: time.Date(2026, 5, 9, 12, 0, 0, 0, berlin),
 			EndedAt:   time.Date(2026, 5, 9, 14, 0, 0, 0, berlin),
 		}
@@ -108,8 +108,8 @@ func TestFindOrCreate_existingExtended(t *testing.T) {
 	berlin, _ := time.LoadLocation("Europe/Berlin")
 	day := time.Date(2026, 5, 9, 0, 0, 0, 0, berlin)
 	repo := &fakeRepo{
-		found: &Excursion{
-			ID:        "exc1",
+		found: &Fieldtrip{
+			ID:        "ft1",
 			UserID:    "u1",
 			Day:       day,
 			StartedAt: time.Date(2026, 5, 9, 12, 0, 0, 0, berlin),
@@ -122,8 +122,8 @@ func TestFindOrCreate_existingExtended(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if got.ID != "exc1" {
-		t.Errorf("expected existing excursion, got id=%q", got.ID)
+	if got.ID != "ft1" {
+		t.Errorf("expected existing fieldtrip, got id=%q", got.ID)
 	}
 	if !got.EndedAt.Equal(sampleAt) {
 		t.Errorf("EndedAt should have moved to sampleAt; got %v", got.EndedAt)
@@ -147,7 +147,7 @@ func TestFindOrCreate_createsWhenAbsent(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	if !got.StartedAt.Equal(sampleAt) || !got.EndedAt.Equal(sampleAt) {
-		t.Errorf("new excursion window should equal sampleAt")
+		t.Errorf("new fieldtrip window should equal sampleAt")
 	}
 	if got.UserID != "u1" {
 		t.Errorf("UserID = %q", got.UserID)

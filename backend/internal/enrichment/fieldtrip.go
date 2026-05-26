@@ -13,21 +13,21 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 )
 
-// recomputeExcursionDerived loads all samples for the given excursion,
+// recomputeFieldtripDerived loads all samples for the given fieldtrip,
 // updates the centroid, and recomputes the astro snapshot. Best-effort
 // — never crashes the enclosing goroutine, just logs and moves on.
-func (e *Enricher) recomputeExcursionDerived(excID string) {
+func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 	dao := e.App.Dao()
-	exc, err := dao.FindRecordById("excursions", excID)
+	ft, err := dao.FindRecordById("fieldtrips", ftID)
 	if err != nil {
-		e.log().Warn("astro: excursion vanished", slog.String("id", excID), slog.Any("err", err))
+		e.log().Warn("astro: fieldtrip vanished", slog.String("id", ftID), slog.Any("err", err))
 		return
 	}
 
-	samples, err := dao.FindRecordsByFilter("samples", "excursion = {:exc}", "", 0, 0,
-		map[string]any{"exc": excID})
+	samples, err := dao.FindRecordsByFilter("samples", "fieldtrip = {:ft}", "", 0, 0,
+		map[string]any{"ft": ftID})
 	if err != nil {
-		e.log().Warn("astro: sample query failed", slog.String("id", excID), slog.Any("err", err))
+		e.log().Warn("astro: sample query failed", slog.String("id", ftID), slog.Any("err", err))
 		return
 	}
 	if len(samples) == 0 {
@@ -35,51 +35,51 @@ func (e *Enricher) recomputeExcursionDerived(excID string) {
 	}
 
 	cLat, cLon := centroid(samples)
-	exc.Set("centroid_lat", cLat)
-	exc.Set("centroid_lon", cLon)
+	ft.Set("centroid_lat", cLat)
+	ft.Set("centroid_lon", cLon)
 
-	day := parseCollectingDay(exc.GetString("collecting_day"), berlinTZ())
-	startedAt := exc.GetDateTime("started_at").Time()
-	endedAt := exc.GetDateTime("ended_at").Time()
+	day := parseCollectingDay(ft.GetString("collecting_day"), berlinTZ())
+	startedAt := ft.GetDateTime("started_at").Time()
+	endedAt := ft.GetDateTime("ended_at").Time()
 
-	a := astro.ComputeExcursionAstro(day, startedAt, endedAt, cLat, cLon)
+	a := astro.ComputeFieldtripAstro(day, startedAt, endedAt, cLat, cLon)
 	raw, err := json.Marshal(a)
 	if err != nil {
 		e.log().Warn("astro: marshal failed", slog.Any("err", err))
 		return
 	}
-	exc.Set("astro", string(raw))
+	ft.Set("astro", string(raw))
 
 	// Phase-5 denormalised columns for fast filtering. day_of_year
 	// always reflects collecting_day; country / admin_area mirror
 	// whatever admin_units currently has (may be empty if the
 	// labelloc enrichment hasn't landed yet — they get filled the
 	// next time this hook runs).
-	exc.Set("day_of_year", day.YearDay())
-	if au := decodeAdminUnits(exc.GetString("admin_units")); au != nil {
-		exc.Set("country", au.Country)
-		exc.Set("admin_area", au.AdminArea)
+	ft.Set("day_of_year", day.YearDay())
+	if au := decodeAdminUnits(ft.GetString("admin_units")); au != nil {
+		ft.Set("country", au.Country)
+		ft.Set("admin_area", au.AdminArea)
 	}
 
 	// Locality suggestion: only when the user hasn't already chosen
 	// one. We never overwrite a manual assignment. Suggestions are
-	// scoped to the excursion's owner — user A must not see user B's
+	// scoped to the fieldtrip's owner — user A must not see user B's
 	// localities in the prompt.
-	if exc.GetString("locality") == "" {
-		ownerID := exc.GetString("owner")
+	if ft.GetString("locality") == "" {
+		ownerID := ft.GetString("owner")
 		if suggested := nearestLocalityID(dao, ownerID, cLat, cLon); suggested != "" {
-			exc.Set("suggested_locality", suggested)
+			ft.Set("suggested_locality", suggested)
 		} else {
 			// Drop a stale suggestion that no longer applies (e.g.
 			// centroid moved out of the radius).
-			exc.Set("suggested_locality", "")
+			ft.Set("suggested_locality", "")
 		}
 	}
 
-	if err := dao.SaveRecord(exc); err != nil {
+	if err := dao.SaveRecord(ft); err != nil {
 		e.log().Warn(
 			"astro: save failed",
-			slog.String("id", excID),
+			slog.String("id", ftID),
 			slog.Any("err", err),
 		)
 	}
@@ -132,7 +132,7 @@ func centroid(samples []*models.Record) (lat, lon float64) {
 	return lat / n, lon / n
 }
 
-// decodeAdminUnits parses the JSON we stored on the excursion (which
+// decodeAdminUnits parses the JSON we stored on the fieldtrip (which
 // is the trimmed labelloc payload). Returns nil if the field is empty
 // or malformed.
 func decodeAdminUnits(raw string) *services.LabellocResult {

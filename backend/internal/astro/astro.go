@@ -2,9 +2,9 @@ package astro
 
 import "time"
 
-// ExcursionAstro is the JSON shape we persist on `excursion.astro`.
+// FieldtripAstro is the JSON shape we persist on `fieldtrip.astro`.
 // Field names match the §6.5 schema in PROJECT_PLAN.md.
-type ExcursionAstro struct {
+type FieldtripAstro struct {
 	Sunrise       *time.Time `json:"sunrise,omitempty"`
 	Sunset        *time.Time `json:"sunset,omitempty"`
 	CivilDawn     *time.Time `json:"civil_dawn,omitempty"`
@@ -14,17 +14,17 @@ type ExcursionAstro struct {
 	MoonIllum     float64    `json:"moon_illumination"`
 	MoonRise      *time.Time `json:"moon_rise,omitempty"`
 	MoonSet       *time.Time `json:"moon_set,omitempty"`
-	MoonAbove     bool       `json:"moon_above_horizon_during_excursion"`
+	MoonAbove     bool       `json:"moon_above_horizon_during_fieldtrip"`
 	MoonAltMaxDeg float64    `json:"moon_altitude_max_during_deg"`
 }
 
-// ComputeExcursionAstro combines all the per-excursion derived
-// quantities. `day` is the local calendar day of the excursion
-// (typically `excursion.collecting_day` parsed in user's TZ);
-// `start`/`end` are the excursion's started_at/ended_at; (lat, lon)
+// ComputeFieldtripAstro combines all the per-fieldtrip derived
+// quantities. `day` is the local calendar day of the fieldtrip
+// (typically `fieldtrip.collecting_day` parsed in user's TZ);
+// `start`/`end` are the fieldtrip's started_at/ended_at; (lat, lon)
 // is the centroid.
-func ComputeExcursionAstro(day, start, end time.Time, lat, lon float64) ExcursionAstro {
-	out := ExcursionAstro{}
+func ComputeFieldtripAstro(day, start, end time.Time, lat, lon float64) FieldtripAstro {
+	out := FieldtripAstro{}
 
 	suns := ComputeSunTimes(day, lat, lon)
 	out.Sunrise = suns.Sunrise

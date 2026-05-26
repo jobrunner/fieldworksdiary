@@ -42,7 +42,7 @@ type exportPayload struct {
 	ExportedAt     time.Time        `json:"exported_at"`
 	Meta           exportMeta       `json:"meta"`
 	Samples        []map[string]any `json:"samples"`
-	Excursions     []map[string]any `json:"excursions"`
+	Fieldtrips     []map[string]any `json:"fieldtrips"`
 	Localities     []map[string]any `json:"localities"`
 	People         []map[string]any `json:"people"`
 	Determinations []map[string]any `json:"determinations"`
@@ -74,11 +74,11 @@ func handleExport(app core.App, c echo.Context) error {
 	if payload.Samples, err = fetchOwned(dao, "samples", ownerID, "-collected_from"); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "Failed to load samples.", err)
 	}
-	excursions, err := dao.FindRecordsByFilter("excursions", "owner = {:o}", "-collecting_day", 0, 0, dbx.Params{"o": ownerID})
+	fieldtrips, err := dao.FindRecordsByFilter("fieldtrips", "owner = {:o}", "-collecting_day", 0, 0, dbx.Params{"o": ownerID})
 	if err != nil {
-		return apis.NewApiError(http.StatusInternalServerError, "Failed to load excursions.", err)
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load fieldtrips.", err)
 	}
-	payload.Excursions = exportAll(excursions)
+	payload.Fieldtrips = exportAll(fieldtrips)
 	if payload.Localities, err = fetchOwned(dao, "localities", ownerID, "name"); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "Failed to load localities.", err)
 	}
@@ -116,19 +116,19 @@ func handleExport(app core.App, c echo.Context) error {
 	}
 	defer fs.Close()
 
-	// Permit PDFs from excursions.
-	for _, exc := range excursions {
-		name := exc.GetString("permit_pdf")
+	// Permit PDFs from fieldtrips.
+	for _, ft := range fieldtrips {
+		name := ft.GetString("permit_pdf")
 		if name == "" {
 			continue
 		}
-		key := path.Join(exc.BaseFilesPath(), name)
-		entry := path.Join("pdfs", "excursions", exc.Id, name)
+		key := path.Join(ft.BaseFilesPath(), name)
+		entry := path.Join("pdfs", "fieldtrips", ft.Id, name)
 		if err := copyFromStorage(zw, fs, key, entry); err != nil {
 			// Soft-fail: a missing PDF should not break the entire
 			// export. Skip with a note in the ZIP root instead.
-			writeText(zw, fmt.Sprintf("missing/%s.txt", exc.Id),
-				fmt.Sprintf("permit PDF %q for excursion %s could not be read: %v\n", name, exc.Id, err))
+			writeText(zw, fmt.Sprintf("missing/%s.txt", ft.Id),
+				fmt.Sprintf("permit PDF %q for fieldtrip %s could not be read: %v\n", name, ft.Id, err))
 		}
 	}
 

@@ -44,13 +44,13 @@ func (e *Enricher) Register() {
 		recID := ev.Record.Id
 		lat := ev.Record.GetFloat("lat")
 		lon := ev.Record.GetFloat("lon")
-		excID := ev.Record.GetString("excursion")
-		go e.runSafely(recID, lat, lon, excID)
+		ftID := ev.Record.GetString("fieldtrip")
+		go e.runSafely(recID, lat, lon, ftID)
 		return nil
 	})
 }
 
-func (e *Enricher) runSafely(recordID string, lat, lon float64, excID string) {
+func (e *Enricher) runSafely(recordID string, lat, lon float64, ftID string) {
 	defer func() {
 		if r := recover(); r != nil {
 			e.log().Error(
@@ -71,15 +71,15 @@ func (e *Enricher) runSafely(recordID string, lat, lon float64, excID string) {
 
 	// 1. Sample enrichment (labelloc + MTB) — also propagates
 	//    admin_units / mtb / locality-derived name onto the parent
-	//    excursion if those slots are still empty.
+	//    fieldtrip if those slots are still empty.
 	e.run(ctx, recordID, lat, lon)
 
-	// 2. Excursion derived fields (centroid + astro). Runs after the
-	//    sample enrichment so any name-promotion on the excursion is
+	// 2. Fieldtrip derived fields (centroid + astro). Runs after the
+	//    sample enrichment so any name-promotion on the fieldtrip is
 	//    already committed by the time we re-save it here. The
 	//    astro recomputation is purely local (no network), cheap.
-	if excID != "" {
-		e.recomputeExcursionDerived(excID)
+	if ftID != "" {
+		e.recomputeFieldtripDerived(ftID)
 	}
 }
 
@@ -174,46 +174,46 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 		return
 	}
 
-	// Lift admin_units / mtb up to the excursion if the excursion
+	// Lift admin_units / mtb up to the fieldtrip if the fieldtrip
 	// doesn't already have them. Best-effort; not transactional with
 	// the sample save.
-	e.maybePropagateToExcursion(rec)
+	e.maybePropagateToFieldtrip(rec)
 }
 
-// maybePropagateToExcursion fills the excursion's admin_units and mtb
-// fields from this sample if the excursion is still empty. We only
+// maybePropagateToFieldtrip fills the fieldtrip's admin_units and mtb
+// fields from this sample if the fieldtrip is still empty. We only
 // promote — never overwrite — so manual edits stick.
-func (e *Enricher) maybePropagateToExcursion(sample *models.Record) {
-	excID := sample.GetString("excursion")
-	if excID == "" {
+func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record) {
+	ftID := sample.GetString("fieldtrip")
+	if ftID == "" {
 		return
 	}
 	dao := e.App.Dao()
-	exc, err := dao.FindRecordById("excursions", excID)
+	ft, err := dao.FindRecordById("fieldtrips", ftID)
 	if err != nil {
 		return
 	}
 	dirty := false
-	if au := sample.GetString("admin_units"); au != "" && exc.GetString("admin_units") == "" {
-		exc.Set("admin_units", au)
+	if au := sample.GetString("admin_units"); au != "" && ft.GetString("admin_units") == "" {
+		ft.Set("admin_units", au)
 		dirty = true
 	}
-	if mtb := sample.GetString("mtb"); mtb != "" && exc.GetString("mtb") == "" {
-		exc.Set("mtb", mtb)
+	if mtb := sample.GetString("mtb"); mtb != "" && ft.GetString("mtb") == "" {
+		ft.Set("mtb", mtb)
 		dirty = true
 	}
-	// If the excursion still has its default name and we now know the
+	// If the fieldtrip still has its default name and we now know the
 	// locality, upgrade the name. The default starts with "Sammeltag
 	// ", so a strict prefix check is enough.
 	if au := sample.GetString("admin_units"); au != "" {
 		if locality := localityFromAdminUnits(au); locality != "" {
-			currentName := exc.GetString("name")
+			currentName := ft.GetString("name")
 			if currentName == "" || hasDefaultPrefix(currentName) {
-				day := exc.GetString("collecting_day")
+				day := ft.GetString("collecting_day")
 				if day != "" {
-					exc.Set("name", locality+" — "+day)
+					ft.Set("name", locality+" — "+day)
 				} else {
-					exc.Set("name", locality)
+					ft.Set("name", locality)
 				}
 				dirty = true
 			}
@@ -222,10 +222,10 @@ func (e *Enricher) maybePropagateToExcursion(sample *models.Record) {
 	if !dirty {
 		return
 	}
-	if err := dao.SaveRecord(exc); err != nil {
+	if err := dao.SaveRecord(ft); err != nil {
 		e.log().Warn(
-			"enrichment: excursion save failed",
-			slog.String("id", excID),
+			"enrichment: fieldtrip save failed",
+			slog.String("id", ftID),
 			slog.Any("err", err),
 		)
 	}

@@ -71,8 +71,8 @@ func authTokenFor(t *testing.T, app *tests.TestApp, user *models.Record) string 
 }
 
 // makeSample legt ein Sample an, das dem User gehört. Pflichtfelder
-// sind code (eindeutig), lat, lon, excursion (Relation).
-func makeSample(t *testing.T, app *tests.TestApp, ownerID, code, excursionID string) *models.Record {
+// sind code (eindeutig), lat, lon, fieldtrip (Relation).
+func makeSample(t *testing.T, app *tests.TestApp, ownerID, code, fieldtripID string) *models.Record {
 	t.Helper()
 	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
 	rec := models.NewRecord(coll)
@@ -81,16 +81,16 @@ func makeSample(t *testing.T, app *tests.TestApp, ownerID, code, excursionID str
 	rec.Set("lat", 49.793)
 	rec.Set("lon", 9.939)
 	rec.Set("collected_from", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
-	rec.Set("excursion", excursionID)
+	rec.Set("fieldtrip", fieldtripID)
 	if err := app.Dao().SaveRecord(rec); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 	return rec
 }
 
-func makeExcursion(t *testing.T, app *tests.TestApp, ownerID string) *models.Record {
+func makeFieldtrip(t *testing.T, app *tests.TestApp, ownerID string) *models.Record {
 	t.Helper()
-	coll, _ := app.Dao().FindCollectionByNameOrId("excursions")
+	coll, _ := app.Dao().FindCollectionByNameOrId("fieldtrips")
 	rec := models.NewRecord(coll)
 	rec.Set("owner", ownerID)
 	rec.Set("collecting_day", "2026-05-19")
@@ -98,7 +98,7 @@ func makeExcursion(t *testing.T, app *tests.TestApp, ownerID string) *models.Rec
 	rec.Set("started_at", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	rec.Set("ended_at", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
 	if err := app.Dao().SaveRecord(rec); err != nil {
-		t.Fatalf("save excursion: %v", err)
+		t.Fatalf("save fieldtrip: %v", err)
 	}
 	return rec
 }
@@ -110,9 +110,9 @@ func makeExcursion(t *testing.T, app *tests.TestApp, ownerID string) *models.Rec
 func TestAssertOwnerOnSamples_PassesWhenAllMatch(t *testing.T) {
 	app := setupTestApp(t)
 	owner := makeUser(t, app, "owner@example.com")
-	exc := makeExcursion(t, app, owner.Id)
-	s1 := makeSample(t, app, owner.Id, "260519/1", exc.Id)
-	s2 := makeSample(t, app, owner.Id, "260519/2", exc.Id)
+	ft := makeFieldtrip(t, app, owner.Id)
+	s1 := makeSample(t, app, owner.Id, "260519/1", ft.Id)
+	s2 := makeSample(t, app, owner.Id, "260519/2", ft.Id)
 
 	err := assertOwnerOnSamples([]*models.Record{s1, s2}, owner.Id)
 	if err != nil {
@@ -124,10 +124,10 @@ func TestAssertOwnerOnSamples_FailsOnMixedOwners(t *testing.T) {
 	app := setupTestApp(t)
 	owner := makeUser(t, app, "owner@example.com")
 	thief := makeUser(t, app, "thief@example.com")
-	exc1 := makeExcursion(t, app, owner.Id)
-	exc2 := makeExcursion(t, app, thief.Id)
-	mine := makeSample(t, app, owner.Id, "260519/1", exc1.Id)
-	theirs := makeSample(t, app, thief.Id, "260519/1", exc2.Id)
+	ft1 := makeFieldtrip(t, app, owner.Id)
+	ft2 := makeFieldtrip(t, app, thief.Id)
+	mine := makeSample(t, app, owner.Id, "260519/1", ft1.Id)
+	theirs := makeSample(t, app, thief.Id, "260519/1", ft2.Id)
 
 	err := assertOwnerOnSamples([]*models.Record{mine, theirs}, owner.Id)
 	if err == nil {
@@ -165,8 +165,8 @@ func TestReadLabelRequest_RejectsMalformedJSON(t *testing.T) {
 func TestDeterminationToLabel_FallsBackToFullName(t *testing.T) {
 	app := setupTestApp(t)
 	owner := makeUser(t, app, "u@example.com")
-	exc := makeExcursion(t, app, owner.Id)
-	sample := makeSample(t, app, owner.Id, "260519/1", exc.Id)
+	ft := makeFieldtrip(t, app, owner.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ft.Id)
 
 	personColl, _ := app.Dao().FindCollectionByNameOrId("people")
 	person := models.NewRecord(personColl)
@@ -247,10 +247,10 @@ func newLabelsScenario(t *testing.T) (app *tests.TestApp, token string, sampleID
 	app = created
 	owner := makeUser(t, app, "owner@example.com")
 	other := makeUser(t, app, "other@example.com")
-	excOwner := makeExcursion(t, app, owner.Id)
-	excOther := makeExcursion(t, app, other.Id)
-	sample := makeSample(t, app, owner.Id, "260519/1", excOwner.Id)
-	otherSample := makeSample(t, app, other.Id, "260519/1", excOther.Id)
+	ftOwner := makeFieldtrip(t, app, owner.Id)
+	ftOther := makeFieldtrip(t, app, other.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ftOwner.Id)
+	otherSample := makeSample(t, app, other.Id, "260519/1", ftOther.Id)
 
 	token = authTokenFor(t, app, owner)
 	// Setup-Side-Effects bei den Event-Countern wegputzen, damit der

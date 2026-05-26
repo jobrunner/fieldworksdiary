@@ -1,5 +1,5 @@
 // Package astro contains the pure astronomical math we need for
-// excursion enrichment: sun rise/set, civil twilight, moon phase /
+// fieldtrip enrichment: sun rise/set, civil twilight, moon phase /
 // illumination / altitude, and the derived "was the moon above the
 // horizon at any point during this window?" check.
 //

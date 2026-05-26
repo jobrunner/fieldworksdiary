@@ -34,15 +34,15 @@ func newExportScenario(t *testing.T) (app *tests.TestApp, token string) {
 	}
 	app = created
 	owner := makeUser(t, app, "alice@example.com")
-	exc := makeExcursion(t, app, owner.Id)
+	exc := makeFieldtrip(t, app, owner.Id)
 	_ = makeSample(t, app, owner.Id, "260519/1", exc.Id)
 	_ = makeSample(t, app, owner.Id, "260519/2", exc.Id)
 
 	// Ein zweiter User mit eigenem Sample — darf NICHT im Export
 	// von alice auftauchen (Owner-Scoping).
 	thief := makeUser(t, app, "bob@example.com")
-	thiefExc := makeExcursion(t, app, thief.Id)
-	_ = makeSample(t, app, thief.Id, "260519/9", thiefExc.Id)
+	thiefFt := makeFieldtrip(t, app, thief.Id)
+	_ = makeSample(t, app, thief.Id, "260519/9", thiefFt.Id)
 
 	token = authTokenFor(t, app, owner)
 	app.ResetEventCalls()
@@ -66,7 +66,7 @@ func TestExportAll_EmptyInputReturnsEmptySlice(t *testing.T) {
 func TestExportAll_PreservesOrder(t *testing.T) {
 	app, _ := newExportScenario(t)
 	owner := makeUser(t, app, "carl@example.com")
-	exc := makeExcursion(t, app, owner.Id)
+	exc := makeFieldtrip(t, app, owner.Id)
 	s1 := makeSample(t, app, owner.Id, "260519/3", exc.Id)
 	s2 := makeSample(t, app, owner.Id, "260519/4", exc.Id)
 
