@@ -4,6 +4,10 @@ enum SampleClientError: LocalizedError {
     case noEndpoint
     case invalidEndpoint
     case http(status: Int, body: String)
+    /// Server rejected a versioned write with `409 Conflict`. The
+    /// payload carries the server's current `version` so the caller
+    /// can pull the fresh row and retry with the correct counter.
+    case conflict(currentVersion: Int, body: String)
     case decoding(String)
 
     var errorDescription: String? {
@@ -11,9 +15,27 @@ enum SampleClientError: LocalizedError {
         case .noEndpoint: "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: "Endpoint-URL ist ungültig."
         case let .http(status, body): "HTTP \(status): \(body)"
+        case let .conflict(version, _):
+            "Konflikt: serverseitige Version ist \(version). Bitte neu laden."
         case let .decoding(message): "Antwort konnte nicht gelesen werden: \(message)"
         }
     }
+}
+
+/// Inspects a PocketBase 409 body for the `current_version` field
+/// our `enforceVersion` hook attaches. Returns 0 if the body isn't
+/// parseable — defensive against shape drift.
+func parseConflictVersion(from body: String) -> Int {
+    guard let data = body.data(using: .utf8),
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        return 0
+    }
+    // PocketBase wraps the hook's `data` map under `"data"` in its
+    // ApiError JSON. Honor both shapes (top-level + nested).
+    if let v = json["current_version"] as? Int { return v }
+    if let inner = json["data"] as? [String: Any],
+       let v = inner["current_version"] as? Int { return v }
+    return 0
 }
 
 struct SampleClient {
@@ -115,7 +137,14 @@ struct SampleClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
         guard (200 ..< 300).contains(status) else {
-            throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
+            let body = String(data: data, encoding: .utf8) ?? ""
+            if status == 409 {
+                throw SampleClientError.conflict(
+                    currentVersion: parseConflictVersion(from: body),
+                    body: body
+                )
+            }
+            throw SampleClientError.http(status: status, body: body)
         }
         do {
             return try JSONDecoder.fieldworks.decode(Sample.self, from: data)

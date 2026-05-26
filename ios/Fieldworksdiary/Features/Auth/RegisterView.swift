@@ -88,6 +88,7 @@ struct RegisterView: View {
             if body.contains("validation_") { return "E-Mail bereits vergeben oder Passwort zu schwach." }
             return body.isEmpty ? "Registrierung abgelehnt." : body
         case let .http(s, body): return "HTTP \(s): \(body)"
+        case let .conflict(_, body): return "Konflikt: \(body)"
         case .noEndpoint: return "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: return "Endpoint-URL ist ungültig."
         case let .decoding(message): return "Antwort nicht lesbar: \(message)"

@@ -63,6 +63,7 @@ struct LoginView: View {
         switch err {
         case .http(400, _): return "E-Mail oder Passwort nicht erkannt."
         case let .http(s, body): return "HTTP \(s): \(body)"
+        case let .conflict(_, body): return "Konflikt: \(body)"
         case .noEndpoint: return "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: return "Endpoint-URL ist ungültig."
         case let .decoding(message): return "Antwort nicht lesbar: \(message)"

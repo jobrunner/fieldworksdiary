@@ -36,6 +36,12 @@ func main() {
 	// other user-facing collections.
 	hooks.RegisterOwnerSetters(app)
 
+	// Phase R5.1: optimistic-concurrency guard on the versioned
+	// collections (samples, fieldtrips, localities). Stale writes
+	// get 409; happy-path writes have their `version` rewritten
+	// to the canonical post-write counter.
+	hooks.RegisterVersionConflictGuards(app)
+
 	// Phase 7: custom label-PDF endpoints.
 	api.RegisterLabelRoutes(app)
 
