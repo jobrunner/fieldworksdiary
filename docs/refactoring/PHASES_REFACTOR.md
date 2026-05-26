@@ -17,11 +17,60 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R6.3 done** (2026-05-26, Branch
-`refactor/R6.3-offline-fusion`). Pure-Swift-Algorithmus für die
-triviale Client-Fusion (Spec §5.1) ist da. Sechs Unit-Tests
-decken die Spec-§5.5-Fälle plus Boundary, Tie-Breaker
-"nearest wins", und `excludingID` (für Re-Fuse-after-edit) ab.
+**R7.1 + R7.2 done** (2026-05-27, Branch
+`refactor/R7-placemark-pipeline`). Reverse-Geocoding läuft jetzt
+backend-seitig auf Locality-Events; manuelle Korrekturen sind
+über zwei Custom-Endpoints möglich.
+
+R7.1 (Auto-Geocode-Hook):
+- `internal/enrichment/placemark.go` — Hook auf Locality-Create +
+  Update (re-fire bei Koord-Shift > 100 m ODER fehlendem
+  Placemark). Labelloc-Lookup (reuse bestehender Client + Cache),
+  Dedup-Hash (NFC + lower + `|`-join + SHA-256), `placemarks`-
+  Lookup-or-create, `locality.placemark` setzen.
+- Manual-Override sakrosankt: `geocoding_source == "manual"` →
+  no-op.
+- Async + recover. Labelloc-Ausfall blockiert nie den
+  Locality-Save; nächste Koord-Update-Tick fires den Hook
+  erneut.
+- 10 Tests: 6 Hash-Properties + 4 Hook-Integration
+  (lookup-or-create on first run, shared Placemark across
+  Localities, manual override respected, no-coords no-op).
+
+R7.2 (Manual-Override-Endpoints):
+- `internal/api/placemark.go` — zwei Custom-Routes, beide
+  owner-scoped:
+  - `PATCH /api/localities/:id/placemark` — Body: country
+    (ISO-2 required), administrative_area, sub_administrative_area,
+    locality, sub_locality, postal_code, name, thoroughfare.
+    Lookup-or-create mit `geocoding_source = manual`, locality
+    re-pointen.
+  - `DELETE /api/localities/:id/placemark/override` — Locality
+    detacht. Placemark-Row bleibt (andere Localities könnten
+    referenzieren). Nächster Auto-Geocode füllt neu.
+- 6 Tests: happy-path, missing country (400), foreign locality
+  (403), no auth (401), clear-detaches, hash-lock-test gegen
+  Drift zwischen api- und enrichment-Implementierung.
+
+Wiring (`main.go`): `RegisterPlacemarkEnricher` läuft im
+`OnBeforeServe`-Hook neben `Enricher.Register()`,
+`RegisterPlacemarkOverrideRoutes` daneben.
+
+**Was NICHT in R7.1/R7.2 ist:**
+- **R7.3** — Backfill bestehender `samples.admin_units`-JSON-
+  Snapshots in `placemarks`. Datenmigration, eigener PR.
+- **R7.4** — `samples.admin_units` droppen. Erst nach R7.3 +
+  einer Woche Beobachtung in Staging (Spec §6.1).
+- **iOS-Anzeige des Placemark** — UI-Arbeit, gehört zu R8.
+
+R6 abgeschlossen (R6.1 Server-Fusion + R6.2 iOS-Remap +
+R6.3 Offline-Algorithmus). R7 zur Hälfte (R7.1+R7.2 done;
+R7.3+R7.4 als Folge-PR).
+
+Nächste Phase: **R8** (UI-Refactor, inkl. AddSample-Sheet,
+Placemark-Anzeige in Locality-Detail, Fusion-Toast,
+FlagAmbiguous-Badge, Manual-Override-UI) oder **R7.3/R7.4**
+(Backfill + Drop alter Spalten). R8 ist umfangreicher.
 
 R6.3 liefert:
 
@@ -185,7 +234,10 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R6.1 | Locality-Fusion Server-Side | done | R5 | – |
 | R6.2 | iOS RemapEventsPuller + applyRemap | done | R6.1 | – |
 | R6.3 | iOS Offline-Fusion (Algorithmus + Tests) | done | R6.1 | R8 |
-| R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
+| R7.1 | Backend Placemark-Auto-Geocode-Hook | done | R3 | – |
+| R7.2 | Backend Manual-Override-Endpoints | done | R3 | – |
+| R7.3 | Backfill admin_units → Placemarks | pending | R7.1 | R7.4 |
+| R7.4 | Drop samples.admin_units | pending | R7.3 | – |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
 | R10 | Daten-Migration Bestand | pending | R5, R6, R7 | – |

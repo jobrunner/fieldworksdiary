@@ -56,22 +56,31 @@ func main() {
 	// plus attached PDFs).
 	api.RegisterExportRoute(app)
 
-	// Phase 2: async enrichment of samples with labelloc + MTB. The
-	// cache lives in the `geocache` collection; we hand the enricher
-	// a function-bound dao reference because app.Dao() at startup is
-	// nil — the dao is built during app.Start().
+	// Phase R7.2: manual-override endpoints for Locality.placemark.
+	// PATCH sets a `geocoding_source = manual` placemark; DELETE
+	// clears it so the next coord tick re-runs the auto-geocoder.
+	api.RegisterPlacemarkOverrideRoutes(app)
+
+	// Phase 2 + R7.1: async enrichment. Sample-side fills
+	// admin_units / mtb / astro on insert; locality-side reverse-
+	// geocodes the coordinate into a Placemark row.
+	//
+	// The cache lives in the `geocache` collection; we hand each
+	// enricher a function-bound dao reference because app.Dao() at
+	// startup is nil — the dao is built during app.Start().
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		cache := &services.Geocache{Dao: app.Dao()}
+		labelloc := &services.Labelloc{
+			BaseURL:    labellocBaseURL,
+			HTTPClient: httpClient,
+			Cache:      cache,
+			MaxRetries: 3,
+		}
 		enr := &enrichment.Enricher{
-			App: app,
-			Labelloc: &services.Labelloc{
-				BaseURL:    labellocBaseURL,
-				HTTPClient: httpClient,
-				Cache:      cache,
-				MaxRetries: 3,
-			},
+			App:      app,
+			Labelloc: labelloc,
 			MTB: &services.MTB{
 				BaseURL:    mtbBaseURL,
 				HTTPClient: httpClient,
@@ -81,6 +90,15 @@ func main() {
 			Timeout: 15 * time.Second,
 		}
 		enr.Register()
+
+		// Phase R7.1: reverse-geocode any locality whose coordinate
+		// is set (and re-geocode on a > 100 m shift). Manual-source
+		// placemarks are left alone.
+		pm := &enrichment.PlacemarkEnricher{
+			Labelloc: labelloc,
+			Timeout:  15 * time.Second,
+		}
+		enrichment.RegisterPlacemarkEnricher(app, pm)
 		return nil
 	})
 
