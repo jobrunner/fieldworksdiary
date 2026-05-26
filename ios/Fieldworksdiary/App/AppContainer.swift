@@ -22,6 +22,7 @@ final class AppContainer: ObservableObject {
     let localitiesHydrator: LocalitiesHydrator
     let samplesHydrator: SamplesHydrator
     let photos: LocalPhotoStore
+    let mutations: PendingMutationsStore
     let sync: SyncRunner
 
     /// Tracks which user id the local stores currently hold data for,
@@ -63,8 +64,10 @@ final class AppContainer: ObservableObject {
             authProvider: { [weak auth] in auth }
         )
         let photos = LocalPhotoStore(database: database)
+        let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
             store: store,
+            mutationsStore: mutations,
             photoStore: photos,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
@@ -83,6 +86,7 @@ final class AppContainer: ObservableObject {
         self.localitiesHydrator = localitiesHydrator
         self.samplesHydrator = samplesHydrator
         self.photos = photos
+        self.mutations = mutations
         self.sync = sync
     }
 
@@ -134,6 +138,7 @@ final class AppContainer: ObservableObject {
             try fieldtrips.reset()
             try localitiesStore.reset()
             try photos.reset()
+            try mutations.reset()
         } catch {
             // Wipe failures are non-fatal — der neue User sieht
             // maximal Stale-Rows, die der Rule-Filter ohnehin

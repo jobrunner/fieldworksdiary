@@ -27,26 +27,28 @@ protocol SamplePushClient {
 
 extension SampleClient: SamplePushClient {}
 
-/// Pushes pending local samples up to PocketBase.
+/// Pushes pending local samples up to PocketBase, driven by the
+/// `pending_mutations` outbox (R5b).
 ///
-/// Push contract (Phase 3b):
-///   - We send `code`, `client_uuid`, `client_updated_at`.
-///   - Server honors `code` if it doesn't collide with an existing
-///     sample. On collision the server reassigns and stores our code
-///     in `original_code` — the user-readable code on the tube
-///     remains authoritative.
-///   - On any push success we set `syncStatus=.synced` and copy
-///     `backend_id`, `fieldtrip`, and the enrichment fields from the
-///     response. If the server reassigned, we record both `backendCode`
-///     (the server-authoritative one) and keep `code` as the
-///     local/tube value.
+/// Push contract (Phase 3b, R3, R5):
+///   - Wire body uses Spec-aligned names (sample_id, latitude,
+///     longitude, begin_date, version, …).
+///   - Server honors `sample_id` if it doesn't collide. On
+///     collision the server reassigns and stores our value in
+///     `original_code` — the user-readable id on the tube remains
+///     authoritative.
+///   - On any push success we set `syncStatus = .synced` on the
+///     local row, copy backend_id / fieldtrip / locality /
+///     enrichment, dequeue the outbox row, and (best-effort) push
+///     photos + poll enrichment.
 ///
-/// Retry: every 30 s a background tick re-runs the pass for any rows
-/// still in `.pending` or `.failed`. kick() also runs a pass on
-/// demand (e.g. after a new local insert).
+/// Retry: every 30 s a background tick re-runs the pass if anything
+/// is still in the outbox. `kick()` also runs a pass on demand
+/// (e.g. after a new local insert).
 @MainActor
 final class SyncRunner: ObservableObject {
     let store: LocalSampleStore
+    let mutationsStore: PendingMutationsStore
     let photoStore: LocalPhotoStore?
     let endpointProvider: () -> String
     let authProvider: () -> AuthSession?
@@ -61,14 +63,15 @@ final class SyncRunner: ObservableObject {
     private var passTask: Task<Void, Never>?
     private var retryTimer: Task<Void, Never>?
 
-    /// Time between automatic retry passes when there are pending or
-    /// failed rows. Bumped to 5s in tests.
+    /// Time between automatic retry passes when the outbox isn't
+    /// empty. Bumped to 5 s in tests.
     private let retryInterval: Duration
     /// Wartezeit zwischen Enrichment-Polls. 1.5 s in Prod, in Tests
     /// auf 0 setzbar, damit `pollEnrichment` nicht künstlich blockt.
     private let enrichmentPollInterval: Duration
 
     init(store: LocalSampleStore,
+         mutationsStore: PendingMutationsStore,
          photoStore: LocalPhotoStore? = nil,
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthSession? = { nil },
@@ -78,6 +81,7 @@ final class SyncRunner: ObservableObject {
          onSampleSynced: @escaping (String) -> Void = { _ in })
     {
         self.store = store
+        self.mutationsStore = mutationsStore
         self.photoStore = photoStore
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
@@ -106,7 +110,7 @@ final class SyncRunner: ObservableObject {
                 guard let self else { return }
                 try? await Task.sleep(for: self.retryInterval)
                 if Task.isCancelled { return }
-                if let pending = try? self.store.fetchPending(), !pending.isEmpty {
+                if let count = try? self.mutationsStore.count(), count > 0 {
                     self.kick()
                 }
             }
@@ -117,22 +121,53 @@ final class SyncRunner: ObservableObject {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
 
-        let pending: [LocalSample]
+        // Bring any legacy `.pending`/`.failed` rows into the outbox
+        // before we read from it. Idempotent — re-adoption skips rows
+        // that are already represented.
+        reconcileLegacyPending()
+
+        let mutations: [PendingMutation]
         do {
-            pending = try store.fetchPending()
+            mutations = try mutationsStore.fetchAllOrdered()
         } catch {
-            Log.sync.error("fetchPending failed: \(error.localizedDescription)")
+            Log.sync.error("outbox fetch failed: \(error.localizedDescription)")
             return
         }
-        if pending.isEmpty { return }
+        if mutations.isEmpty { return }
 
         let client = clientFactory(endpoint, authProvider())
-        for sample in pending {
-            await push(sample, via: client)
+        for mutation in mutations {
+            await execute(mutation, via: client)
         }
     }
 
-    private func push(_ sample: LocalSample, via client: SamplePushClient) async {
+    /// Dispatch by (entityType, op). Today only Sample-Create is
+    /// wired; other ops still flow through their direct-from-UI
+    /// PATCH clients and won't show up in the outbox.
+    private func execute(_ mutation: PendingMutation, via client: SamplePushClient) async {
+        switch (mutation.entityType, mutation.op) {
+        case (.sample, .create):
+            await executeSampleCreate(mutation, via: client)
+        default:
+            // Unsupported op — record once so the row isn't silently
+            // stuck forever, but don't burn the queue on it.
+            let err = "unsupported mutation: \(mutation.entityType.rawValue)/\(mutation.op.rawValue)"
+            Log.sync.error("\(err)")
+            try? mutationsStore.recordFailure(mutation.id, error: err)
+        }
+    }
+
+    private func executeSampleCreate(_ mutation: PendingMutation, via client: SamplePushClient) async {
+        // For create-mutations we store the LocalSample uuid as
+        // `entity_id` (see LocalSampleStore.createLocal). If the
+        // local row has vanished (manual reset, account switch),
+        // the mutation is garbage — dequeue silently.
+        guard let localId = mutation.entityId,
+              let sample = try? store.fetchById(localId) else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+
         var working = sample
         working.syncStatus = .syncing
         working.syncError = nil
@@ -181,6 +216,9 @@ final class SyncRunner: ObservableObject {
             working.syncStatus = .synced
             try store.update(working)
 
+            // Persisted on the server — remove from outbox.
+            try? mutationsStore.dequeue(mutation.id)
+
             // Hand off the parent fieldtrip id to the container so
             // the fieldtrip-side hydration runs in parallel.
             onSampleSynced(created.fieldtrip)
@@ -193,9 +231,48 @@ final class SyncRunner: ObservableObject {
             await pollEnrichment(id: created.id, sample: working, via: client)
         } catch {
             working.syncStatus = .failed
-            working.syncError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            working.syncError = message
             try? store.update(working)
-            Log.sync.error("sample push failed: \(working.syncError ?? "")")
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("sample push failed: \(message)")
+        }
+    }
+
+    /// Adopts any `local_samples` rows that still sit with
+    /// `syncStatus == .pending` or `.failed` but don't yet have a
+    /// matching outbox entry. Runs at the start of every pass —
+    /// it's a SELECT plus a small Set diff, the cost is negligible
+    /// against the network round-trip that follows.
+    private func reconcileLegacyPending() {
+        let pending: [LocalSample]
+        do {
+            pending = try store.fetchPending()
+        } catch {
+            Log.sync.error("legacy fetchPending failed: \(error.localizedDescription)")
+            return
+        }
+        if pending.isEmpty { return }
+        let outboxed: Set<String>
+        do {
+            outboxed = Set(try mutationsStore.fetch(entityType: .sample)
+                .filter { $0.op == .create }
+                .compactMap(\.entityId))
+        } catch {
+            Log.sync.error("outbox scan failed: \(error.localizedDescription)")
+            return
+        }
+        for sample in pending where !outboxed.contains(sample.id) {
+            do {
+                _ = try mutationsStore.enqueue(
+                    entityType: .sample,
+                    entityId: sample.id,
+                    op: .create,
+                    payload: Data()
+                )
+            } catch {
+                Log.sync.error("legacy enqueue failed: \(error.localizedDescription)")
+            }
         }
     }
 

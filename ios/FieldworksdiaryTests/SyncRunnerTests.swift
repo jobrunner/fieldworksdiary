@@ -8,6 +8,7 @@ import XCTest
 final class SyncRunnerTests: XCTestCase {
     private var database: Database!
     private var store: LocalSampleStore!
+    private var mutations: PendingMutationsStore!
     // swiftlint:disable:next force_unwrapping
     private let berlin = TimeZone(identifier: "Europe/Berlin")!
 
@@ -15,10 +16,12 @@ final class SyncRunnerTests: XCTestCase {
         try super.setUpWithError()
         database = try Database(inMemory: ())
         store = LocalSampleStore(database: database, userId: "user-a", cutoffHour: 5, timeZone: berlin)
+        mutations = PendingMutationsStore(database: database)
     }
 
     override func tearDownWithError() throws {
         store = nil
+        mutations = nil
         database = nil
         try super.tearDownWithError()
     }
@@ -156,6 +159,7 @@ final class SyncRunnerTests: XCTestCase {
     ) -> SyncRunner {
         SyncRunner(
             store: store,
+            mutationsStore: mutations,
             endpointProvider: { "http://test.invalid" },
             authProvider: { nil },
             retryInterval: .seconds(3600), // retry-Loop praktisch aus

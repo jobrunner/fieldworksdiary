@@ -17,33 +17,28 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R5 done** (2026-05-26, Branch `refactor/R5-sync-layer`). Drei
-Schichten:
+**R5b done** (2026-05-26, Branch
+`refactor/R5b-syncrunner-outbox`). Der `SyncRunner` läuft jetzt
+durch die Outbox: `runPass()` ruft `mutationsStore.fetchAllOrdered()`
+und dispatcht pro `PendingMutation` zum passenden Handler.
+Heute wired: `.sample/.create`. Andere Op-Typen melden sich als
+`unsupported mutation` und bleiben in der Queue (ohne Schaden —
+sie taugen für die Folge-Migration in R8).
 
-1. **R5.0** — ADR `docs/adr/0007-realtime-vs-polling.md`:
-   Empfehlung Polling (kein SSE-Client für Swift in Spec-Scope,
-   Update-Frequenz niedrig, Battery-/Bandwidth-Argumente). R5.3
-   („Realtime/Polling") entfällt damit als eigene Phase.
-2. **R5.1** — Version-Conflict-Hook (Backend
-   `internal/hooks/version_conflict.go`, iOS
-   `SampleClientError.conflict` + `parseConflictVersion`).
-   Versionierte Collections: samples, fieldtrips, localities.
-3. **R5.2** — Outbox-Infrastruktur: GRDB v11
-   `pending_mutations`-Tabelle, `PendingMutation`,
-   `PendingMutationsStore` mit FK-safer Reihenfolge
-   (Placemark → Locality → Fieldtrip → Sample → SamplePhoto →
-   Determination, Spec §4.2).
+`reconcileLegacyPending()` läuft am Anfang jedes Passes und
+adoptiert jedes `local_samples`-Row mit `syncStatus ∈ {.pending,
+.failed}`, das noch keinen Outbox-Eintrag hat. Damit ist die
+Migration der Phase-1–14-Bestände in die Outbox idempotent und
+ohne UserDefaults-Marker.
 
-**Was nicht in R5 ist:** der eigentliche SyncRunner-Read-Path
-auf Outbox umzubauen ist eine architekturweite Operation
-(Sample-Create, Photo-Push, Setter-PATCHes aus dem UI). Das wird
-als R5b (separater PR) angegangen — die Outbox-Infrastruktur
-steht, der Vertrag ist dokumentiert. Bis R5b läuft der
-SyncRunner weiter über `syncStatus` auf den Local*-Records.
+`AppContainer` hält jetzt `mutations: PendingMutationsStore`;
+`wipeLocalStores()` macht `mutations.reset()` mit. Tests
+(`SyncRunnerTests`) bleiben unverändert grün — der Mock-Client
+sieht die Outbox nicht und prüft weiterhin den End-State auf
+`LocalSample`.
 
-Nächste Phase: **R5b** (SyncRunner ↔ Outbox-Verdrahtung) ODER
-direkt **R6** (Locality-Fusion). Reihenfolge ist offen — Fusion
-braucht Outbox nicht zwingend.
+R5 + R5b komplett. Nächste Phase: **R6** (Locality-Fusion,
+Server-first).
 
 ---
 
@@ -103,7 +98,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R3 | PB-Schema-Erweiterungen | done | R2 | R4, R5, R6, R7 |
 | R4 | iOS-Modelle synchron | done | R3 | R5, R6, R8 |
 | R5 | Sync: Outbox-Infrastruktur + Version-Conflict + ADR | done | R3, R4 | R6 |
-| R5b | SyncRunner ↔ Outbox-Verdrahtung | pending | R5 | – |
+| R5b | SyncRunner ↔ Outbox-Verdrahtung | done | R5 | – |
 | R6 | Locality-Fusion (Server-first) | pending | R5 | R8, R10 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
