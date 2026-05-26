@@ -57,6 +57,7 @@ final class Database {
         migrator.registerMigration("v8_local_samples_marked", migrate: migrateV8)
         migrator.registerMigration("v9_rename_excursions_to_fieldtrips", migrate: migrateV9)
         migrator.registerMigration("v10_spec_alignment_r3", migrate: migrateV10)
+        migrator.registerMigration("v11_pending_mutations_outbox", migrate: migrateV11)
         try migrator.migrate(writer)
     }
 
@@ -279,5 +280,38 @@ final class Database {
             WHERE latitude IS NULL
         """)
         try db.create(indexOn: "local_localities", columns: ["latitude", "longitude"])
+    }
+
+    /// Phase R5.2: outbox table. Every locally-initiated write that
+    /// needs to go up to the backend lands here first — replaces the
+    /// implicit "sync state lives on the Local* row itself" pattern
+    /// from Phase 1.
+    ///
+    /// The row carries enough to replay the request once the network
+    /// returns: `entity_type` + `op` pick the client method,
+    /// `payload_json` is the encoded body, `entity_id` is the backend
+    /// id (nil for `create`). `attempts` / `last_attempt_at` /
+    /// `last_error` drive the retry/backoff logic in the SyncRunner.
+    ///
+    /// `entity_type` is the singular collection noun ("sample",
+    /// "fieldtrip", "locality", "sample_photo", "determination",
+    /// "placemark"). The dispatch table in `SyncRunner` maps it back
+    /// to the concrete PocketBase client.
+    private static func migrateV11(_ db: GRDB.Database) throws {
+        try db.create(table: "pending_mutations") { t in
+            t.column("id", .text).primaryKey()
+            t.column("entity_type", .text).notNull()
+            t.column("entity_id", .text)
+            t.column("op", .text).notNull()
+            t.column("payload_json", .blob).notNull()
+            t.column("created_at", .datetime).notNull()
+            t.column("attempts", .integer).notNull().defaults(to: 0)
+            t.column("last_attempt_at", .datetime)
+            t.column("last_error", .text)
+        }
+        try db.create(
+            indexOn: "pending_mutations",
+            columns: ["entity_type", "created_at"]
+        )
     }
 }

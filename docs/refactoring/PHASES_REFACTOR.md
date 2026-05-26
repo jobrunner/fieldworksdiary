@@ -17,21 +17,33 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R3 + R4 done** (2026-05-26, Branch
-`refactor/R3-R4-schema-and-models`). Schema-Adds + Renames für
-`placemarks`/`localities`/`samples`/`fieldtrips` und die
-zugehörigen iOS-Modelle wurden in einem PR zusammengeführt, weil
-ein Bruch zwischen R3 (Backend) und R4 (iOS) den Live-Build der
-App vorübergehend zerschossen hätte (Spec-§ vs. Phase-Schnitt).
+**R5 done** (2026-05-26, Branch `refactor/R5-sync-layer`). Drei
+Schichten:
 
-Migrationen 1700000015–1700000018 + GRDB v10. Backend
-`go test ./...` grün, iOS `xcodebuild` grün, alle Logik-Tests
-grün; ein Snapshot-Test (`testPrimaryButton`) failed durch
-Xcode-Renderer-Drift, nicht durch die Refactor-Änderungen.
+1. **R5.0** — ADR `docs/adr/0007-realtime-vs-polling.md`:
+   Empfehlung Polling (kein SSE-Client für Swift in Spec-Scope,
+   Update-Frequenz niedrig, Battery-/Bandwidth-Argumente). R5.3
+   („Realtime/Polling") entfällt damit als eigene Phase.
+2. **R5.1** — Version-Conflict-Hook (Backend
+   `internal/hooks/version_conflict.go`, iOS
+   `SampleClientError.conflict` + `parseConflictVersion`).
+   Versionierte Collections: samples, fieldtrips, localities.
+3. **R5.2** — Outbox-Infrastruktur: GRDB v11
+   `pending_mutations`-Tabelle, `PendingMutation`,
+   `PendingMutationsStore` mit FK-safer Reihenfolge
+   (Placemark → Locality → Fieldtrip → Sample → SamplePhoto →
+   Determination, Spec §4.2).
 
-Nächste Phase: **R5** — Sync-Schicht (Outbox + `version`-
-Konflikt-Handling + ADR zu Realtime vs. Polling). R0 / R1 / R2
-abgeschlossen.
+**Was nicht in R5 ist:** der eigentliche SyncRunner-Read-Path
+auf Outbox umzubauen ist eine architekturweite Operation
+(Sample-Create, Photo-Push, Setter-PATCHes aus dem UI). Das wird
+als R5b (separater PR) angegangen — die Outbox-Infrastruktur
+steht, der Vertrag ist dokumentiert. Bis R5b läuft der
+SyncRunner weiter über `syncStatus` auf den Local*-Records.
+
+Nächste Phase: **R5b** (SyncRunner ↔ Outbox-Verdrahtung) ODER
+direkt **R6** (Locality-Fusion). Reihenfolge ist offen — Fusion
+braucht Outbox nicht zwingend.
 
 ---
 
@@ -90,7 +102,8 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R2 | Rename Excursion → Fieldtrip | done | R1 | alle folgenden |
 | R3 | PB-Schema-Erweiterungen | done | R2 | R4, R5, R6, R7 |
 | R4 | iOS-Modelle synchron | done | R3 | R5, R6, R8 |
-| R5 | Sync: Outbox + Version + (Realtime-ADR) | pending | R3, R4 | R6 |
+| R5 | Sync: Outbox-Infrastruktur + Version-Conflict + ADR | done | R3, R4 | R6 |
+| R5b | SyncRunner ↔ Outbox-Verdrahtung | pending | R5 | – |
 | R6 | Locality-Fusion (Server-first) | pending | R5 | R8, R10 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
