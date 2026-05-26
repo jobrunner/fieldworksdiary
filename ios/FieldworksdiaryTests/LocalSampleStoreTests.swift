@@ -213,7 +213,7 @@ final class LocalSampleStoreTests: XCTestCase {
           "id": "\(id)",
           "code": "\(code)",
           "original_code": "\(originalCode ?? "")",
-          "excursion": "exc-1",
+          "fieldtrip": "ft-1",
           "lat": 49.79,
           "lon": 9.94,
           "collected_from": "2026-05-19T14:00:00.000Z",

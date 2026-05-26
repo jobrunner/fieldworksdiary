@@ -15,7 +15,7 @@ import UIKit
 ///   3. User taps "Speichern" → `save()` writes the local row +
 ///      photos, kicks the sync, switches the VM into "savedSample"
 ///      mode and starts observing enrichment.
-///   4. The bottom enrichment fields (admin units, excursion, astro)
+///   4. The bottom enrichment fields (admin units, fieldtrip, astro)
 ///      stream in as the SyncRunner round-trips. The notes field is
 ///      never overwritten — it's purely user-owned.
 @MainActor
@@ -44,13 +44,13 @@ final class SampleEditorViewModel: ObservableObject {
     /// `save()` writes the row.
     @Published private(set) var savedSample: LocalSample?
     @Published private(set) var savedPhotos: [LocalPhoto] = []
-    @Published private(set) var savedExcursion: LocalExcursion?
+    @Published private(set) var savedFieldtrip: LocalFieldtrip?
     @Published private(set) var saveError: String?
     @Published private(set) var isSaving = false
 
     private let store: LocalSampleStore
     private let photoStore: LocalPhotoStore
-    private let excursionStore: LocalExcursionStore
+    private let fieldtripStore: LocalFieldtripStore
     private let sync: SyncRunner
     private let location: LocationProvider
 
@@ -60,12 +60,12 @@ final class SampleEditorViewModel: ObservableObject {
         sampleID: String?,
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
-        excursionStore: LocalExcursionStore,
+        fieldtripStore: LocalFieldtripStore,
         sync: SyncRunner
     ) {
         self.store = store
         self.photoStore = photoStore
-        self.excursionStore = excursionStore
+        self.fieldtripStore = fieldtripStore
         self.sync = sync
         location = LocationProvider()
 
@@ -204,8 +204,8 @@ final class SampleEditorViewModel: ObservableObject {
         accuracyM = sample.accuracyM
         altitudeM = sample.altitudeM
         savedPhotos = (try? photoStore.fetchBySample(sample.id)) ?? []
-        if let excID = sample.excursion, !excID.isEmpty {
-            savedExcursion = try? excursionStore.fetchById(excID)
+        if let ftID = sample.fieldtrip, !ftID.isEmpty {
+            savedFieldtrip = try? fieldtripStore.fetchById(ftID)
         }
         pendingPhotos = []
     }
@@ -225,8 +225,8 @@ final class SampleEditorViewModel: ObservableObject {
                     self.coordinate = CLLocationCoordinate2D(latitude: fresh.lat, longitude: fresh.lon)
                     self.accuracyM = fresh.accuracyM
                     self.altitudeM = fresh.altitudeM
-                    if let excID = fresh.excursion, !excID.isEmpty {
-                        self.savedExcursion = try? self.excursionStore.fetchById(excID)
+                    if let ftID = fresh.fieldtrip, !ftID.isEmpty {
+                        self.savedFieldtrip = try? self.fieldtripStore.fetchById(ftID)
                     }
                     if fresh.syncStatus == .synced,
                        fresh.adminUnitsLocality != nil || fresh.mtbSheetNumber != nil

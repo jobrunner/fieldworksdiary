@@ -30,7 +30,7 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// Set when the server had to reassign the code on conflict — the
     /// label-on-the-tube code the user originally chose.
     let originalCode: String?
-    let excursion: String
+    let fieldtrip: String
     let lat: Double
     let lon: Double
     let accuracyM: Double?
@@ -51,7 +51,7 @@ struct Sample: Decodable, Identifiable, Equatable {
     let mtb: MTB?
 
     enum CodingKeys: String, CodingKey {
-        case id, code, excursion, lat, lon, notes, marked
+        case id, code, fieldtrip, lat, lon, notes, marked
         case originalCode = "original_code"
         case accuracyM = "accuracy_m"
         case altitudeM = "altitude_m"
@@ -73,7 +73,7 @@ struct Sample: Decodable, Identifiable, Equatable {
         } else {
             originalCode = nil
         }
-        excursion = try c.decode(String.self, forKey: .excursion)
+        fieldtrip = try c.decode(String.self, forKey: .fieldtrip)
         lat = try c.decode(Double.self, forKey: .lat)
         lon = try c.decode(Double.self, forKey: .lon)
         accuracyM = try? c.decode(Double.self, forKey: .accuracyM)

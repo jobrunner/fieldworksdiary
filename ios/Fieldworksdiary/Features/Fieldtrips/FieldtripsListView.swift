@@ -1,12 +1,12 @@
 import SwiftUI
 
-struct ExcursionsListView: View {
+struct FieldtripsListView: View {
     @EnvironmentObject var container: AppContainer
 
     var body: some View {
         NavigationStack {
-            ExcursionsListScreen(
-                store: container.excursions,
+            FieldtripsListScreen(
+                store: container.fieldtrips,
                 hydrator: container.hydrator
             )
         }
@@ -15,12 +15,12 @@ struct ExcursionsListView: View {
 
 /// Internal so HomeView can embed it inside the dashboard's own
 /// NavigationStack without nesting a second one.
-struct ExcursionsListScreen: View {
-    @StateObject private var viewModel: ExcursionsListViewModel
+struct FieldtripsListScreen: View {
+    @StateObject private var viewModel: FieldtripsListViewModel
     @State private var presentingFilter = false
 
-    init(store: LocalExcursionStore, hydrator: ExcursionsHydrator) {
-        _viewModel = StateObject(wrappedValue: ExcursionsListViewModel(
+    init(store: LocalFieldtripStore, hydrator: FieldtripsHydrator) {
+        _viewModel = StateObject(wrappedValue: FieldtripsListViewModel(
             store: store, hydrator: hydrator
         ))
     }
@@ -56,7 +56,7 @@ struct ExcursionsListScreen: View {
             .onAppear { viewModel.start() }
             .refreshable { await viewModel.refresh() }
             .sheet(isPresented: $presentingFilter) {
-                ExcursionsFilterSheet(
+                FieldtripsFilterSheet(
                     filter: $viewModel.filter,
                     countries: viewModel.knownCountries
                 )
@@ -130,36 +130,36 @@ struct ExcursionsListScreen: View {
     }
 
     private var list: some View {
-        List(viewModel.visible) { excursion in
+        List(viewModel.visible) { fieldtrip in
             NavigationLink {
-                ExcursionDetailView(excursionID: excursion.id)
+                FieldtripDetailView(fieldtripID: fieldtrip.id)
             } label: {
-                row(for: excursion)
+                row(for: fieldtrip)
             }
         }
         .listStyle(.plain)
     }
 
-    private func row(for excursion: LocalExcursion) -> some View {
+    private func row(for fieldtrip: LocalFieldtrip) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(displayName(excursion))
+                Text(displayName(fieldtrip))
                     .font(.body.weight(.medium))
                 Spacer()
-                if excursion.nightExcursion {
+                if fieldtrip.nightFieldtrip {
                     Image(systemName: "moon.stars.fill")
                         .foregroundStyle(.indigo)
                         .accessibilityLabel("Nachtexkursion")
                 }
             }
             HStack(spacing: 8) {
-                Text(excursion.collectingDay)
+                Text(fieldtrip.collectingDay)
                     .font(.footnote.monospacedDigit())
-                if let locality = excursion.adminUnits?.locality, !locality.isEmpty {
+                if let locality = fieldtrip.adminUnits?.locality, !locality.isEmpty {
                     Text("·")
                     Text(locality)
                 }
-                if let mtb = excursion.mtb?.sheetNumber, !mtb.isEmpty {
+                if let mtb = fieldtrip.mtb?.sheetNumber, !mtb.isEmpty {
                     Text("· MTB \(mtb)")
                 }
             }
@@ -169,8 +169,8 @@ struct ExcursionsListScreen: View {
         .padding(.vertical, 4)
     }
 
-    private func displayName(_ excursion: LocalExcursion) -> String {
-        if !excursion.name.isEmpty { return excursion.name }
-        return "Sammeltag \(excursion.collectingDay)"
+    private func displayName(_ fieldtrip: LocalFieldtrip) -> String {
+        if !fieldtrip.name.isEmpty { return fieldtrip.name }
+        return "Sammeltag \(fieldtrip.collectingDay)"
     }
 }

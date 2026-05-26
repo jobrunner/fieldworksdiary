@@ -1,7 +1,7 @@
 import Foundation
 
 /// Shared multipart-form-data helpers for PocketBase uploads. Used by
-/// `ExcursionClient.uploadPermitPDF` (Phase 8) and `PhotoClient.upload`
+/// `FieldtripClient.uploadPermitPDF` (Phase 8) and `PhotoClient.upload`
 /// (Phase 14). The shape is the standard `--<boundary>` / Content-
 /// Disposition framing — nothing PocketBase-specific.
 extension Data {

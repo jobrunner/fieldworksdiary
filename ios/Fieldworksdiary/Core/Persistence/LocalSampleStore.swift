@@ -71,7 +71,7 @@ final class LocalSampleStore {
                 collectedFrom: collectedFrom,
                 notes: notes,
                 marked: false,
-                excursion: nil,
+                fieldtrip: nil,
                 adminUnitsLocality: nil,
                 adminUnitsCountry: nil,
                 mtbSheetNumber: nil,
@@ -170,13 +170,13 @@ final class LocalSampleStore {
         }
     }
 
-    /// Samples belonging to the given excursion id. Only rows that
-    /// have already been synced are returned (the excursion column
+    /// Samples belonging to the given fieldtrip id. Only rows that
+    /// have already been synced are returned (the fieldtrip column
     /// is set after the SyncRunner round-trip).
-    func fetchByExcursion(_ excursionID: String) throws -> [LocalSample] {
+    func fetchByFieldtrip(_ fieldtripID: String) throws -> [LocalSample] {
         try database.reader.read { db in
             try LocalSample
-                .filter(Column("excursion") == excursionID)
+                .filter(Column("fieldtrip") == fieldtripID)
                 .order(Column("collected_from"))
                 .fetchAll(db)
         }
@@ -289,7 +289,7 @@ final class LocalSampleStore {
         if let from = r.collectedFrom { local.collectedFrom = from }
         if let n = r.notes { local.notes = n }
         local.marked = r.marked
-        local.excursion = r.excursion
+        local.fieldtrip = r.fieldtrip
         local.adminUnitsLocality = r.adminUnits?.locality
         local.adminUnitsCountry = r.adminUnits?.country
         local.mtbSheetNumber = r.mtb?.sheetNumber
@@ -320,7 +320,7 @@ final class LocalSampleStore {
             collectedFrom: r.collectedFrom ?? now,
             notes: r.notes ?? "",
             marked: r.marked,
-            excursion: r.excursion,
+            fieldtrip: r.fieldtrip,
             adminUnitsLocality: r.adminUnits?.locality,
             adminUnitsCountry: r.adminUnits?.country,
             mtbSheetNumber: r.mtb?.sheetNumber,

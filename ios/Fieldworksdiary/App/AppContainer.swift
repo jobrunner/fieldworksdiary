@@ -16,8 +16,8 @@ final class AppContainer: ObservableObject {
     // periphery:ignore
     let database: Database
     let store: LocalSampleStore
-    let excursions: LocalExcursionStore
-    let hydrator: ExcursionsHydrator
+    let fieldtrips: LocalFieldtripStore
+    let hydrator: FieldtripsHydrator
     let localitiesStore: LocalLocalityStore
     let localitiesHydrator: LocalitiesHydrator
     let samplesHydrator: SamplesHydrator
@@ -45,9 +45,9 @@ final class AppContainer: ObservableObject {
         let auth = AuthSession { config.endpointURL }
 
         let store = LocalSampleStore(database: database)
-        let excursions = LocalExcursionStore(database: database)
-        let hydrator = ExcursionsHydrator(
-            store: excursions,
+        let fieldtrips = LocalFieldtripStore(database: database)
+        let hydrator = FieldtripsHydrator(
+            store: fieldtrips,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
@@ -68,8 +68,8 @@ final class AppContainer: ObservableObject {
             photoStore: photos,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
-            onSampleSynced: { excursionID in
-                Task { await hydrator.pullOne(excursionID) }
+            onSampleSynced: { fieldtripID in
+                Task { await hydrator.pullOne(fieldtripID) }
             }
         )
 
@@ -77,7 +77,7 @@ final class AppContainer: ObservableObject {
         self.auth = auth
         self.database = database
         self.store = store
-        self.excursions = excursions
+        self.fieldtrips = fieldtrips
         self.hydrator = hydrator
         self.localitiesStore = localitiesStore
         self.localitiesHydrator = localitiesHydrator
@@ -131,7 +131,7 @@ final class AppContainer: ObservableObject {
     private func wipeLocalStores() {
         do {
             try store.reset()
-            try excursions.reset()
+            try fieldtrips.reset()
             try localitiesStore.reset()
             try photos.reset()
         } catch {
@@ -147,8 +147,8 @@ final class AppContainer: ObservableObject {
         // single-flight, so a tab .task that also kicks pull() while
         // this is running just no-ops.
         async let samplesPull: Void = samplesHydrator.pull()
-        async let excursionsPull: Void = hydrator.pull()
+        async let fieldtripsPull: Void = hydrator.pull()
         async let localitiesPull: Void = localitiesHydrator.pull()
-        _ = await(samplesPull, excursionsPull, localitiesPull)
+        _ = await(samplesPull, fieldtripsPull, localitiesPull)
     }
 }

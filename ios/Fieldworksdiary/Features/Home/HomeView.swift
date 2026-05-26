@@ -14,7 +14,7 @@ struct HomeView: View {
         HomeContent(
             auth: auth,
             samples: container.store,
-            excursions: container.excursions,
+            fieldtrips: container.fieldtrips,
             localities: container.localitiesStore,
             photos: container.photos,
             sync: container.sync
@@ -31,7 +31,7 @@ private struct HomeContent: View {
     init(
         auth: AuthSession,
         samples: LocalSampleStore,
-        excursions: LocalExcursionStore,
+        fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
         photos: LocalPhotoStore,
         sync: SyncRunner
@@ -39,7 +39,7 @@ private struct HomeContent: View {
         _viewModel = StateObject(wrappedValue: HomeViewModel(
             auth: auth,
             samples: samples,
-            excursions: excursions,
+            fieldtrips: fieldtrips,
             localities: localities,
             photos: photos
         ))
@@ -52,7 +52,7 @@ private struct HomeContent: View {
                 VStack(spacing: 0) {
                     HomeHeader(
                         collectorName: viewModel.collectorName,
-                        activeExcursion: viewModel.activeExcursion,
+                        activeFieldtrip: viewModel.activeFieldtrip,
                         recentSample: viewModel.recentSample,
                         onAddSample: { presentingNewSample = true }
                     )
@@ -93,10 +93,10 @@ private struct HomeContent: View {
 
             row(icon: "calendar.badge.clock",
                 title: "Exkursionen",
-                count: viewModel.excursionCount,
+                count: viewModel.fieldtripCount,
                 destination: {
-                    ExcursionsListScreen(
-                        store: container.excursions,
+                    FieldtripsListScreen(
+                        store: container.fieldtrips,
                         hydrator: container.hydrator
                     )
                 })

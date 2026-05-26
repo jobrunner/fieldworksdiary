@@ -1,6 +1,6 @@
 import Foundation
 
-/// The shape of the Excursions-list filter. Two independent
+/// The shape of the Fieldtrips-list filter. Two independent
 /// dimensions:
 ///
 ///   - `date`: how to slice on time (off, absolute calendar range,
@@ -9,7 +9,7 @@ import Foundation
 ///
 /// Filtering happens client-side against the already-hydrated local
 /// store, so the same filter works offline.
-struct ExcursionsFilter: Equatable {
+struct FieldtripsFilter: Equatable {
     enum DateMode: Equatable {
         case off
         case absolute(from: Date, to: Date)
@@ -20,7 +20,7 @@ struct ExcursionsFilter: Equatable {
     }
 
     var date: DateMode = .off
-    var country: String? // exact match on Excursion.country
+    var country: String? // exact match on Fieldtrip.country
 
     static let none = Self()
 
@@ -33,21 +33,21 @@ struct ExcursionsFilter: Equatable {
         return false
     }
 
-    /// Filter a list of excursions in-place. Used by the list view
+    /// Filter a list of fieldtrips in-place. Used by the list view
     /// model.
-    func apply(to items: [LocalExcursion]) -> [LocalExcursion] {
+    func apply(to items: [LocalFieldtrip]) -> [LocalFieldtrip] {
         items.filter { matches($0) }
     }
 
-    func matches(_ excursion: LocalExcursion) -> Bool {
+    func matches(_ fieldtrip: LocalFieldtrip) -> Bool {
         switch date {
         case .off:
             break
         case let .absolute(from, to):
-            guard let day = parseDay(excursion.collectingDay) else { return false }
+            guard let day = parseDay(fieldtrip.collectingDay) else { return false }
             if day < startOfDay(from) || day > endOfDay(to) { return false }
         case let .seasonal(fromDOY, toDOY):
-            guard let doy = excursion.dayOfYear else { return false }
+            guard let doy = fieldtrip.dayOfYear else { return false }
             if fromDOY <= toDOY {
                 if doy < fromDOY || doy > toDOY { return false }
             } else {
@@ -57,7 +57,7 @@ struct ExcursionsFilter: Equatable {
             }
         }
         if let country, !country.isEmpty {
-            guard let excursionCountry = excursion.country, excursionCountry == country else { return false }
+            guard let fieldtripCountry = fieldtrip.country, fieldtripCountry == country else { return false }
         }
         return true
     }

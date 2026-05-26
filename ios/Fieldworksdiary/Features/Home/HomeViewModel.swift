@@ -11,7 +11,7 @@ import Foundation
 /// user can trigger.
 @MainActor
 final class HomeViewModel: ObservableObject {
-    struct ActiveExcursion: Equatable {
+    struct ActiveFieldtrip: Equatable {
         let id: String
         let title: String
         let localityName: String?
@@ -24,17 +24,17 @@ final class HomeViewModel: ObservableObject {
     }
 
     @Published var collectorName: String = ""
-    @Published var activeExcursion: ActiveExcursion?
+    @Published var activeFieldtrip: ActiveFieldtrip?
     @Published var recentSample: RecentSample?
     @Published var sampleCount: Int = 0
     @Published var markedCount: Int = 0
-    @Published var excursionCount: Int = 0
+    @Published var fieldtripCount: Int = 0
     @Published var localityCount: Int = 0
     @Published var photoCount: Int = 0
 
     private let auth: AuthSession
     private let samples: LocalSampleStore
-    private let excursions: LocalExcursionStore
+    private let fieldtrips: LocalFieldtripStore
     private let localities: LocalLocalityStore
     private let photos: LocalPhotoStore
 
@@ -47,13 +47,13 @@ final class HomeViewModel: ObservableObject {
     init(
         auth: AuthSession,
         samples: LocalSampleStore,
-        excursions: LocalExcursionStore,
+        fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
         photos: LocalPhotoStore
     ) {
         self.auth = auth
         self.samples = samples
-        self.excursions = excursions
+        self.fieldtrips = fieldtrips
         self.localities = localities
         self.photos = photos
     }
@@ -62,11 +62,11 @@ final class HomeViewModel: ObservableObject {
         collectorName = displayName(for: auth.currentUser)
         sampleCount = (try? samples.count()) ?? 0
         markedCount = (try? samples.countMarked()) ?? 0
-        excursionCount = (try? excursions.count()) ?? 0
+        fieldtripCount = (try? fieldtrips.count()) ?? 0
         localityCount = (try? localities.count()) ?? 0
         photoCount = (try? photos.count()) ?? 0
 
-        activeExcursion = loadActiveExcursion()
+        activeFieldtrip = loadActiveFieldtrip()
         recentSample = loadRecentSample()
     }
 
@@ -79,15 +79,15 @@ final class HomeViewModel: ObservableObject {
         return user.email
     }
 
-    private func loadActiveExcursion() -> ActiveExcursion? {
+    private func loadActiveFieldtrip() -> ActiveFieldtrip? {
         let today = Codes.collectingDay(Date(), cutoffHour: cutoffHour, timeZone: timeZone)
         let key = Codes.collectingDayKey(today, timeZone: timeZone)
-        guard let exc = try? excursions.fetchByCollectingDay(key) else { return nil }
-        let title = exc.name.isEmpty
-            ? "Sammeltag \(formattedShort(exc.collectingDay))"
-            : exc.name
-        let localityName = localityName(for: exc.locality)
-        return ActiveExcursion(id: exc.id, title: title, localityName: localityName)
+        guard let ft = try? fieldtrips.fetchByCollectingDay(key) else { return nil }
+        let title = ft.name.isEmpty
+            ? "Sammeltag \(formattedShort(ft.collectingDay))"
+            : ft.name
+        let localityName = localityName(for: ft.locality)
+        return ActiveFieldtrip(id: ft.id, title: title, localityName: localityName)
     }
 
     private func loadRecentSample() -> RecentSample? {

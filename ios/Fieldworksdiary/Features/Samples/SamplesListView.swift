@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Top-level list of every locally-known sample, grouped by
 /// collecting day (newest first). New in Phase 14 — previously the
-/// only way to see samples was the drill-down from an excursion.
+/// only way to see samples was the drill-down from a fieldtrip.
 struct SamplesListView: View {
     var body: some View {
         NavigationStack {

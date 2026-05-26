@@ -1,23 +1,23 @@
 import Foundation
 
 @MainActor
-final class ExcursionsListViewModel: ObservableObject {
-    /// All excursions currently in the local store (un-filtered).
-    @Published private(set) var all: [LocalExcursion] = []
+final class FieldtripsListViewModel: ObservableObject {
+    /// All fieldtrips currently in the local store (un-filtered).
+    @Published private(set) var all: [LocalFieldtrip] = []
     /// View-visible list after applying the in-memory filter.
-    @Published private(set) var visible: [LocalExcursion] = []
+    @Published private(set) var visible: [LocalFieldtrip] = []
     @Published private(set) var isHydrating = false
     @Published private(set) var hydratingError: String?
 
-    @Published var filter: ExcursionsFilter = .none {
+    @Published var filter: FieldtripsFilter = .none {
         didSet { rebuildVisible() }
     }
 
-    private let store: LocalExcursionStore
-    private let hydrator: ExcursionsHydrator
+    private let store: LocalFieldtripStore
+    private let hydrator: FieldtripsHydrator
     private var observationTask: Task<Void, Never>?
 
-    init(store: LocalExcursionStore, hydrator: ExcursionsHydrator) {
+    init(store: LocalFieldtripStore, hydrator: FieldtripsHydrator) {
         self.store = store
         self.hydrator = hydrator
     }

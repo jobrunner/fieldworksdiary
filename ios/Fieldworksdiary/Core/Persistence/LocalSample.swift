@@ -23,7 +23,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var collectedFrom: Date
     var notes: String
     var marked: Bool
-    var excursion: String? // backend excursion id, set after sync
+    var fieldtrip: String? // backend fieldtrip id, set after sync
     var adminUnitsLocality: String?
     var adminUnitsCountry: String?
     var mtbSheetNumber: String?
@@ -47,7 +47,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case collectedFrom = "collected_from"
         case notes
         case marked
-        case excursion
+        case fieldtrip
         case adminUnitsLocality = "admin_units_locality"
         case adminUnitsCountry = "admin_units_country"
         case mtbSheetNumber = "mtb_sheet_number"

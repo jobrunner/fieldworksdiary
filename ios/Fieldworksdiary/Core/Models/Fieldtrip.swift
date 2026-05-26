@@ -10,7 +10,7 @@ struct Astro: Codable, Equatable {
     let moonIllumination: Double
     let moonRise: Date?
     let moonSet: Date?
-    let moonAboveHorizonDuringExcursion: Bool
+    let moonAboveHorizonDuringFieldtrip: Bool
     let moonAltitudeMaxDuringDeg: Double
 
     enum CodingKeys: String, CodingKey {
@@ -22,16 +22,16 @@ struct Astro: Codable, Equatable {
         case moonIllumination = "moon_illumination"
         case moonRise = "moon_rise"
         case moonSet = "moon_set"
-        case moonAboveHorizonDuringExcursion = "moon_above_horizon_during_excursion"
+        case moonAboveHorizonDuringFieldtrip = "moon_above_horizon_during_fieldtrip"
         case moonAltitudeMaxDuringDeg = "moon_altitude_max_during_deg"
     }
 }
 
-struct Excursion: Decodable, Identifiable, Equatable {
+struct Fieldtrip: Decodable, Identifiable, Equatable {
     let id: String
     let name: String
     let collectingDay: String
-    let nightExcursion: Bool
+    let nightFieldtrip: Bool
     let startedAt: Date?
     let endedAt: Date?
     let centroidLat: Double?
@@ -47,7 +47,7 @@ struct Excursion: Decodable, Identifiable, Equatable {
     let dayOfYear: Int?
     let country: String?
     let adminArea: String?
-    /// Optional research permit on the excursion. Number for labels,
+    /// Optional research permit on the fieldtrip. Number for labels,
     /// PDF for archive.
     let permitNumber: String?
     let permitPDFFile: String?
@@ -55,7 +55,7 @@ struct Excursion: Decodable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id, name
         case collectingDay = "collecting_day"
-        case nightExcursion = "night_excursion"
+        case nightFieldtrip = "night_fieldtrip"
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case centroidLat = "centroid_lat"
@@ -76,7 +76,7 @@ struct Excursion: Decodable, Identifiable, Equatable {
         id = try c.decode(String.self, forKey: .id)
         name = (try? c.decode(String.self, forKey: .name)) ?? ""
         collectingDay = try c.decode(String.self, forKey: .collectingDay)
-        nightExcursion = (try? c.decode(Bool.self, forKey: .nightExcursion)) ?? false
+        nightFieldtrip = (try? c.decode(Bool.self, forKey: .nightFieldtrip)) ?? false
         startedAt = try? c.decode(Date.self, forKey: .startedAt)
         endedAt = try? c.decode(Date.self, forKey: .endedAt)
         let lat = try? c.decode(Double.self, forKey: .centroidLat)
@@ -103,8 +103,8 @@ struct Excursion: Decodable, Identifiable, Equatable {
     }
 }
 
-struct ExcursionListResponse: Decodable {
-    let items: [Excursion]
+struct FieldtripListResponse: Decodable {
+    let items: [Fieldtrip]
     let totalItems: Int?
     let totalPages: Int?
 }

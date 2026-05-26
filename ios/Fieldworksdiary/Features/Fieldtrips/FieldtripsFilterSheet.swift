@@ -1,7 +1,8 @@
 import SwiftUI
 
-struct ExcursionsFilterSheet: View {
-    @Binding var filter: ExcursionsFilter
+struct FieldtripsFilterSheet: View {
+    @Binding var filter: FieldtripsFilter
+
     let countries: [String] // known set from local data
     @Environment(\.dismiss) private var dismiss
 

@@ -15,7 +15,7 @@ import SwiftUI
 ///     Dynamic Type sizes via `ViewThatFits`.
 struct HomeHeader: View {
     let collectorName: String
-    let activeExcursion: HomeViewModel.ActiveExcursion?
+    let activeFieldtrip: HomeViewModel.ActiveFieldtrip?
     let recentSample: HomeViewModel.RecentSample?
     let onAddSample: () -> Void
 
@@ -61,8 +61,8 @@ struct HomeHeader: View {
             field(label: "Aktiver Sammler", value: collectorName.isEmpty ? "—" : collectorName)
             field(
                 label: "Aktive Exkursion",
-                value: activeExcursion?.title ?? "Keine aktive Exkursion",
-                detail: activeExcursion?.localityName
+                value: activeFieldtrip?.title ?? "Keine aktive Exkursion",
+                detail: activeFieldtrip?.localityName
             )
             field(
                 label: "Letzte Probe",

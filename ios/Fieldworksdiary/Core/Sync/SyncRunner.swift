@@ -36,7 +36,7 @@ extension SampleClient: SamplePushClient {}
 ///     in `original_code` — the user-readable code on the tube
 ///     remains authoritative.
 ///   - On any push success we set `syncStatus=.synced` and copy
-///     `backend_id`, `excursion`, and the enrichment fields from the
+///     `backend_id`, `fieldtrip`, and the enrichment fields from the
 ///     response. If the server reassigned, we record both `backendCode`
 ///     (the server-authoritative one) and keep `code` as the
 ///     local/tube value.
@@ -156,7 +156,7 @@ final class SyncRunner: ObservableObject {
             ))
 
             working.backendId = created.id
-            working.excursion = created.excursion
+            working.fieldtrip = created.fieldtrip
             working.adminUnitsLocality = created.adminUnits?.locality
             working.adminUnitsCountry = created.adminUnits?.country
             working.mtbSheetNumber = created.mtb?.sheetNumber
@@ -179,9 +179,9 @@ final class SyncRunner: ObservableObject {
             working.syncStatus = .synced
             try store.update(working)
 
-            // Hand off the parent excursion id to the container so
-            // the excursion-side hydration runs in parallel.
-            onSampleSynced(created.excursion)
+            // Hand off the parent fieldtrip id to the container so
+            // the fieldtrip-side hydration runs in parallel.
+            onSampleSynced(created.fieldtrip)
 
             // Push any photos that were captured for this sample
             // before the sync round-trip. We have the backend id now,

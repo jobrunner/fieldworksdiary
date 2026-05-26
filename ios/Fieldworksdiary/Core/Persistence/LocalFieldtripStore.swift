@@ -1,35 +1,35 @@
 import Foundation
 import GRDB
 
-final class LocalExcursionStore {
+final class LocalFieldtripStore {
     let database: Database
 
     init(database: Database) {
         self.database = database
     }
 
-    /// Upserts a batch of excursions from the backend. Existing rows
+    /// Upserts a batch of fieldtrips from the backend. Existing rows
     /// are overwritten — the server is the source of truth for these.
-    func upsert(_ remote: [Excursion]) throws {
+    func upsert(_ remote: [Fieldtrip]) throws {
         try database.writer.write { db in
             for r in remote {
-                var local = LocalExcursion(from: r)
+                var local = LocalFieldtrip(from: r)
                 try local.save(db)
             }
         }
     }
 
-    func fetchById(_ id: String) throws -> LocalExcursion? {
+    func fetchById(_ id: String) throws -> LocalFieldtrip? {
         try database.reader.read { db in
-            try LocalExcursion.fetchOne(db, key: id)
+            try LocalFieldtrip.fetchOne(db, key: id)
         }
     }
 
-    /// Excursion for a given collecting day ("YYYY-MM-DD"). Used on
+    /// Fieldtrip for a given collecting day ("YYYY-MM-DD"). Used on
     /// the home dashboard to surface "today's active fieldtrip".
-    func fetchByCollectingDay(_ day: String) throws -> LocalExcursion? {
+    func fetchByCollectingDay(_ day: String) throws -> LocalFieldtrip? {
         try database.reader.read { db in
-            try LocalExcursion
+            try LocalFieldtrip
                 .filter(Column("collecting_day") == day)
                 .fetchOne(db)
         }
@@ -37,15 +37,15 @@ final class LocalExcursionStore {
 
     func count() throws -> Int {
         try database.reader.read { db in
-            try LocalExcursion.fetchCount(db)
+            try LocalFieldtrip.fetchCount(db)
         }
     }
 
     /// AsyncSequence over the full sorted list. Yields a new array
-    /// every time something changes in `local_excursions`.
-    func observeAll() -> AsyncValueObservation<[LocalExcursion]> {
+    /// every time something changes in `local_fieldtrips`.
+    func observeAll() -> AsyncValueObservation<[LocalFieldtrip]> {
         AsyncValueObservation(observation: ValueObservation.tracking { db in
-            try LocalExcursion
+            try LocalFieldtrip
                 .order(Column("collecting_day").desc, Column("started_at").desc)
                 .fetchAll(db)
         }, reader: database.reader)
@@ -55,7 +55,7 @@ final class LocalExcursionStore {
     /// hydrate cycle will repopulate from the new user's data.
     func reset() throws {
         try database.writer.write { db in
-            try db.execute(sql: "DELETE FROM local_excursions")
+            try db.execute(sql: "DELETE FROM local_fieldtrips")
         }
     }
 }

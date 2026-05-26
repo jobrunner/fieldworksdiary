@@ -1,7 +1,7 @@
 import Foundation
 
 /// Pull-side hydrator for samples. Mirrors the existing
-/// `ExcursionsHydrator` and `LocalitiesHydrator` shape: the caller
+/// `FieldtripsHydrator` and `LocalitiesHydrator` shape: the caller
 /// decides cadence (e.g. on sign-in or app foreground) and we upsert
 /// whatever the backend returns into the local store.
 ///

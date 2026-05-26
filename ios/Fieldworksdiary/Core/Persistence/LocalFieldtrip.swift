@@ -1,15 +1,15 @@
 import Foundation
 import GRDB
 
-/// Local mirror of an `Excursion`. Sub-objects (admin_units, mtb,
+/// Local mirror of a `Fieldtrip`. Sub-objects (admin_units, mtb,
 /// astro) are kept as JSON blobs so we can round-trip them through
 /// the same decoder the network path uses — no need to mirror every
 /// nested field in SQL.
-struct LocalExcursion: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
+struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
     var id: String
     var name: String
     var collectingDay: String
-    var nightExcursion: Bool
+    var nightFieldtrip: Bool
     var startedAt: Date?
     var endedAt: Date?
     var centroidLat: Double?
@@ -29,7 +29,7 @@ struct LocalExcursion: Codable, FetchableRecord, MutablePersistableRecord, Ident
     enum CodingKeys: String, CodingKey {
         case id, name
         case collectingDay = "collecting_day"
-        case nightExcursion = "night_excursion"
+        case nightFieldtrip = "night_fieldtrip"
         case startedAt = "started_at"
         case endedAt = "ended_at"
         case centroidLat = "centroid_lat"
@@ -47,10 +47,10 @@ struct LocalExcursion: Codable, FetchableRecord, MutablePersistableRecord, Ident
         case backendUpdatedAt = "backend_updated_at"
     }
 
-    static let databaseTableName = "local_excursions"
+    static let databaseTableName = "local_fieldtrips"
 }
 
-extension LocalExcursion {
+extension LocalFieldtrip {
     /// Decode the stored JSON back into the typed model when needed
     /// for display.
     var adminUnits: AdminUnits? {
@@ -72,15 +72,15 @@ extension LocalExcursion {
     }
 }
 
-extension LocalExcursion {
-    /// Build a local row from a network `Excursion`. The current
+extension LocalFieldtrip {
+    /// Build a local row from a network `Fieldtrip`. The current
     /// timestamp is recorded as `backend_updated_at` so the view can
     /// surface "last refreshed at" if we want it later.
-    init(from remote: Excursion) {
+    init(from remote: Fieldtrip) {
         id = remote.id
         name = remote.name
         collectingDay = remote.collectingDay
-        nightExcursion = remote.nightExcursion
+        nightFieldtrip = remote.nightFieldtrip
         startedAt = remote.startedAt
         endedAt = remote.endedAt
         centroidLat = remote.centroidLat

@@ -10,7 +10,7 @@ struct AstroPanel: View {
             Divider()
             moonSection
             Divider()
-            duringExcursionSection
+            duringFieldtripSection
         }
     }
 
@@ -76,17 +76,17 @@ struct AstroPanel: View {
         }
     }
 
-    // MARK: - During the excursion
+    // MARK: - During the fieldtrip
 
-    private var duringExcursionSection: some View {
+    private var duringFieldtripSection: some View {
         HStack(alignment: .top, spacing: 16) {
-            Image(systemName: astro.moonAboveHorizonDuringExcursion ? "moon.fill" : "moon")
-                .foregroundStyle(astro.moonAboveHorizonDuringExcursion ? .yellow : .secondary)
+            Image(systemName: astro.moonAboveHorizonDuringFieldtrip ? "moon.fill" : "moon")
+                .foregroundStyle(astro.moonAboveHorizonDuringFieldtrip ? .yellow : .secondary)
                 .imageScale(.large)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Während der Exkursion").font(.subheadline.weight(.semibold))
-                if astro.moonAboveHorizonDuringExcursion {
+                if astro.moonAboveHorizonDuringFieldtrip {
                     Text(presenceLabel(maxAlt: astro.moonAltitudeMaxDuringDeg))
                         .font(.body)
                     Text(String(format: "max. Mondhöhe %.1f°", astro.moonAltitudeMaxDuringDeg))

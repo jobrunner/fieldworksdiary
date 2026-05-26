@@ -1,10 +1,10 @@
 import SwiftUI
 
-struct ExcursionDetailView: View {
-    let excursionID: String
+struct FieldtripDetailView: View {
+    let fieldtripID: String
 
     @EnvironmentObject var container: AppContainer
-    @State private var local: LocalExcursion?
+    @State private var local: LocalFieldtrip?
     @State private var loadingError: String?
     @State private var localityActionError: String?
     @State private var localityActionBusy = false
@@ -61,7 +61,7 @@ struct ExcursionDetailView: View {
         .refreshable { await reload() }
     }
 
-    private func permitSection(_ current: LocalExcursion) -> some View {
+    private func permitSection(_ current: LocalFieldtrip) -> some View {
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -93,9 +93,9 @@ struct ExcursionDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(isPresented: $presentingPermitEdit) {
-            PermitEditSheet(excursionID: excursionID, current: current) {
+            PermitEditSheet(fieldtripID: fieldtripID, current: current) {
                 Task {
-                    local = (try? container.excursions.fetchById(excursionID)) ?? local
+                    local = (try? container.fieldtrips.fetchById(fieldtripID)) ?? local
                 }
             }
         }
@@ -111,7 +111,7 @@ struct ExcursionDetailView: View {
         let endpoint = container.config.endpointURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty,
               let url = URL(string: endpoint.appending(
-                  "/api/files/excursions/\(excursionID)/\(filename)"
+                  "/api/files/fieldtrips/\(fieldtripID)/\(filename)"
               )) else { return }
         do {
             let (tempURL, _) = try await URLSession.shared.download(from: url)
@@ -133,7 +133,7 @@ struct ExcursionDetailView: View {
 
     @ViewBuilder
     private var samplesSection: some View {
-        let samples = (try? container.store.fetchByExcursion(excursionID)) ?? []
+        let samples = (try? container.store.fetchByFieldtrip(fieldtripID)) ?? []
         let syncedSamples = samples.filter { $0.backendId != nil }
         GroupBox {
             VStack(alignment: .leading, spacing: 8) {
@@ -232,7 +232,7 @@ struct ExcursionDetailView: View {
                 }
             }
         }
-        .task(id: excursionID) { await reloadPreviousLabels(for: syncedSamples) }
+        .task(id: fieldtripID) { await reloadPreviousLabels(for: syncedSamples) }
     }
 
     private enum LabelKind { case locality, determination }
@@ -355,17 +355,17 @@ struct ExcursionDetailView: View {
         .contentShape(Rectangle())
     }
 
-    private func displayName(_ excursion: LocalExcursion) -> String {
-        if !excursion.name.isEmpty { return excursion.name }
-        return "Sammeltag \(excursion.collectingDay)"
+    private func displayName(_ fieldtrip: LocalFieldtrip) -> String {
+        if !fieldtrip.name.isEmpty { return fieldtrip.name }
+        return "Sammeltag \(fieldtrip.collectingDay)"
     }
 
-    private func header(_ current: LocalExcursion) -> some View {
+    private func header(_ current: LocalFieldtrip) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(current.collectingDay)
                     .font(.title3.monospacedDigit())
-                if current.nightExcursion {
+                if current.nightFieldtrip {
                     Image(systemName: "moon.stars.fill")
                         .foregroundStyle(.indigo)
                         .accessibilityLabel("Nacht-Exkursion")
@@ -404,7 +404,7 @@ struct ExcursionDetailView: View {
     }
 
     @ViewBuilder
-    private func localitySection(_ current: LocalExcursion) -> some View {
+    private func localitySection(_ current: LocalFieldtrip) -> some View {
         if let assignedID = current.locality,
            let assigned = try? container.localitiesStore.fetchById(assignedID)
         {
@@ -471,9 +471,9 @@ struct ExcursionDetailView: View {
     }
 
     private func reload() async {
-        local = (try? container.excursions.fetchById(excursionID))
-        await container.hydrator.pullOne(excursionID)
-        local = (try? container.excursions.fetchById(excursionID)) ?? local
+        local = (try? container.fieldtrips.fetchById(fieldtripID))
+        await container.hydrator.pullOne(fieldtripID)
+        local = (try? container.fieldtrips.fetchById(fieldtripID)) ?? local
         loadingError = container.hydrator.lastError
     }
 
@@ -481,10 +481,10 @@ struct ExcursionDetailView: View {
         localityActionBusy = true
         defer { localityActionBusy = false }
         do {
-            let client = ExcursionClient(endpoint: container.config.endpointURL, auth: container.auth)
-            let updated = try await client.setLocality(id: excursionID, locality: localityID)
-            try container.excursions.upsert([updated])
-            local = try? container.excursions.fetchById(excursionID)
+            let client = FieldtripClient(endpoint: container.config.endpointURL, auth: container.auth)
+            let updated = try await client.setLocality(id: fieldtripID, locality: localityID)
+            try container.fieldtrips.upsert([updated])
+            local = try? container.fieldtrips.fetchById(fieldtripID)
             localityActionError = nil
         } catch let err as SampleClientError {
             localityActionError = err.errorDescription
@@ -497,10 +497,10 @@ struct ExcursionDetailView: View {
         localityActionBusy = true
         defer { localityActionBusy = false }
         do {
-            let client = ExcursionClient(endpoint: container.config.endpointURL, auth: container.auth)
-            let updated = try await client.setLocality(id: excursionID, locality: nil)
-            try container.excursions.upsert([updated])
-            local = try? container.excursions.fetchById(excursionID)
+            let client = FieldtripClient(endpoint: container.config.endpointURL, auth: container.auth)
+            let updated = try await client.setLocality(id: fieldtripID, locality: nil)
+            try container.fieldtrips.upsert([updated])
+            local = try? container.fieldtrips.fetchById(fieldtripID)
             localityActionError = nil
         } catch let err as SampleClientError {
             localityActionError = err.errorDescription

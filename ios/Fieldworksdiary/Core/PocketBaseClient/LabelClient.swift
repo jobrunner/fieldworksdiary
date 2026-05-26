@@ -43,7 +43,7 @@ struct LabelClient {
     }
 
     /// Lists previously-generated label_pdfs records that reference
-    /// at least one sample from the given excursion. PocketBase
+    /// at least one sample from the given fieldtrip. PocketBase
     /// filter syntax supports `?=` (in-list) on relation fields.
     func listForSamples(_ sampleIDs: [String]) async throws -> [LabelPDF] {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)

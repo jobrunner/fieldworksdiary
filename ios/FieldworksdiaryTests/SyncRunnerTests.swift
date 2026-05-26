@@ -34,14 +34,14 @@ final class SyncRunnerTests: XCTestCase {
         mock.createResponse = remoteSample(
             id: "backend-1",
             code: local.code,
-            excursion: "exc-1",
+            fieldtrip: "ft-1",
             locality: "Würzburg"
         )
 
         let onSyncedExpectation = expectation(description: "onSampleSynced fired")
-        var notifiedExcursionID: String?
-        let runner = makeRunner(mock: mock) { excID in
-            notifiedExcursionID = excID
+        var notifiedFieldtripID: String?
+        let runner = makeRunner(mock: mock) { ftID in
+            notifiedFieldtripID = ftID
             onSyncedExpectation.fulfill()
         }
 
@@ -51,9 +51,9 @@ final class SyncRunnerTests: XCTestCase {
         let stored = try XCTUnwrap(store.fetchById(local.id))
         XCTAssertEqual(stored.syncStatus, .synced)
         XCTAssertEqual(stored.backendId, "backend-1")
-        XCTAssertEqual(stored.excursion, "exc-1")
+        XCTAssertEqual(stored.fieldtrip, "ft-1")
         XCTAssertEqual(stored.adminUnitsLocality, "Würzburg")
-        XCTAssertEqual(notifiedExcursionID, "exc-1")
+        XCTAssertEqual(notifiedFieldtripID, "ft-1")
     }
 
     // MARK: - Server-Code-Reassignment
@@ -70,7 +70,7 @@ final class SyncRunnerTests: XCTestCase {
             id: "backend-1",
             code: "260519/7",
             originalCode: "260519/1",
-            excursion: "exc-1"
+            fieldtrip: "ft-1"
         )
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
@@ -91,7 +91,7 @@ final class SyncRunnerTests: XCTestCase {
         mock.createResponse = remoteSample(
             id: "backend-1",
             code: local.code,
-            excursion: "exc-1"
+            fieldtrip: "ft-1"
         )
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
@@ -129,11 +129,11 @@ final class SyncRunnerTests: XCTestCase {
             collectedFrom: date(2026, 5, 19, 14)
         )
         let mock = MockClient()
-        mock.createResponse = remoteSample(id: "backend-1", code: local.code, excursion: "exc-1")
+        mock.createResponse = remoteSample(id: "backend-1", code: local.code, fieldtrip: "ft-1")
         mock.fetchResponse = remoteSample(
             id: "backend-1",
             code: local.code,
-            excursion: "exc-1",
+            fieldtrip: "ft-1",
             locality: "Würzburg",
             mtbSheet: "6225"
         )
@@ -198,14 +198,14 @@ final class SyncRunnerTests: XCTestCase {
         id: String,
         code: String,
         originalCode: String? = nil,
-        excursion: String,
+        fieldtrip: String,
         locality: String? = nil,
         mtbSheet: String? = nil
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
             "code": code,
-            "excursion": excursion,
+            "fieldtrip": fieldtrip,
             "lat": 49.79,
             "lon": 9.94,
             "collected_from": "2026-05-19T14:00:00.000Z",

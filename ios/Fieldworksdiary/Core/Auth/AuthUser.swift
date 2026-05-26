@@ -9,14 +9,14 @@ struct AuthUser: Decodable, Equatable, Identifiable {
     let displayName: String
     let abbreviation: String
     let dayCutoffHour: Int
-    let defaultExcursionSplitKm: Double
+    let defaultFieldtripSplitKm: Double
 
     enum CodingKeys: String, CodingKey {
         case id, email
         case displayName = "display_name"
         case abbreviation
         case dayCutoffHour = "day_cutoff_hour"
-        case defaultExcursionSplitKm = "default_excursion_split_km"
+        case defaultFieldtripSplitKm = "default_fieldtrip_split_km"
     }
 
     init(from decoder: Decoder) throws {
@@ -27,8 +27,8 @@ struct AuthUser: Decodable, Equatable, Identifiable {
         abbreviation = (try? c.decode(String.self, forKey: .abbreviation)) ?? ""
         let h = (try? c.decode(Int.self, forKey: .dayCutoffHour)) ?? 5
         dayCutoffHour = h
-        let s = (try? c.decode(Double.self, forKey: .defaultExcursionSplitKm)) ?? 15
-        defaultExcursionSplitKm = s
+        let s = (try? c.decode(Double.self, forKey: .defaultFieldtripSplitKm)) ?? 15
+        defaultFieldtripSplitKm = s
     }
 }
 

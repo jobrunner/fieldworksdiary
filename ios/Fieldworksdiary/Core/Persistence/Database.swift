@@ -55,6 +55,7 @@ final class Database {
         migrator.registerMigration("v6_excursions_permit_columns", migrate: migrateV6)
         migrator.registerMigration("v7_local_photos_and_sample_notes", migrate: migrateV7)
         migrator.registerMigration("v8_local_samples_marked", migrate: migrateV8)
+        migrator.registerMigration("v9_rename_excursions_to_fieldtrips", migrate: migrateV9)
         try migrator.migrate(writer)
     }
 
@@ -181,5 +182,20 @@ final class Database {
             t.add(column: "marked", .boolean).notNull().defaults(to: false)
         }
         try db.create(indexOn: "local_samples", columns: ["marked"])
+    }
+
+    /// Phase R2 (refactor): Excursion → Fieldtrip everywhere it shows
+    /// up in code. SQLite keeps the data — we only rename the table
+    /// and two columns. Historical migration names (`v2_local_excursions`,
+    /// `v4_excursions_locality_columns`, …) stay as-is to preserve the
+    /// schema-version log on existing devices.
+    private static func migrateV9(_ db: GRDB.Database) throws {
+        try db.rename(table: "local_excursions", to: "local_fieldtrips")
+        try db.alter(table: "local_fieldtrips") { t in
+            t.rename(column: "night_excursion", to: "night_fieldtrip")
+        }
+        try db.alter(table: "local_samples") { t in
+            t.rename(column: "excursion", to: "fieldtrip")
+        }
     }
 }

@@ -33,7 +33,7 @@ struct SampleEditorView: View {
             sampleID: sampleID,
             store: container.store,
             photoStore: container.photos,
-            excursionStore: container.excursions,
+            fieldtripStore: container.fieldtrips,
             sync: container.sync
         )
     }
@@ -51,14 +51,14 @@ private struct SampleEditorContent: View {
         sampleID: String?,
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
-        excursionStore: LocalExcursionStore,
+        fieldtripStore: LocalFieldtripStore,
         sync: SyncRunner
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
             store: store,
             photoStore: photoStore,
-            excursionStore: excursionStore,
+            fieldtripStore: fieldtripStore,
             sync: sync
         ))
     }
@@ -245,12 +245,12 @@ private struct SampleEditorContent: View {
                         Text(line).font(.body)
                     }
                 }
-                if let excursionName, !excursionName.isEmpty {
+                if let fieldtripName, !fieldtripName.isEmpty {
                     HStack(spacing: 6) {
                         Text("Sammeltag")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Text(excursionName)
+                        Text(fieldtripName)
                             .font(.footnote)
                     }
                 }
@@ -347,7 +347,7 @@ private struct SampleEditorContent: View {
     }
 
     private var hasAdminInfo: Bool {
-        adminLines != nil || (excursionName?.isEmpty == false) || viewModel.savedSample?.mtbSheetNumber != nil
+        adminLines != nil || (fieldtripName?.isEmpty == false) || viewModel.savedSample?.mtbSheetNumber != nil
     }
 
     private var adminLines: [String]? {
@@ -360,14 +360,14 @@ private struct SampleEditorContent: View {
         return lines.isEmpty ? nil : lines
     }
 
-    private var excursionName: String? {
-        if let exc = viewModel.savedExcursion, !exc.name.isEmpty { return exc.name }
-        if let id = viewModel.savedSample?.excursion, !id.isEmpty { return "Sammeltag" }
+    private var fieldtripName: String? {
+        if let ft = viewModel.savedFieldtrip, !ft.name.isEmpty { return ft.name }
+        if let id = viewModel.savedSample?.fieldtrip, !id.isEmpty { return "Sammeltag" }
         return nil
     }
 
     private var moonSymbol: String {
-        guard let astro = viewModel.savedExcursion?.astro else { return "moon.stars" }
+        guard let astro = viewModel.savedFieldtrip?.astro else { return "moon.stars" }
         // Crude mapping from phase fraction (0..1) to SF moon symbols.
         switch astro.moonPhase {
         case ..<0.05, 0.95...: return "moon.dust"
@@ -401,12 +401,12 @@ private struct SampleEditorContent: View {
     }
 
     private var sunriseText: String? {
-        guard let t = viewModel.savedExcursion?.astro?.sunrise else { return nil }
+        guard let t = viewModel.savedFieldtrip?.astro?.sunrise else { return nil }
         return Self.timeFormatter.string(from: t)
     }
 
     private var sunsetText: String? {
-        guard let t = viewModel.savedExcursion?.astro?.sunset else { return nil }
+        guard let t = viewModel.savedFieldtrip?.astro?.sunset else { return nil }
         return Self.timeFormatter.string(from: t)
     }
 

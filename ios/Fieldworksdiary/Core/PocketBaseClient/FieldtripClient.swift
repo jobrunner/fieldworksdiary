@@ -1,6 +1,6 @@
 import Foundation
 
-struct ExcursionClient {
+struct FieldtripClient {
     let endpoint: String
     let auth: AuthSession?
 
@@ -9,10 +9,10 @@ struct ExcursionClient {
         self.auth = auth
     }
 
-    func listRecent(limit: Int = 30) async throws -> [Excursion] {
+    func listRecent(limit: Int = 30) async throws -> [Fieldtrip] {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        var components = URLComponents(string: trimmed.appending("/api/collections/excursions/records"))
+        var components = URLComponents(string: trimmed.appending("/api/collections/fieldtrips/records"))
         components?.queryItems = [
             URLQueryItem(name: "perPage", value: String(limit)),
             URLQueryItem(name: "sort", value: "-collecting_day,-started_at")
@@ -31,7 +31,7 @@ struct ExcursionClient {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
-            return try JSONDecoder.fieldworks.decode(ExcursionListResponse.self, from: data).items
+            return try JSONDecoder.fieldworks.decode(FieldtripListResponse.self, from: data).items
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
@@ -39,10 +39,10 @@ struct ExcursionClient {
 
     /// Patches just the permit_number (text) field — PDF stays
     /// untouched. Pass an empty string to clear.
-    func setPermitNumber(id: String, number: String) async throws -> Excursion {
+    func setPermitNumber(id: String, number: String) async throws -> Fieldtrip {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        guard let url = URL(string: trimmed.appending("/api/collections/excursions/records/\(id)")) else {
+        guard let url = URL(string: trimmed.appending("/api/collections/fieldtrips/records/\(id)")) else {
             throw SampleClientError.invalidEndpoint
         }
         var request = URLRequest(url: url)
@@ -54,7 +54,7 @@ struct ExcursionClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         try Self.assertOK(data: data, response: response)
         do {
-            return try JSONDecoder.fieldworks.decode(Excursion.self, from: data)
+            return try JSONDecoder.fieldworks.decode(Fieldtrip.self, from: data)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
@@ -62,10 +62,10 @@ struct ExcursionClient {
 
     /// Uploads (or replaces) the permit PDF via multipart PATCH.
     /// Optionally also patches `permit_number` in the same request.
-    func uploadPermitPDF(id: String, fileURL: URL, permitNumber: String?) async throws -> Excursion {
+    func uploadPermitPDF(id: String, fileURL: URL, permitNumber: String?) async throws -> Fieldtrip {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        guard let url = URL(string: trimmed.appending("/api/collections/excursions/records/\(id)")) else {
+        guard let url = URL(string: trimmed.appending("/api/collections/fieldtrips/records/\(id)")) else {
             throw SampleClientError.invalidEndpoint
         }
         let data = try Data(contentsOf: fileURL)
@@ -94,7 +94,7 @@ struct ExcursionClient {
         let (respData, response) = try await URLSession.shared.data(for: request)
         try Self.assertOK(data: respData, response: response)
         do {
-            return try JSONDecoder.fieldworks.decode(Excursion.self, from: respData)
+            return try JSONDecoder.fieldworks.decode(Fieldtrip.self, from: respData)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
@@ -102,10 +102,10 @@ struct ExcursionClient {
 
     /// Removes the stored PDF (sets the file field to empty). The
     /// permit number is preserved unless `clearNumber` is true.
-    func clearPermitPDF(id: String, clearNumber: Bool = false) async throws -> Excursion {
+    func clearPermitPDF(id: String, clearNumber: Bool = false) async throws -> Fieldtrip {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        guard let url = URL(string: trimmed.appending("/api/collections/excursions/records/\(id)")) else {
+        guard let url = URL(string: trimmed.appending("/api/collections/fieldtrips/records/\(id)")) else {
             throw SampleClientError.invalidEndpoint
         }
         var body: [String: Any] = ["permit_pdf": nil as Any? as Any]
@@ -122,16 +122,16 @@ struct ExcursionClient {
         let (data, response) = try await URLSession.shared.data(for: request)
         try Self.assertOK(data: data, response: response)
         do {
-            return try JSONDecoder.fieldworks.decode(Excursion.self, from: data)
+            return try JSONDecoder.fieldworks.decode(Fieldtrip.self, from: data)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
     }
 
-    func setLocality(id: String, locality: String?) async throws -> Excursion {
+    func setLocality(id: String, locality: String?) async throws -> Fieldtrip {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        guard let url = URL(string: trimmed.appending("/api/collections/excursions/records/\(id)")) else {
+        guard let url = URL(string: trimmed.appending("/api/collections/fieldtrips/records/\(id)")) else {
             throw SampleClientError.invalidEndpoint
         }
         var request = URLRequest(url: url)
@@ -147,16 +147,16 @@ struct ExcursionClient {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
-            return try JSONDecoder.fieldworks.decode(Excursion.self, from: data)
+            return try JSONDecoder.fieldworks.decode(Fieldtrip.self, from: data)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
     }
 
-    func fetch(id: String) async throws -> Excursion {
+    func fetch(id: String) async throws -> Fieldtrip {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
-        guard let url = URL(string: trimmed.appending("/api/collections/excursions/records/\(id)")) else {
+        guard let url = URL(string: trimmed.appending("/api/collections/fieldtrips/records/\(id)")) else {
             throw SampleClientError.invalidEndpoint
         }
 
@@ -170,7 +170,7 @@ struct ExcursionClient {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
-            return try JSONDecoder.fieldworks.decode(Excursion.self, from: data)
+            return try JSONDecoder.fieldworks.decode(Fieldtrip.self, from: data)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }

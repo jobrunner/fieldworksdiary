@@ -1,12 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Sheet to edit the per-excursion research permit. Two independent
+/// Sheet to edit the per-fieldtrip research permit. Two independent
 /// fields: the number (text, ends up on labels) and an optional PDF
 /// archive. The user can change either or both in one go.
 struct PermitEditSheet: View {
-    let excursionID: String
-    let current: LocalExcursion
+    let fieldtripID: String
+    let current: LocalFieldtrip
     let onSaved: () -> Void
 
     @EnvironmentObject var container: AppContainer
@@ -144,7 +144,7 @@ struct PermitEditSheet: View {
     private func save() async {
         saving = true
         defer { saving = false }
-        let client = ExcursionClient(endpoint: container.config.endpointURL, auth: container.auth)
+        let client = FieldtripClient(endpoint: container.config.endpointURL, auth: container.auth)
         let trimmedNumber = numberDraft.trimmingCharacters(in: .whitespacesAndNewlines)
 
         do {
@@ -152,20 +152,20 @@ struct PermitEditSheet: View {
             //   1. upload a new PDF (with or without number change)
             //   2. clear the existing PDF
             //   3. only the number changed
-            var updated: Excursion
+            var updated: Fieldtrip
             if let file = pickedFile {
                 updated = try await client.uploadPermitPDF(
-                    id: excursionID, fileURL: file, permitNumber: trimmedNumber
+                    id: fieldtripID, fileURL: file, permitNumber: trimmedNumber
                 )
             } else if clearPDF {
-                updated = try await client.clearPermitPDF(id: excursionID, clearNumber: false)
+                updated = try await client.clearPermitPDF(id: fieldtripID, clearNumber: false)
                 if trimmedNumber != (current.permitNumber ?? "") {
-                    updated = try await client.setPermitNumber(id: excursionID, number: trimmedNumber)
+                    updated = try await client.setPermitNumber(id: fieldtripID, number: trimmedNumber)
                 }
             } else {
-                updated = try await client.setPermitNumber(id: excursionID, number: trimmedNumber)
+                updated = try await client.setPermitNumber(id: fieldtripID, number: trimmedNumber)
             }
-            try container.excursions.upsert([updated])
+            try container.fieldtrips.upsert([updated])
             onSaved()
             dismiss()
         } catch let err as SampleClientError {
