@@ -17,10 +17,41 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R6.1 done** (2026-05-26, Branch
-`refactor/R6.1-server-fusion`). Server-Seite der Locality-Fusion
-ist live; iOS-Hälfte (Remap-Event-Pull + Offline-Fusion) folgt
-als R6.2 und R6.3 in eigenen Sessions.
+**R6.2 done** (2026-05-26, Branch
+`refactor/R6.2-ios-remap-events`). Der iOS-Client zieht jetzt
+die `locality_remap_events`-Stream und applied jeden Eintrag
+lokal — Samples re-pointen, Duplikat-Locality löschen,
+`Notification.localityRemapApplied` posten (UI-Toast in R8).
+
+R6.2 liefert:
+
+- **`Core/Models/LocalityRemapEvent.swift`** — Decodable mit
+  owner/oldLocalityID/newLocalityID/reason
+  (mergedWithExisting|duplicateCleanup)/affectedSampleIds.
+  Toleriert PocketBase-JSON-Wrap und direkten Array-Shape.
+- **`Core/PocketBaseClient/RemapEventClient.swift`** —
+  `listSince(Date?)` mit `filter=created > "ISO"`,
+  `sort=created` (oldest first → apply in order).
+- **`LocalLocalityStore.applyRemap(oldID, newID)`** — single
+  GRDB-Transaction: `UPDATE local_samples` re-pointen +
+  `DELETE local_localities`. Idempotent (zweiter Lauf ist
+  No-op). Self-Merge → No-op (defensive).
+- **`Core/Sync/RemapEventsPuller.swift`** — Single-flight
+  Hydrator analog zu den anderen. Cursor in UserDefaults pro
+  User-ID, advance per Event (mid-batch-Crash replay'd nicht
+  die ganze Queue). Postet `Notification.localityRemapApplied`
+  mit `movedCount` userInfo.
+- **AppContainer-Wiring** — `remapPuller` neben den anderen
+  Hydratoren, in `hydrateAll()` parallel. `wipeLocalStores()`
+  resettet Cursor beim User-Switch.
+
+Tests:
+- `LocalLocalityStoreRemapTests` (4 Cases): re-point + delete,
+  idempotency, unknown-old no-op, self-merge no-op. Alle
+  Logik-Tests grün.
+
+R6.1 + R6.2 komplett. Nächste Phase: **R6.3** (Client-Side
+Offline-Fusion im AddSample-Flow, Spec §5.1).
 
 R6.1 liefert:
 
@@ -117,7 +148,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R5 | Sync: Outbox-Infrastruktur + Version-Conflict + ADR | done | R3, R4 | R6 |
 | R5b | SyncRunner ↔ Outbox-Verdrahtung | done | R5 | – |
 | R6.1 | Locality-Fusion Server-Side | done | R5 | – |
-| R6.2 | iOS RemapEventsPuller + applyRemap | pending | R6.1 | – |
+| R6.2 | iOS RemapEventsPuller + applyRemap | done | R6.1 | – |
 | R6.3 | iOS Offline-Fusion im AddSample-Flow | pending | R6.1 | R8, R10 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |

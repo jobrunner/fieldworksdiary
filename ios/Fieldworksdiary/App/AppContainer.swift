@@ -21,6 +21,7 @@ final class AppContainer: ObservableObject {
     let localitiesStore: LocalLocalityStore
     let localitiesHydrator: LocalitiesHydrator
     let samplesHydrator: SamplesHydrator
+    let remapPuller: RemapEventsPuller
     let photos: LocalPhotoStore
     let mutations: PendingMutationsStore
     let sync: SyncRunner
@@ -63,6 +64,12 @@ final class AppContainer: ObservableObject {
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
+        let remapPuller = RemapEventsPuller(
+            localitiesStore: localitiesStore,
+            endpointProvider: { config.endpointURL },
+            authProvider: { [weak auth] in auth },
+            userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
+        )
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
@@ -85,6 +92,7 @@ final class AppContainer: ObservableObject {
         self.localitiesStore = localitiesStore
         self.localitiesHydrator = localitiesHydrator
         self.samplesHydrator = samplesHydrator
+        self.remapPuller = remapPuller
         self.photos = photos
         self.mutations = mutations
         self.sync = sync
@@ -139,6 +147,7 @@ final class AppContainer: ObservableObject {
             try localitiesStore.reset()
             try photos.reset()
             try mutations.reset()
+            remapPuller.resetCursor()
         } catch {
             // Wipe failures are non-fatal — der neue User sieht
             // maximal Stale-Rows, die der Rule-Filter ohnehin
@@ -148,12 +157,13 @@ final class AppContainer: ObservableObject {
     }
 
     private func hydrateAll() async {
-        // Fire all three pulls concurrently. Each hydrator is internally
+        // Fire every pull concurrently. Each hydrator is internally
         // single-flight, so a tab .task that also kicks pull() while
         // this is running just no-ops.
         async let samplesPull: Void = samplesHydrator.pull()
         async let fieldtripsPull: Void = hydrator.pull()
         async let localitiesPull: Void = localitiesHydrator.pull()
-        _ = await(samplesPull, fieldtripsPull, localitiesPull)
+        async let remapPull: Void = remapPuller.pull()
+        _ = await(samplesPull, fieldtripsPull, localitiesPull, remapPull)
     }
 }
