@@ -17,28 +17,45 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
-**R5b done** (2026-05-26, Branch
-`refactor/R5b-syncrunner-outbox`). Der `SyncRunner` läuft jetzt
-durch die Outbox: `runPass()` ruft `mutationsStore.fetchAllOrdered()`
-und dispatcht pro `PendingMutation` zum passenden Handler.
-Heute wired: `.sample/.create`. Andere Op-Typen melden sich als
-`unsupported mutation` und bleiben in der Queue (ohne Schaden —
-sie taugen für die Folge-Migration in R8).
+**R6.1 done** (2026-05-26, Branch
+`refactor/R6.1-server-fusion`). Server-Seite der Locality-Fusion
+ist live; iOS-Hälfte (Remap-Event-Pull + Offline-Fusion) folgt
+als R6.2 und R6.3 in eigenen Sessions.
 
-`reconcileLegacyPending()` läuft am Anfang jedes Passes und
-adoptiert jedes `local_samples`-Row mit `syncStatus ∈ {.pending,
-.failed}`, das noch keinen Outbox-Eintrag hat. Damit ist die
-Migration der Phase-1–14-Bestände in die Outbox idempotent und
-ohne UserDefaults-Marker.
+R6.1 liefert:
 
-`AppContainer` hält jetzt `mutations: PendingMutationsStore`;
-`wipeLocalStores()` macht `mutations.reset()` mit. Tests
-(`SyncRunnerTests`) bleiben unverändert grün — der Mock-Client
-sieht die Outbox nicht und prüft weiterhin den End-State auf
-`LocalSample`.
+1. **`internal/fusion/`** — Pure-Go-Algorithmus.
+   `ServerFuse(incoming, candidates, Settings)` mit adaptivem
+   Radius `max(50, 2*hAcc_incoming, 2*max(hAcc_candidates))`,
+   Self-Exclude, Haversine-Distance (`grouping.HaversineMeters`).
+   9 Unit-Tests inkl. zero/one/many-Candidates, hohe Accuracy
+   beider Seiten, Custom-MinRadius, `SignificantCoordChange`.
+2. **Migration 1700000019** — `localities.needs_human_review`
+   (Bool, default false) + Collection
+   `locality_remap_events` (owner-scoped read, write nil).
+3. **`internal/hooks/locality_fusion.go`** —
+   `RegisterLocalityFusion(app, fusion.Settings{})`. Triggert
+   auf `OnRecordAfterCreate/UpdateRequest("localities")`,
+   Update nur bei Koord-Shift > 100 m
+   (`fusion.SignificantCoordChange`). MergeInto-Pfad re-pointed
+   Samples in einer Transaction, emittiert
+   `locality_remap_events`-Row, löscht die Duplikat-Locality.
+   FlagAmbiguous setzt `needs_human_review=true`. KeepAsIs
+   clearet einen stale Flag.
+4. **Integration-Tests** — 5 Tests gegen die TestApp: KeepAsIs,
+   Merge+Event-Emit (mit Sample-Re-Pointing), FlagAmbiguous,
+   Owner-Scope (Alice-Locality unsichtbar für Bobs Fusion),
+   Notes-Only-Edit triggert nicht.
 
-R5 + R5b komplett. Nächste Phase: **R6** (Locality-Fusion,
-Server-first).
+`go test ./...` durchgehend grün. Test-Fixtures aus Spec §5.5
+(Kreuzwertheim/Wertheim mit konkreten Koord-Sätzen) sind in
+diesem Inkrement nicht enthalten — die Algorithmus-Properties
+sind über die synthetischen Tests abgedeckt, die Fixtures
+liefere ich nach sobald die Datensätze im Repo sind.
+
+Nächste Phase: **R6.2** (iOS RemapEventsPuller +
+`LocalitiesStore.applyRemap`) oder **R6.3** (Client
+Offline-Fusion). Beide unabhängig — Reihenfolge offen.
 
 ---
 
@@ -99,7 +116,9 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R4 | iOS-Modelle synchron | done | R3 | R5, R6, R8 |
 | R5 | Sync: Outbox-Infrastruktur + Version-Conflict + ADR | done | R3, R4 | R6 |
 | R5b | SyncRunner ↔ Outbox-Verdrahtung | done | R5 | – |
-| R6 | Locality-Fusion (Server-first) | pending | R5 | R8, R10 |
+| R6.1 | Locality-Fusion Server-Side | done | R5 | – |
+| R6.2 | iOS RemapEventsPuller + applyRemap | pending | R6.1 | – |
+| R6.3 | iOS Offline-Fusion im AddSample-Flow | pending | R6.1 | R8, R10 |
 | R7 | Placemark-Pipeline live | pending | R3 | R8, R10 |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |

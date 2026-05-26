@@ -7,6 +7,7 @@ import (
 
 	"go.mett.io/fwd-backend/internal/api"
 	"go.mett.io/fwd-backend/internal/enrichment"
+	"go.mett.io/fwd-backend/internal/fusion"
 	"go.mett.io/fwd-backend/internal/hooks"
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
@@ -41,6 +42,12 @@ func main() {
 	// get 409; happy-path writes have their `version` rewritten
 	// to the canonical post-write counter.
 	hooks.RegisterVersionConflictGuards(app)
+
+	// Phase R6.1: server-side locality fusion. Every locality
+	// create + every centroid-shift > 100 m triggers ServerFuse;
+	// the hook merges duplicates (with a remap-event emit) or
+	// flags ambiguous neighbors for review.
+	hooks.RegisterLocalityFusion(app, fusion.Settings{})
 
 	// Phase 7: custom label-PDF endpoints.
 	api.RegisterLabelRoutes(app)
