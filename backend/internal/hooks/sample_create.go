@@ -105,16 +105,16 @@ func authOwnerID(c interface {
 }
 
 func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
-	collectedFrom := rec.GetDateTime("collected_from").Time()
+	collectedFrom := rec.GetDateTime("begin_date").Time()
 	if collectedFrom.IsZero() {
 		collectedFrom = time.Now()
-		rec.Set("collected_from", collectedFrom)
+		rec.Set("begin_date", collectedFrom)
 	}
 	collectedLocal := collectedFrom.In(berlin)
 	day := codes.CollectingDay(collectedLocal, defaultCutoff)
 	dayStr := day.Format("2006-01-02")
 
-	incomingCode := strings.TrimSpace(rec.GetString("code"))
+	incomingCode := strings.TrimSpace(rec.GetString("sample_id"))
 
 	var (
 		ftID      string
@@ -168,18 +168,18 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 
 	rec.Set("fieldtrip", ftID)
 	rec.Set("owner", ownerID)
-	rec.Set("code", finalCode)
+	rec.Set("sample_id", finalCode)
 	return nil
 }
 
-// codeConflicts checks for an existing sample with this code under
-// any owner. Codes are not globally unique post-Phase-3b, but we
-// honour-or-reassign per user; here we only need to know if reusing
-// would collide.
+// codeConflicts checks for an existing sample with this sample_id
+// under any owner. Sample IDs are not globally unique post-Phase-3b,
+// but we honour-or-reassign per user; here we only need to know if
+// reusing would collide.
 func codeConflicts(dao *daos.Dao, code string) (bool, error) {
 	rec, err := dao.FindFirstRecordByFilter(
 		"samples",
-		"code = {:c}",
+		"sample_id = {:c}",
 		dbx.Params{"c": code},
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -310,8 +310,8 @@ func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
 		ID:        rec.Id,
 		UserID:    rec.GetString("owner"),
 		Day:       day,
-		StartedAt: rec.GetDateTime("started_at").Time().In(berlin),
-		EndedAt:   rec.GetDateTime("ended_at").Time().In(berlin),
+		StartedAt: rec.GetDateTime("begin_date").Time().In(berlin),
+		EndedAt:   rec.GetDateTime("end_date").Time().In(berlin),
 		Night:     rec.GetBool("night_fieldtrip"),
 	}
 }
@@ -319,10 +319,10 @@ func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
 func writeFieldtrip(rec *models.Record, e *grouping.Fieldtrip) {
 	rec.Set("owner", e.UserID)
 	rec.Set("collecting_day", e.Day.Format("2006-01-02"))
-	rec.Set("started_at", e.StartedAt)
-	rec.Set("ended_at", e.EndedAt)
+	rec.Set("begin_date", e.StartedAt)
+	rec.Set("end_date", e.EndedAt)
 	rec.Set("night_fieldtrip", e.Night)
-	if rec.GetString("name") == "" {
-		rec.Set("name", "Sammeltag "+e.Day.Format("02.01.2006"))
+	if rec.GetString("title") == "" {
+		rec.Set("title", "Sammeltag "+e.Day.Format("02.01.2006"))
 	}
 }

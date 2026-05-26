@@ -77,10 +77,10 @@ func makeSample(t *testing.T, app *tests.TestApp, ownerID, code, fieldtripID str
 	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
 	rec := models.NewRecord(coll)
 	rec.Set("owner", ownerID)
-	rec.Set("code", code)
-	rec.Set("lat", 49.793)
-	rec.Set("lon", 9.939)
-	rec.Set("collected_from", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
+	rec.Set("sample_id", code)
+	rec.Set("latitude", 49.793)
+	rec.Set("longitude", 9.939)
+	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	rec.Set("fieldtrip", fieldtripID)
 	if err := app.Dao().SaveRecord(rec); err != nil {
 		t.Fatalf("save sample: %v", err)
@@ -94,9 +94,9 @@ func makeFieldtrip(t *testing.T, app *tests.TestApp, ownerID string) *models.Rec
 	rec := models.NewRecord(coll)
 	rec.Set("owner", ownerID)
 	rec.Set("collecting_day", "2026-05-19")
-	rec.Set("name", "Test")
-	rec.Set("started_at", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
-	rec.Set("ended_at", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
+	rec.Set("title", "Test")
+	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
+	rec.Set("end_date", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
 	if err := app.Dao().SaveRecord(rec); err != nil {
 		t.Fatalf("save fieldtrip: %v", err)
 	}

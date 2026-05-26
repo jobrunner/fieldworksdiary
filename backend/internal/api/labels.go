@@ -278,7 +278,7 @@ func mostRecentDetermination(dao *daos.Dao, sampleID string) (*models.Record, er
 
 func determinationToLabel(s *models.Record, det *models.Record, peopleByID map[string]*models.Record) pdf.DeterminationLabel {
 	l := pdf.DeterminationLabel{
-		Code:         s.GetString("code"),
+		Code:         s.GetString("sample_id"),
 		SpeciesText:  det.GetString("species_text"),
 		Kind:         det.GetString("kind"),
 		DeterminedOn: det.GetDateTime("determined_on").Time(),
@@ -322,13 +322,13 @@ func batchLoadFieldtrips(dao *daos.Dao, samples []*models.Record) (map[string]*m
 
 func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
 	label := pdf.SampleLabel{
-		Code:          s.GetString("code"),
-		Lat:           s.GetFloat("lat"),
-		Lon:           s.GetFloat("lon"),
+		Code:          s.GetString("sample_id"),
+		Lat:           s.GetFloat("latitude"),
+		Lon:           s.GetFloat("longitude"),
 		HasCoords:     true,
-		CollectedFrom: s.GetDateTime("collected_from").Time(),
+		CollectedFrom: s.GetDateTime("begin_date").Time(),
 	}
-	if alt := s.GetFloat("altitude_m"); alt != 0 {
+	if alt := s.GetFloat("altitude"); alt != 0 {
 		label.AltitudeM = alt
 		label.HasAltitude = true
 	}

@@ -57,7 +57,8 @@ func createTestUser(t *testing.T, app *tests.TestApp, email string) *models.Reco
 }
 
 // newSampleRecord baut ein unsaved samples-Record mit den Pflicht-
-// Feldern lat/lon. Die anderen Felder werden im Test gezielt gesetzt.
+// Feldern latitude/longitude. Die anderen Felder werden im Test
+// gezielt gesetzt.
 func newSampleRecord(t *testing.T, app *tests.TestApp) *models.Record {
 	t.Helper()
 	coll, err := app.Dao().FindCollectionByNameOrId("samples")
@@ -65,8 +66,8 @@ func newSampleRecord(t *testing.T, app *tests.TestApp) *models.Record {
 		t.Fatalf("samples collection: %v", err)
 	}
 	rec := models.NewRecord(coll)
-	rec.Set("lat", 49.793)
-	rec.Set("lon", 9.939)
+	rec.Set("latitude", 49.793)
+	rec.Set("longitude", 9.939)
 	return rec
 }
 
@@ -86,13 +87,13 @@ func TestProcessSample_AssignsFreshCodeForFirstSampleOfDay(t *testing.T) {
 	owner := createTestUser(t, app, "ada@example.com")
 
 	rec := newSampleRecord(t, app)
-	rec.Set("collected_from", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
+	rec.Set("begin_date",time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 
-	if got := rec.GetString("code"); got != "260519/1" {
+	if got := rec.GetString("sample_id"); got != "260519/1" {
 		t.Errorf("code = %q, want 260519/1", got)
 	}
 	if got := rec.GetString("owner"); got != owner.Id {
@@ -109,7 +110,7 @@ func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	first := newSampleRecord(t, app)
-	first.Set("collected_from", day)
+	first.Set("begin_date",day)
 	if err := processSample(app.Dao(), first, owner.Id); err != nil {
 		t.Fatalf("first: %v", err)
 	}
@@ -118,12 +119,12 @@ func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
 	}
 
 	second := newSampleRecord(t, app)
-	second.Set("collected_from", day.Add(2*time.Hour))
+	second.Set("begin_date",day.Add(2*time.Hour))
 	if err := processSample(app.Dao(), second, owner.Id); err != nil {
 		t.Fatalf("second: %v", err)
 	}
 
-	if got := second.GetString("code"); got != "260519/2" {
+	if got := second.GetString("sample_id"); got != "260519/2" {
 		t.Errorf("second code = %q, want 260519/2", got)
 	}
 	if first.GetString("fieldtrip") != second.GetString("fieldtrip") {
@@ -139,22 +140,22 @@ func TestProcessSample_DifferentOwnersGetSeparateFieldtripsAndSequences(t *testi
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	aliceSample := newSampleRecord(t, app)
-	aliceSample.Set("collected_from", day)
+	aliceSample.Set("begin_date",day)
 	if err := processSample(app.Dao(), aliceSample, alice.Id); err != nil {
 		t.Fatalf("alice: %v", err)
 	}
 
 	bobSample := newSampleRecord(t, app)
-	bobSample.Set("collected_from", day)
+	bobSample.Set("begin_date",day)
 	if err := processSample(app.Dao(), bobSample, bob.Id); err != nil {
 		t.Fatalf("bob: %v", err)
 	}
 
 	// Beide bekommen Sequence 1 — Counter ist pro (owner, day).
-	if got := aliceSample.GetString("code"); got != "260519/1" {
+	if got := aliceSample.GetString("sample_id"); got != "260519/1" {
 		t.Errorf("alice code = %q, want 260519/1", got)
 	}
-	if got := bobSample.GetString("code"); got != "260519/1" {
+	if got := bobSample.GetString("sample_id"); got != "260519/1" {
 		t.Errorf("bob code = %q, want 260519/1", got)
 	}
 	// Aber unterschiedliche Fieldtrips.
@@ -177,7 +178,7 @@ func TestProcessSample_DefaultsCollectedFromToNowWhenZero(t *testing.T) {
 	}
 	after := time.Now()
 
-	got := rec.GetDateTime("collected_from").Time()
+	got := rec.GetDateTime("begin_date").Time()
 	if got.Before(before) || got.After(after.Add(time.Second)) {
 		t.Errorf("collected_from = %v, expected between %v and %v", got, before, after)
 	}
@@ -190,13 +191,13 @@ func TestProcessSample_RespectsTagesrolloverBeforeCutoff(t *testing.T) {
 	// 19.05.2026 um 03:00 Uhr Berlin liegt VOR dem 5-Uhr-Cutoff →
 	// gehört noch zum Sammeltag des 18.05.
 	rec := newSampleRecord(t, app)
-	rec.Set("collected_from", time.Date(2026, 5, 19, 3, 0, 0, 0, berlin))
+	rec.Set("begin_date",time.Date(2026, 5, 19, 3, 0, 0, 0, berlin))
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 
-	if got := rec.GetString("code"); got != "260518/1" {
+	if got := rec.GetString("sample_id"); got != "260518/1" {
 		t.Errorf("code = %q, want 260518/1 (vor Cutoff = Vortag)", got)
 	}
 }
@@ -207,14 +208,14 @@ func TestProcessSample_HonorsClientCodeWithoutConflict(t *testing.T) {
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	rec := newSampleRecord(t, app)
-	rec.Set("collected_from", day)
-	rec.Set("code", "260519/7") // Offline-vergebener Code
+	rec.Set("begin_date",day)
+	rec.Set("sample_id", "260519/7") // Offline-vergebener Code
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 
-	if got := rec.GetString("code"); got != "260519/7" {
+	if got := rec.GetString("sample_id"); got != "260519/7" {
 		t.Errorf("code = %q, want 260519/7 (Client-Code honoriert)", got)
 	}
 	if got := rec.GetString("original_code"); got != "" {
@@ -226,11 +227,11 @@ func TestProcessSample_HonorsClientCodeWithoutConflict(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 	next := newSampleRecord(t, app)
-	next.Set("collected_from", day)
+	next.Set("begin_date",day)
 	if err := processSample(app.Dao(), next, owner.Id); err != nil {
 		t.Fatalf("next: %v", err)
 	}
-	if got := next.GetString("code"); got != "260519/8" {
+	if got := next.GetString("sample_id"); got != "260519/8" {
 		t.Errorf("next code = %q, want 260519/8 (Sequenz war nach 7 hochgezogen)", got)
 	}
 }
@@ -242,12 +243,12 @@ func TestProcessSample_ReassignsCodeOnConflict(t *testing.T) {
 
 	// Vorbelegung: ein Sample mit Code 260519/3 existiert bereits.
 	existing := newSampleRecord(t, app)
-	existing.Set("collected_from", day)
+	existing.Set("begin_date",day)
 	if err := processSample(app.Dao(), existing, owner.Id); err != nil {
 		t.Fatalf("seed processSample: %v", err)
 	}
 	// Forciere den Code auf /3 (statt /1) für den Conflict-Test.
-	existing.Set("code", "260519/3")
+	existing.Set("sample_id", "260519/3")
 	if err := app.Dao().SaveRecord(existing); err != nil {
 		t.Fatalf("save existing: %v", err)
 	}
@@ -255,14 +256,14 @@ func TestProcessSample_ReassignsCodeOnConflict(t *testing.T) {
 	// Zweiter User pusht denselben Code (z. B. Multi-Device-Offline).
 	other := createTestUser(t, app, "george@example.com")
 	rec := newSampleRecord(t, app)
-	rec.Set("collected_from", day)
-	rec.Set("code", "260519/3")
+	rec.Set("begin_date",day)
+	rec.Set("sample_id", "260519/3")
 
 	if err := processSample(app.Dao(), rec, other.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 
-	if got := rec.GetString("code"); got == "260519/3" {
+	if got := rec.GetString("sample_id"); got == "260519/3" {
 		t.Errorf("code = %q, expected Reassignment", got)
 	}
 	if got := rec.GetString("original_code"); got != "260519/3" {
@@ -402,8 +403,8 @@ func TestFieldtripFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 	rec.Set("owner", "user-id")
 	rec.Set("collecting_day", "2026-05-19")
 	// 22:00 UTC am 19.05. = 00:00 Berlin am 20.05. (CEST = UTC+2)
-	rec.Set("started_at", time.Date(2026, 5, 19, 22, 0, 0, 0, time.UTC))
-	rec.Set("ended_at", time.Date(2026, 5, 19, 23, 30, 0, 0, time.UTC))
+	rec.Set("begin_date", time.Date(2026, 5, 19, 22, 0, 0, 0, time.UTC))
+	rec.Set("end_date", time.Date(2026, 5, 19, 23, 30, 0, 0, time.UTC))
 
 	e := fieldtripFromRecord(rec)
 	if e.StartedAt.Location().String() != berlin.String() {
@@ -427,18 +428,18 @@ func TestWriteFieldtrip_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 		UserID: "user-id",
 		Day:    time.Date(2026, 5, 19, 0, 0, 0, 0, berlin),
 	})
-	if got := rec.GetString("name"); got != "Sammeltag 19.05.2026" {
-		t.Errorf("name (empty case) = %q, want 'Sammeltag 19.05.2026'", got)
+	if got := rec.GetString("title"); got != "Sammeltag 19.05.2026" {
+		t.Errorf("title (empty case) = %q, want 'Sammeltag 19.05.2026'", got)
 	}
 
-	// User-vergebener Name → bleibt erhalten
+	// User-vergebener Title → bleibt erhalten
 	rec2 := models.NewRecord(coll)
-	rec2.Set("name", "Heidehöhe")
+	rec2.Set("title", "Heidehöhe")
 	writeFieldtrip(rec2, &grouping.Fieldtrip{
 		UserID: "user-id",
 		Day:    time.Date(2026, 5, 19, 0, 0, 0, 0, berlin),
 	})
-	if got := rec2.GetString("name"); got != "Heidehöhe" {
-		t.Errorf("name (user-set case) = %q, want Heidehöhe (kein Overwrite)", got)
+	if got := rec2.GetString("title"); got != "Heidehöhe" {
+		t.Errorf("title (user-set case) = %q, want Heidehöhe (kein Overwrite)", got)
 	}
 }

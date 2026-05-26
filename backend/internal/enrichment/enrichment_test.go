@@ -71,8 +71,8 @@ func TestCentroid_AveragesLatLon(t *testing.T) {
 
 	mk := func(lat, lon float64) *models.Record {
 		r := models.NewRecord(coll)
-		r.Set("lat", lat)
-		r.Set("lon", lon)
+		r.Set("latitude", lat)
+		r.Set("longitude", lon)
 		return r
 	}
 	samples := []*models.Record{
@@ -238,8 +238,8 @@ func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float
 	ft := models.NewRecord(ftColl)
 	ft.Set("owner", user.Id)
 	ft.Set("collecting_day", "2026-05-19")
-	ft.Set("started_at", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
-	ft.Set("ended_at", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
+	ft.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
+	ft.Set("end_date", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
 	if err := dao.SaveRecord(ft); err != nil {
 		t.Fatalf("save fieldtrip: %v", err)
 	}
@@ -248,10 +248,10 @@ func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float
 	sam := models.NewRecord(samColl)
 	sam.Set("owner", user.Id)
 	sam.Set("fieldtrip", ft.Id)
-	sam.Set("code", "260519/1")
-	sam.Set("lat", lat)
-	sam.Set("lon", lon)
-	sam.Set("collected_from", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
+	sam.Set("sample_id", "260519/1")
+	sam.Set("latitude", lat)
+	sam.Set("longitude", lon)
+	sam.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
 	if err := dao.SaveRecord(sam); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestMaybePropagateToFieldtrip_FillsEmptyFields(t *testing.T) {
 		t.Errorf("fieldtrip.admin_units = %q, want propagated", au)
 	}
 	// Name war initial leer → auto-name: "Würzburg — 2026-05-19"
-	if name := ft.GetString("name"); !strings.Contains(name, "Würzburg") {
+	if name := ft.GetString("title"); !strings.Contains(name, "Würzburg") {
 		t.Errorf("fieldtrip.name = %q, want auto-promoted with locality", name)
 	}
 }
@@ -358,7 +358,7 @@ func TestMaybePropagateToFieldtrip_PreservesManualName(t *testing.T) {
 
 	// User-vergebener Name → muss erhalten bleiben.
 	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	ft.Set("name", "Heidehöhe Würzburg")
+	ft.Set("title", "Heidehöhe Würzburg")
 	if err := app.Dao().SaveRecord(ft); err != nil {
 		t.Fatalf("save fieldtrip: %v", err)
 	}
@@ -373,8 +373,8 @@ func TestMaybePropagateToFieldtrip_PreservesManualName(t *testing.T) {
 	e.maybePropagateToFieldtrip(sample)
 
 	ft2, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	if got := ft2.GetString("name"); got != "Heidehöhe Würzburg" {
-		t.Errorf("name = %q, want 'Heidehöhe Würzburg' (kein Overwrite)", got)
+	if got := ft2.GetString("title"); got != "Heidehöhe Würzburg" {
+		t.Errorf("title = %q, want 'Heidehöhe Würzburg' (kein Overwrite)", got)
 	}
 }
 

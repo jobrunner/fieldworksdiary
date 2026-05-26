@@ -71,7 +71,7 @@ func handleExport(app core.App, c echo.Context) error {
 		Meta:       exportMeta{User: userRec.PublicExport()},
 	}
 
-	if payload.Samples, err = fetchOwned(dao, "samples", ownerID, "-collected_from"); err != nil {
+	if payload.Samples, err = fetchOwned(dao, "samples", ownerID, "-begin_date"); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "Failed to load samples.", err)
 	}
 	fieldtrips, err := dao.FindRecordsByFilter("fieldtrips", "owner = {:o}", "-collecting_day", 0, 0, dbx.Params{"o": ownerID})

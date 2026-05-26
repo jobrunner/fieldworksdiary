@@ -42,8 +42,8 @@ type Enricher struct {
 func (e *Enricher) Register() {
 	e.App.OnRecordAfterCreateRequest("samples").Add(func(ev *core.RecordCreateEvent) error {
 		recID := ev.Record.Id
-		lat := ev.Record.GetFloat("lat")
-		lon := ev.Record.GetFloat("lon")
+		lat := ev.Record.GetFloat("latitude")
+		lon := ev.Record.GetFloat("longitude")
 		ftID := ev.Record.GetString("fieldtrip")
 		go e.runSafely(recID, lat, lon, ftID)
 		return nil
@@ -202,18 +202,18 @@ func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record) {
 		ft.Set("mtb", mtb)
 		dirty = true
 	}
-	// If the fieldtrip still has its default name and we now know the
-	// locality, upgrade the name. The default starts with "Sammeltag
+	// If the fieldtrip still has its default title and we now know the
+	// locality, upgrade the title. The default starts with "Sammeltag
 	// ", so a strict prefix check is enough.
 	if au := sample.GetString("admin_units"); au != "" {
 		if locality := localityFromAdminUnits(au); locality != "" {
-			currentName := ft.GetString("name")
-			if currentName == "" || hasDefaultPrefix(currentName) {
+			currentTitle := ft.GetString("title")
+			if currentTitle == "" || hasDefaultPrefix(currentTitle) {
 				day := ft.GetString("collecting_day")
 				if day != "" {
-					ft.Set("name", locality+" — "+day)
+					ft.Set("title", locality+" — "+day)
 				} else {
-					ft.Set("name", locality)
+					ft.Set("title", locality)
 				}
 				dirty = true
 			}

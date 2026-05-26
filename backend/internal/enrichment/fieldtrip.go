@@ -39,8 +39,8 @@ func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 	ft.Set("centroid_lon", cLon)
 
 	day := parseCollectingDay(ft.GetString("collecting_day"), berlinTZ())
-	startedAt := ft.GetDateTime("started_at").Time()
-	endedAt := ft.GetDateTime("ended_at").Time()
+	startedAt := ft.GetDateTime("begin_date").Time()
+	endedAt := ft.GetDateTime("end_date").Time()
 
 	a := astro.ComputeFieldtripAstro(day, startedAt, endedAt, cLat, cLon)
 	raw, err := json.Marshal(a)
@@ -109,8 +109,8 @@ func nearestLocalityID(dao *daos.Dao, ownerID string, lat, lon float64) string {
 		candidates = append(candidates, grouping.LocalityCandidate{
 			ID:      r.Id,
 			Name:    r.GetString("name"),
-			Lat:     r.GetFloat("centroid_lat"),
-			Lon:     r.GetFloat("centroid_lon"),
+			Lat:     r.GetFloat("latitude"),
+			Lon:     r.GetFloat("longitude"),
 			RadiusM: r.GetFloat("radius_m"),
 		})
 	}
@@ -125,8 +125,8 @@ func centroid(samples []*models.Record) (lat, lon float64) {
 		return 0, 0
 	}
 	for _, s := range samples {
-		lat += s.GetFloat("lat")
-		lon += s.GetFloat("lon")
+		lat += s.GetFloat("latitude")
+		lon += s.GetFloat("longitude")
 	}
 	n := float64(len(samples))
 	return lat / n, lon / n
