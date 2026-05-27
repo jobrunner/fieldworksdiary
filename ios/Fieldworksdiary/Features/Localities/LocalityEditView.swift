@@ -104,8 +104,8 @@ struct LocalityEditView: View {
         do {
             let input = LocalityInput(
                 name: trimmedName,
-                centroidLat: coord.latitude,
-                centroidLon: coord.longitude,
+                latitude: coord.latitude,
+                longitude: coord.longitude,
                 radiusM: radiusMeters,
                 notes: notes
             )

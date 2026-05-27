@@ -30,6 +30,56 @@ final class LocalLocalityStore {
         }
     }
 
+    /// Snapshot of every locality, for the offline-fusion pass in the
+    /// sample editor (R8d). A plain read, no observation.
+    func fetchAll() throws -> [LocalLocality] {
+        try database.reader.read { db in
+            try LocalLocality.order(Column("name")).fetchAll(db)
+        }
+    }
+
+    /// Create a brand-new locality locally (offline-first, R8d). The
+    /// row uses a client UUID as its id; the SyncRunner's
+    /// `.locality/.create` dispatch later swaps it for the backend id
+    /// and re-points any samples. `centroid_*` mirror `latitude`/
+    /// `longitude` so the list + detail (which still read the legacy
+    /// columns) render coordinates immediately.
+    @discardableResult
+    func createLocal(
+        latitude: Double,
+        longitude: Double,
+        radiusM: Double = LocalityFusion.defaultRadiusM,
+        locationSource: LocationSource = .locationService,
+        name: String = ""
+    ) throws -> LocalLocality {
+        let now = Date()
+        var local = LocalLocality(
+            id: UUID().uuidString,
+            name: name,
+            latitude: latitude,
+            longitude: longitude,
+            altitude: nil,
+            horizontalAccuracy: nil,
+            verticalAccuracy: nil,
+            locationSource: locationSource.rawValue,
+            locationNumber: nil,
+            placemark: nil,
+            radiusM: radiusM,
+            notes: "",
+            version: 1,
+            clientUuid: UUID().uuidString,
+            clientUpdatedAt: now,
+            needsHumanReview: false,
+            centroidLat: latitude,
+            centroidLon: longitude,
+            backendUpdatedAt: now
+        )
+        try database.writer.write { db in
+            try local.insert(db)
+        }
+        return local
+    }
+
     /// AsyncSequence over the full sorted list.
     func observeAll() -> AsyncValueObservation<[LocalLocality]> {
         AsyncValueObservation(observation: ValueObservation.tracking { db in

@@ -50,13 +50,23 @@ final class SyncRunner: ObservableObject {
     let store: LocalSampleStore
     let mutationsStore: PendingMutationsStore
     let photoStore: LocalPhotoStore?
+    /// Optional — only wired when the app supports client-created
+    /// localities (R8d offline-fusion). Nil in the sample-only tests.
+    let localitiesStore: LocalLocalityStore?
     let endpointProvider: () -> String
     let authProvider: () -> AuthSession?
     let onSampleSynced: (String) -> Void
+    /// Called after a `.locality/.create` mutation reconciled a
+    /// client locality to its backend id, so the container can
+    /// re-hydrate the survivor's server-side fields.
+    let onLocalityChanged: () -> Void
     /// Factory für den HTTP-Client. Produktiv konstruiert das jedes
     /// Mal ein frisches `SampleClient` mit dem aktuellen Endpoint;
     /// Tests injizieren einen Mock.
     let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient
+    /// Factory für den Locality-Push-Client (R8d). Analog zu
+    /// `clientFactory`; Tests injizieren einen Mock.
+    let localityClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient
 
     @Published private(set) var inFlight = 0
 
@@ -73,22 +83,28 @@ final class SyncRunner: ObservableObject {
     init(store: LocalSampleStore,
          mutationsStore: PendingMutationsStore,
          photoStore: LocalPhotoStore? = nil,
+         localitiesStore: LocalLocalityStore? = nil,
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthSession? = { nil },
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
          clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
-         onSampleSynced: @escaping (String) -> Void = { _ in })
+         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(endpoint: $0, auth: $1) },
+         onSampleSynced: @escaping (String) -> Void = { _ in },
+         onLocalityChanged: @escaping () -> Void = {})
     {
         self.store = store
         self.mutationsStore = mutationsStore
         self.photoStore = photoStore
+        self.localitiesStore = localitiesStore
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
         self.retryInterval = retryInterval
         self.enrichmentPollInterval = enrichmentPollInterval
         self.clientFactory = clientFactory
+        self.localityClientFactory = localityClientFactory
         self.onSampleSynced = onSampleSynced
+        self.onLocalityChanged = onLocalityChanged
         startRetryLoop()
     }
 
@@ -148,6 +164,8 @@ final class SyncRunner: ObservableObject {
         switch (mutation.entityType, mutation.op) {
         case (.sample, .create):
             await executeSampleCreate(mutation, via: client)
+        case (.locality, .create):
+            await executeLocalityCreate(mutation)
         default:
             // Unsupported op — record once so the row isn't silently
             // stuck forever, but don't burn the queue on it.
@@ -236,6 +254,57 @@ final class SyncRunner: ObservableObject {
             try? store.update(working)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample push failed: \(message)")
+        }
+    }
+
+    /// Pushes a client-created locality (R8d offline-fusion). The
+    /// local row carries a UUID id; on success we insert the backend
+    /// row, re-point every local sample from the UUID onto the
+    /// backend id (reusing `applyRemap`), and drop the UUID row. The
+    /// server-side fusion hook (R6.1) may merge this locality into an
+    /// existing one afterwards — that's reconciled later via the
+    /// remap-event stream.
+    private func executeLocalityCreate(_ mutation: PendingMutation) async {
+        guard let localitiesStore,
+              let localId = mutation.entityId,
+              let local = try? localitiesStore.fetchById(localId)
+        else {
+            // No store wired or the local row vanished — the mutation
+            // is garbage, drop it.
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return }
+        let client = localityClientFactory(endpoint, authProvider())
+
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+
+            let created = try await client.create(LocalityInput(
+                name: local.name,
+                latitude: local.latitude ?? local.centroidLat ?? 0,
+                longitude: local.longitude ?? local.centroidLon ?? 0,
+                radiusM: local.radiusM ?? LocalityFusion.defaultRadiusM,
+                notes: local.notes,
+                locationSource: LocationSource(rawValue: local.locationSource) ?? .locationService,
+                version: local.version,
+                clientUuid: local.clientUuid ?? local.id,
+                clientUpdatedAt: local.clientUpdatedAt
+            ))
+
+            // Reconcile UUID → backend id: insert the backend row,
+            // re-point samples, delete the UUID row.
+            try localitiesStore.upsertOne(created)
+            try localitiesStore.applyRemap(oldID: local.id, newID: created.id)
+            try? mutationsStore.dequeue(mutation.id)
+            onLocalityChanged()
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("locality push failed: \(message)")
         }
     }
 

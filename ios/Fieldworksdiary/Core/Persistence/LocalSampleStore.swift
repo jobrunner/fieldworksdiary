@@ -40,7 +40,8 @@ final class LocalSampleStore {
         altitude: Double? = nil,
         collectedFrom: Date = Date(),
         notes: String = "",
-        overrideCode: String? = nil
+        overrideCode: String? = nil,
+        locationSource: LocationSource = .locationService
     ) throws -> LocalSample {
         let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
         let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
@@ -77,7 +78,7 @@ final class LocalSampleStore {
                 marked: false,
                 fieldtrip: nil,
                 locality: nil,
-                locationSource: LocationSource.locationService.rawValue,
+                locationSource: locationSource.rawValue,
                 version: 1,
                 adminUnitsLocality: nil,
                 adminUnitsCountry: nil,

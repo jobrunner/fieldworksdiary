@@ -78,10 +78,14 @@ final class AppContainer: ObservableObject {
             store: store,
             mutationsStore: mutations,
             photoStore: photos,
+            localitiesStore: localitiesStore,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
             onSampleSynced: { fieldtripID in
                 Task { await hydrator.pullOne(fieldtripID) }
+            },
+            onLocalityChanged: {
+                Task { await localitiesHydrator.pull() }
             }
         )
 

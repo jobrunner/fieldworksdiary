@@ -1,27 +1,61 @@
 import Foundation
 
-/// Eingabe-Struktur für `create`/`update` einer Locality. Bündelt
-/// fünf Felder, die sonst als lange Argument-Liste durchgereicht
-/// werden (SwiftLint `function_parameter_count` ≤ 5).
+/// Eingabe-Struktur für `create`/`update` einer Locality. Nutzt den
+/// synthetisierten Memberwise-Init (keine eigene Argument-Liste →
+/// kein SwiftLint `function_parameter_count`-Treffer); die Sync-
+/// Felder haben Defaults, damit der manuelle Edit-Flow nur die fünf
+/// Kernfelder setzen muss.
+///
+/// R8d-Fix: der Wire-Body folgt jetzt dem R3-Schema
+/// (`latitude`/`longitude`/`radius_m`/`location_source`/`version`/
+/// `client_uuid`/`client_updated_at`) statt der alten
+/// `centroid_*`-Namen, die der Server seit R3 nicht mehr als
+/// Schreib-Felder kennt.
 struct LocalityInput {
-    let name: String
-    let centroidLat: Double
-    let centroidLon: Double
-    let radiusM: Double
-    let notes: String
+    var name: String
+    var latitude: Double
+    var longitude: Double
+    var radiusM: Double
+    var notes: String
+    var locationSource: LocationSource = .user
+    var version: Int = 1
+    var clientUuid: String? = nil
+    var clientUpdatedAt: Date? = nil
 
     var asDictionary: [String: Any] {
-        [
+        var dict: [String: Any] = [
             "name": name,
-            "centroid_lat": centroidLat,
-            "centroid_lon": centroidLon,
+            "latitude": latitude,
+            "longitude": longitude,
             "radius_m": radiusM,
-            "notes": notes
+            "notes": notes,
+            "location_source": locationSource.wireValue,
+            "version": version,
         ]
+        if let clientUuid, !clientUuid.isEmpty {
+            dict["client_uuid"] = clientUuid
+        }
+        if let clientUpdatedAt {
+            dict["client_updated_at"] = Self.iso8601.string(from: clientUpdatedAt)
+        }
+        return dict
     }
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 }
 
-struct LocalityClient {
+/// Push-Schnittstelle für Locality-`create`, gegen die der SyncRunner
+/// (R8d) den `.locality/.create`-Outbox-Dispatch testet. Produktiv
+/// konformt `LocalityClient`.
+protocol LocalityPushClient {
+    func create(_ input: LocalityInput) async throws -> Locality
+}
+
+struct LocalityClient: LocalityPushClient {
     let endpoint: String
     let auth: AuthSession?
 
