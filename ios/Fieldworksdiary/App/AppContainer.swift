@@ -22,6 +22,7 @@ final class AppContainer: ObservableObject {
     let localitiesHydrator: LocalitiesHydrator
     let samplesHydrator: SamplesHydrator
     let remapPuller: RemapEventsPuller
+    let placemarksStore: LocalPlacemarkStore
     let photos: LocalPhotoStore
     let mutations: PendingMutationsStore
     let sync: SyncRunner
@@ -70,6 +71,7 @@ final class AppContainer: ObservableObject {
             authProvider: { [weak auth] in auth },
             userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
+        let placemarksStore = LocalPlacemarkStore(database: database)
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
@@ -93,6 +95,7 @@ final class AppContainer: ObservableObject {
         self.localitiesHydrator = localitiesHydrator
         self.samplesHydrator = samplesHydrator
         self.remapPuller = remapPuller
+        self.placemarksStore = placemarksStore
         self.photos = photos
         self.mutations = mutations
         self.sync = sync
@@ -145,6 +148,7 @@ final class AppContainer: ObservableObject {
             try store.reset()
             try fieldtrips.reset()
             try localitiesStore.reset()
+            try placemarksStore.reset()
             try photos.reset()
             try mutations.reset()
             remapPuller.resetCursor()

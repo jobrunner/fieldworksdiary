@@ -17,6 +17,49 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R8a done** (2026-05-27, Branch
+`refactor/R8a-placemark-ui`). Placemark wird im LocalityDetailView
+angezeigt — Adresse-Sektion mit Name/Thoroughfare/PostalCode/
+Locality/Country/Admin-Area, plus „manuell"-Badge wenn der User
+das Placemark per Manual-Override-Endpoint gesetzt hat.
+
+R8a liefert:
+- **`Core/Persistence/LocalPlacemarkStore.swift`** — schlanker
+  Wrapper (upsert/fetchById/count/reset). Wird in
+  `AppContainer.wipeLocalStores` mit zurückgesetzt.
+- **`Core/PocketBaseClient/PlacemarkClient.swift`** — heute nur
+  `fetch(id)`. Setter-Endpoints (PATCH/DELETE auf
+  `/api/localities/:id/placemark`) kommen mit dem
+  Manual-Override-Sheet in R8b/R8c.
+- **`LocalityDetailView` Erweiterung** — neue `placemarkCard`,
+  cached-first / network-fallback, dezenter „Adresse wird
+  ermittelt …" Spinner, wenn die Locality auf einen Placemark
+  zeigt aber lokal nichts gecached ist. Placemark-Felder
+  rendern in der natürlichen Adress-Reihenfolge mit dem
+  „manuell"-Badge bei `geocoding_source == "manual"`.
+
+Was NICHT in R8a ist (kommt in R8b oder R8c):
+- **PlacemarkEditSheet** (Manual-Override-UI) + Reset-Knopf
+  (DELETE override).
+- **Remap-Notification-Toast** (`Notification.localityRemap
+  Applied`).
+- **FlagAmbiguous-Badge** in der Localities-Liste.
+- **AddSample-Sheet** mit drei Modi + Offline-Fusion-
+  Integration.
+- **LocalityClient-Wire-Field-Fix** (heute schickt der
+  Client noch `centroid_lat/lon/radius_m` statt R3-Spec-
+  aligned Namen).
+- **Map-View** mit Cluster-Pins + Sample-ID-Template-Editor +
+  Filter-Erweiterungen.
+
+iOS-Build grün; alle iOS-Logik-Tests grün; SnapshotsTests
+.testPrimaryButton failt weiter durch Xcode-Renderer-Drift,
+nicht R8a-bezogen.
+
+---
+
+## Historie / R7.3
+
 **R7.3 done** (2026-05-27, Branch
 `refactor/R7.3-backfill-placemarks`). Bestandsdaten-Backfill:
 für jedes Sample mit `admin_units` wird ein Placemark
@@ -277,7 +320,11 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R7.2 | Backend Manual-Override-Endpoints | done | R3 | – |
 | R7.3 | Backfill admin_units → Placemarks | done | R7.1 | R7.4 |
 | R7.4 | Drop samples.admin_units | pending | R7.3 | – |
-| R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
+| R8a | UI: Placemark-Display in Locality-Detail | done | R7 | – |
+| R8b | UI: Manual-Override-Sheet + Reset | pending | R8a | – |
+| R8c | UI: Remap-Toast + FlagAmbiguous-Badge | pending | R6 | – |
+| R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | pending | R6.3 | – |
+| R8e | UI: Map / Sample-ID-Template / Filter | pending | R8d | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
 | R10 | Daten-Migration Bestand | pending | R5, R6, R7 | – |
 | R11 | Planning-Feature (`planned_locality`) | pending | R7 | – |
