@@ -17,6 +17,45 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R7.3 done** (2026-05-27, Branch
+`refactor/R7.3-backfill-placemarks`). Bestandsdaten-Backfill:
+für jedes Sample mit `admin_units` wird ein Placemark
+lookup-or-created und — falls Sample und Locality verknüpft
+sind und die Locality noch kein Placemark hat — angehängt.
+Idempotent (zweiter Lauf no-op), tolerant gegen malformed
+JSON, manual-override-safe.
+
+Migration `1700000020_phase_r7_backfill_placemarks.go`:
+- Iteriert `samples WHERE admin_units != ''`.
+- Parse Legacy-Snapshot (LabellocResult-Shape:
+  country/countryIso/adminArea/adminArea2/locality).
+- Country-ISO leer → skip; malformed JSON → skip.
+- PlacemarkDedupHash (dritte Kopie der Hash-Funktion neben
+  `internal/enrichment` und `internal/api` — die drei sind
+  über drei `LockedConstant`-Tests gegen Drift gesichert).
+- Lookup-or-Create `placemarks` mit `geocoding_source =
+  backend-service`.
+- Sample.locality + Locality.placemark leer → attach.
+
+6 Tests: hash-stability, hash-locked-constant (canonical
+SHA-256 in allen drei Kopien identisch), create-and-attach,
+idempotent re-run, manual-override-safe, malformed-JSON-skip.
+`go test ./...` durchgehend grün.
+
+**R7.4 (`samples.admin_units` droppen) bleibt pending** —
+Spec §6.1 verlangt explizit eine Woche Staging-Beobachtung
+nach R7.3, bevor die Spalte gedroppt wird. Das geschieht in
+einem eigenen PR, sobald die Produktiv-Beobachtung das Go
+liefert.
+
+Frühere Phasen (R0–R7.2) abgeschlossen + auf `main` gemerged.
+Nächste Phase: **R7.4** (deferred bis Staging-OK) oder **R8**
+(UI-Refactor). R8 ist umfangreicher.
+
+---
+
+## Historie / R7.1 + R7.2
+
 **R7.1 + R7.2 done** (2026-05-27, Branch
 `refactor/R7-placemark-pipeline`). Reverse-Geocoding läuft jetzt
 backend-seitig auf Locality-Events; manuelle Korrekturen sind
@@ -236,7 +275,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R6.3 | iOS Offline-Fusion (Algorithmus + Tests) | done | R6.1 | R8 |
 | R7.1 | Backend Placemark-Auto-Geocode-Hook | done | R3 | – |
 | R7.2 | Backend Manual-Override-Endpoints | done | R3 | – |
-| R7.3 | Backfill admin_units → Placemarks | pending | R7.1 | R7.4 |
+| R7.3 | Backfill admin_units → Placemarks | done | R7.1 | R7.4 |
 | R7.4 | Drop samples.admin_units | pending | R7.3 | – |
 | R8 | UI-Anpassungen | pending | R4, R6, R7 | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
