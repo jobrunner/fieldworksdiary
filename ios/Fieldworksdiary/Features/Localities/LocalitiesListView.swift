@@ -61,14 +61,33 @@ struct LocalitiesListScreen: View {
                 emptyState
             }
         } else {
-            List(viewModel.localities) { locality in
-                NavigationLink {
-                    LocalityDetailView(localityID: locality.id)
-                } label: {
-                    row(for: locality)
+            List {
+                if !viewModel.reviewPending.isEmpty {
+                    Section {
+                        ForEach(viewModel.reviewPending) { locality in
+                            localityLink(locality)
+                        }
+                    } header: {
+                        Text("Prüfen")
+                    } footer: {
+                        Text("Möglicherweise doppelte Fundorte — beim Auswerten zusammenführen oder behalten.")
+                    }
+                }
+                Section {
+                    ForEach(viewModel.regular) { locality in
+                        localityLink(locality)
+                    }
                 }
             }
             .listStyle(.plain)
+        }
+    }
+
+    private func localityLink(_ locality: LocalLocality) -> some View {
+        NavigationLink {
+            LocalityDetailView(localityID: locality.id)
+        } label: {
+            row(for: locality)
         }
     }
 
@@ -87,9 +106,14 @@ struct LocalitiesListScreen: View {
     }
 
     private func row(for locality: LocalLocality) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(locality.name.isEmpty ? "(ohne Namen)" : locality.name)
-                .font(.body.weight(.medium))
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            HStack(spacing: AppSpacing.xs) {
+                Text(locality.name.isEmpty ? "(ohne Namen)" : locality.name)
+                    .font(.body.weight(.medium))
+                if locality.needsHumanReview {
+                    reviewBadge
+                }
+            }
             if let lat = locality.centroidLat, let lon = locality.centroidLon {
                 Text(String(format: "%.5f, %.5f", lat, lon))
                     .font(.footnote.monospacedDigit())
@@ -101,6 +125,19 @@ struct LocalitiesListScreen: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppSpacing.xs)
+    }
+
+    /// "möglicherweise doppelt" — icon + text so it reads without
+    /// relying on colour alone (differentiateWithoutColor).
+    private var reviewBadge: some View {
+        HStack(spacing: AppSpacing.xxs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+            Text("möglicherweise doppelt")
+        }
+        .font(AppFont.caption)
+        .foregroundStyle(AppColor.warning)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Möglicherweise doppelter Fundort")
     }
 }

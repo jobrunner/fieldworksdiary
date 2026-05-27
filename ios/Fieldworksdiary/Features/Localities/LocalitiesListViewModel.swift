@@ -6,6 +6,17 @@ final class LocalitiesListViewModel: ObservableObject {
     @Published private(set) var isHydrating = false
     @Published private(set) var hydratingError: String?
 
+    /// Localities the server flagged as possible duplicates (R6.1).
+    /// Rendered in their own section at the top of the list.
+    var reviewPending: [LocalLocality] {
+        localities.filter(\.needsHumanReview)
+    }
+
+    /// Everything else, in the normal alphabetical order.
+    var regular: [LocalLocality] {
+        localities.filter { !$0.needsHumanReview }
+    }
+
     private let store: LocalLocalityStore
     private let hydrator: LocalitiesHydrator
     private var observationTask: Task<Void, Never>?

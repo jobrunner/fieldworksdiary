@@ -58,6 +58,7 @@ final class Database {
         migrator.registerMigration("v9_rename_excursions_to_fieldtrips", migrate: migrateV9)
         migrator.registerMigration("v10_spec_alignment_r3", migrate: migrateV10)
         migrator.registerMigration("v11_pending_mutations_outbox", migrate: migrateV11)
+        migrator.registerMigration("v12_localities_needs_human_review", migrate: migrateV12)
         try migrator.migrate(writer)
     }
 
@@ -313,5 +314,17 @@ final class Database {
             indexOn: "pending_mutations",
             columns: ["entity_type", "created_at"]
         )
+    }
+
+    /// Phase R8c: surface the server-side fusion flag locally. The
+    /// PocketBase migration 1700000019 added `needs_human_review` on
+    /// localities (R6.1); this is the matching client column so the
+    /// list can show a "möglicherweise doppelt" review section.
+    /// Defaults to false for all existing rows.
+    private static func migrateV12(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_localities") { t in
+            t.add(column: "needs_human_review", .boolean).notNull().defaults(to: false)
+        }
+        try db.create(indexOn: "local_localities", columns: ["needs_human_review"])
     }
 }

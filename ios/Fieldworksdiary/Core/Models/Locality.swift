@@ -34,6 +34,9 @@ struct Locality: Decodable, Identifiable, Equatable {
     let version: Int
     let clientUuid: String?
     let clientUpdatedAt: Date?
+    /// Server-side fusion flagged this locality as a possible
+    /// duplicate that a human should look at (Spec §5.2 / R6.1).
+    let needsHumanReview: Bool
     /// Legacy centroid columns — read for backwards compat, will be
     /// dropped after the data migration in R10.
     let centroidLat: Double?
@@ -48,6 +51,7 @@ struct Locality: Decodable, Identifiable, Equatable {
         case radiusM = "radius_m"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
+        case needsHumanReview = "needs_human_review"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
     }
@@ -91,6 +95,7 @@ struct Locality: Decodable, Identifiable, Equatable {
         let cu = (try? c.decode(String.self, forKey: .clientUuid)) ?? ""
         clientUuid = cu.isEmpty ? nil : cu
         clientUpdatedAt = try? c.decode(Date.self, forKey: .clientUpdatedAt)
+        needsHumanReview = (try? c.decode(Bool.self, forKey: .needsHumanReview)) ?? false
     }
 }
 

@@ -11,6 +11,7 @@ struct RootView: View {
         Group {
             if auth.isSignedIn {
                 HomeView()
+                    .remapToast()
             } else {
                 WelcomeView()
             }

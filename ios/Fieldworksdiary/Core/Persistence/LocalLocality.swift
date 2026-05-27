@@ -21,6 +21,9 @@ struct LocalLocality: Codable, FetchableRecord, MutablePersistableRecord, Identi
     var version: Int
     var clientUuid: String?
     var clientUpdatedAt: Date?
+    /// Server-side fusion flag (Spec §5.2 / R6.1) — drives the
+    /// "möglicherweise doppelt" review surface in the list.
+    var needsHumanReview: Bool
     /// Legacy centroid columns — read for backwards compat until the
     /// data migration in R10 drops them.
     var centroidLat: Double?
@@ -37,6 +40,7 @@ struct LocalLocality: Codable, FetchableRecord, MutablePersistableRecord, Identi
         case radiusM = "radius_m"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
+        case needsHumanReview = "needs_human_review"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
         case backendUpdatedAt = "backend_updated_at"
@@ -62,6 +66,7 @@ extension LocalLocality {
         version = remote.version
         clientUuid = remote.clientUuid
         clientUpdatedAt = remote.clientUpdatedAt
+        needsHumanReview = remote.needsHumanReview
         centroidLat = remote.centroidLat
         centroidLon = remote.centroidLon
         backendUpdatedAt = Date()

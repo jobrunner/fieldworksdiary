@@ -17,6 +17,21 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R8c done** (2026-05-27, Branch `refactor/R8c-remap-toast`).
+FlagAmbiguous-Badge + Remap-Toast. `needs_human_review` ist jetzt
+client-seitig: Wire-Feld in `Locality`, Spalte in `LocalLocality`
+(GRDB-Migration v12, default false). `LocalitiesListView` rendert
+eine „Prüfen"-Section am Listenanfang für geflaggte Fundorte plus ein
+„möglicherweise doppelt"-Badge (Icon + Text, differentiateWithoutColor-
+safe). Neuer `Core/UI/RemapToastView.swift` (`.remapToast()`-Modifier
+an `HomeView`) hört auf `Notification.localityRemapApplied`, löst den
+Ziel-Locality-Namen lokal auf und zeigt 4 s lang „N Proben wurden in
+‚X' übernommen." (Reduce-Motion-respektierend via `AppMotion`). 1
+Unit-Test pinnt Spalten-Round-Trip + Partition. iOS-Build grün, keine
+Regression in `LocalLocalityStoreRemapTests`.
+
+---
+
 **R8b done** (2026-05-27, Branch `refactor/R8b-placemark-override`).
 Manual-Override-Sheet im LocalityDetailView. `PlacemarkClient` hat
 jetzt `setManual(localityID:fields:)` (PATCH → liefert Placemark
@@ -354,7 +369,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R7.4 | Drop samples.admin_units | done | R7.3 | – |
 | R8a | UI: Placemark-Display in Locality-Detail | done | R7 | – |
 | R8b | UI: Manual-Override-Sheet + Reset | done | R8a | – |
-| R8c | UI: Remap-Toast + FlagAmbiguous-Badge | pending | R6 | – |
+| R8c | UI: Remap-Toast + FlagAmbiguous-Badge | done | R6 | – |
 | R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | pending | R6.3 | – |
 | R8e | UI: Map / Sample-ID-Template / Filter | pending | R8d | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
