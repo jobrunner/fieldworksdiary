@@ -17,6 +17,22 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R7.4 done** (2026-05-27, Branch `refactor/R7.4-drop-admin-units`).
+Die Legacy-Spalte `samples.admin_units` ist gedroppt. Migration
+`1700000021_phase_r7_drop_samples_admin_units.go` (idempotent, Down
+re-creiert eine leere JSON-Spalte — Bestandsdaten sind aus
+`placemarks` nicht rekonstruierbar). `fieldtrips.admin_units` bleibt
+als NEW-2-Snapshot stehen.
+
+Code-Folge: der Enricher schreibt das labelloc-Ergebnis nicht mehr
+auf das Sample, sondern hält es lokal und propagiert direkt an den
+Fieldtrip (`maybePropagateToFieldtrip(sample, adminUnits)`);
+`labels.go::sampleToLabel` liest admin_units nur noch fieldtrip-seitig.
+`samples.mtb` bleibt unangetastet. `go test ./...` grün; 2
+Migration-Tests (Spalte weg, Fieldtrip-Snapshot erhalten).
+
+---
+
 **R8a done** (2026-05-27, Branch
 `refactor/R8a-placemark-ui`). Placemark wird im LocalityDetailView
 angezeigt — Adresse-Sektion mit Name/Thoroughfare/PostalCode/
@@ -319,7 +335,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R7.1 | Backend Placemark-Auto-Geocode-Hook | done | R3 | – |
 | R7.2 | Backend Manual-Override-Endpoints | done | R3 | – |
 | R7.3 | Backfill admin_units → Placemarks | done | R7.1 | R7.4 |
-| R7.4 | Drop samples.admin_units | pending | R7.3 | – |
+| R7.4 | Drop samples.admin_units | done | R7.3 | – |
 | R8a | UI: Placemark-Display in Locality-Detail | done | R7 | – |
 | R8b | UI: Manual-Override-Sheet + Reset | pending | R8a | – |
 | R8c | UI: Remap-Toast + FlagAmbiguous-Badge | pending | R6 | – |

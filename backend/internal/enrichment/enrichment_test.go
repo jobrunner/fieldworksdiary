@@ -260,7 +260,7 @@ func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float
 
 func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
+	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	fakes := newFakeServices(t)
 	e := &Enricher{
@@ -273,15 +273,21 @@ func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
 	defer cancel()
 	e.run(ctx, sampleID, 49.793, 9.939)
 
+	// admin_units is propagated straight to the fieldtrip (R7.4 dropped
+	// the per-sample column); mtb still lands on the sample.
 	got, err := app.Dao().FindRecordById("samples", sampleID)
 	if err != nil {
-		t.Fatalf("re-fetch: %v", err)
-	}
-	if au := got.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
-		t.Errorf("admin_units = %q, expected to contain Würzburg", au)
+		t.Fatalf("re-fetch sample: %v", err)
 	}
 	if mtb := got.GetString("mtb"); !strings.Contains(mtb, "6225") {
 		t.Errorf("mtb = %q, expected to contain sheet 6225", mtb)
+	}
+	ft, err := app.Dao().FindRecordById("fieldtrips", ftID)
+	if err != nil {
+		t.Fatalf("re-fetch fieldtrip: %v", err)
+	}
+	if au := ft.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
+		t.Errorf("fieldtrip.admin_units = %q, expected to contain Würzburg", au)
 	}
 	if fakes.labellocHits != 1 || fakes.mtbHits != 1 {
 		t.Errorf("hits: labelloc=%d mtb=%d, want 1 each", fakes.labellocHits, fakes.mtbHits)
@@ -290,22 +296,22 @@ func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
 
 func TestEnricher_Run_NilServicesIsNoOp(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
+	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	e := &Enricher{App: app}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	e.run(ctx, sampleID, 49.793, 9.939)
 
-	got, _ := app.Dao().FindRecordById("samples", sampleID)
-	if au := got.GetString("admin_units"); au != "" {
-		t.Errorf("admin_units = %q, want empty (no service registered)", au)
+	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
+	if au := ft.GetString("admin_units"); au != "" {
+		t.Errorf("fieldtrip.admin_units = %q, want empty (no service registered)", au)
 	}
 }
 
 func TestEnricher_Run_LabellocFailureDoesNotBlockMTB(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
+	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
 	fakes := newFakeServices(t)
 	fakes.labellocFail = true
@@ -320,11 +326,12 @@ func TestEnricher_Run_LabellocFailureDoesNotBlockMTB(t *testing.T) {
 	e.run(ctx, sampleID, 49.793, 9.939)
 
 	got, _ := app.Dao().FindRecordById("samples", sampleID)
-	if au := got.GetString("admin_units"); au != "" {
-		t.Errorf("admin_units = %q, want empty after labelloc 500", au)
-	}
 	if mtb := got.GetString("mtb"); !strings.Contains(mtb, "6225") {
 		t.Errorf("mtb was not saved despite labelloc failure: %q", mtb)
+	}
+	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
+	if au := ft.GetString("admin_units"); au != "" {
+		t.Errorf("fieldtrip.admin_units = %q, want empty after labelloc 500", au)
 	}
 }
 
@@ -332,15 +339,12 @@ func TestMaybePropagateToFieldtrip_FillsEmptyFields(t *testing.T) {
 	app := newAppForRecordsOnly(t)
 	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
 
-	// admin_units auf sample setzen, fieldtrip lassen wir leer.
+	// admin_units kommt jetzt als Parameter (R7.4); fieldtrip leer lassen.
 	sample, _ := app.Dao().FindRecordById("samples", sampleID)
-	sample.Set("admin_units", `{"locality":"Würzburg","country":"DE","adminArea":"Bayern"}`)
-	if err := app.Dao().SaveRecord(sample); err != nil {
-		t.Fatalf("save sample: %v", err)
-	}
+	adminUnits := `{"locality":"Würzburg","country":"DE","adminArea":"Bayern"}`
 
 	e := &Enricher{App: app}
-	e.maybePropagateToFieldtrip(sample)
+	e.maybePropagateToFieldtrip(sample, adminUnits)
 
 	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
 	if au := ft.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
@@ -364,13 +368,9 @@ func TestMaybePropagateToFieldtrip_PreservesManualName(t *testing.T) {
 	}
 
 	sample, _ := app.Dao().FindRecordById("samples", sampleID)
-	sample.Set("admin_units", `{"locality":"Würzburg"}`)
-	if err := app.Dao().SaveRecord(sample); err != nil {
-		t.Fatalf("save sample: %v", err)
-	}
 
 	e := &Enricher{App: app}
-	e.maybePropagateToFieldtrip(sample)
+	e.maybePropagateToFieldtrip(sample, `{"locality":"Würzburg"}`)
 
 	ft2, _ := app.Dao().FindRecordById("fieldtrips", ftID)
 	if got := ft2.GetString("title"); got != "Heidehöhe Würzburg" {

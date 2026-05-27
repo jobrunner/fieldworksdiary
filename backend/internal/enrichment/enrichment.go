@@ -126,6 +126,10 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 		results <- result{field: "mtb", data: r}
 	}()
 
+	// admin_units no longer lives on the sample (R7.4). We keep the
+	// labelloc snapshot in a local and push it straight to the
+	// fieldtrip; only mtb is still a sample column.
+	var adminUnits string
 	dirty := false
 	for i := 0; i < 2; i++ {
 		r := <-results
@@ -150,40 +154,45 @@ func (e *Enricher) run(ctx context.Context, recordID string, lat, lon float64) {
 			)
 			continue
 		}
-		rec.Set(r.field, string(raw))
-		dirty = true
-	}
-
-	if !dirty {
-		return
-	}
-
-	if err := dao.SaveRecord(rec); err != nil {
-		// One common reason this fails is PocketBase rejecting our
-		// internal save when the record was meanwhile deleted; that's
-		// fine, just log and move on.
-		level := slog.LevelWarn
-		if errors.Is(err, sql.ErrNoRows) {
-			level = slog.LevelDebug
+		switch r.field {
+		case "admin_units":
+			adminUnits = string(raw)
+		default:
+			rec.Set(r.field, string(raw))
+			dirty = true
 		}
-		e.log().Log(
-			ctx, level, "enrichment: save failed",
-			slog.String("record_id", recordID),
-			slog.Any("err", err),
-		)
-		return
+	}
+
+	if dirty {
+		if err := dao.SaveRecord(rec); err != nil {
+			// One common reason this fails is PocketBase rejecting our
+			// internal save when the record was meanwhile deleted; that's
+			// fine, just log and move on.
+			level := slog.LevelWarn
+			if errors.Is(err, sql.ErrNoRows) {
+				level = slog.LevelDebug
+			}
+			e.log().Log(
+				ctx, level, "enrichment: save failed",
+				slog.String("record_id", recordID),
+				slog.Any("err", err),
+			)
+			return
+		}
 	}
 
 	// Lift admin_units / mtb up to the fieldtrip if the fieldtrip
 	// doesn't already have them. Best-effort; not transactional with
 	// the sample save.
-	e.maybePropagateToFieldtrip(rec)
+	e.maybePropagateToFieldtrip(rec, adminUnits)
 }
 
 // maybePropagateToFieldtrip fills the fieldtrip's admin_units and mtb
-// fields from this sample if the fieldtrip is still empty. We only
-// promote — never overwrite — so manual edits stick.
-func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record) {
+// fields if the fieldtrip is still empty. We only promote — never
+// overwrite — so manual edits stick. `adminUnits` is the labelloc
+// snapshot for this sample, passed in by the caller because — since
+// R7.4 — it is no longer persisted on the sample itself; mtb still is.
+func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record, adminUnits string) {
 	ftID := sample.GetString("fieldtrip")
 	if ftID == "" {
 		return
@@ -194,8 +203,8 @@ func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record) {
 		return
 	}
 	dirty := false
-	if au := sample.GetString("admin_units"); au != "" && ft.GetString("admin_units") == "" {
-		ft.Set("admin_units", au)
+	if adminUnits != "" && ft.GetString("admin_units") == "" {
+		ft.Set("admin_units", adminUnits)
 		dirty = true
 	}
 	if mtb := sample.GetString("mtb"); mtb != "" && ft.GetString("mtb") == "" {
@@ -205,8 +214,8 @@ func (e *Enricher) maybePropagateToFieldtrip(sample *models.Record) {
 	// If the fieldtrip still has its default title and we now know the
 	// locality, upgrade the title. The default starts with "Sammeltag
 	// ", so a strict prefix check is enough.
-	if au := sample.GetString("admin_units"); au != "" {
-		if locality := localityFromAdminUnits(au); locality != "" {
+	if adminUnits != "" {
+		if locality := localityFromAdminUnits(adminUnits); locality != "" {
 			currentTitle := ft.GetString("title")
 			if currentTitle == "" || hasDefaultPrefix(currentTitle) {
 				day := ft.GetString("collecting_day")

@@ -333,9 +333,9 @@ func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
 		label.HasAltitude = true
 	}
 
-	if au := decodeAdminUnits(s.GetString("admin_units")); au != nil {
-		fillAdmin(&label, au)
-	} else if ft != nil {
+	// admin_units lives only on the fieldtrip now (R7.4); the per-sample
+	// snapshot was dropped.
+	if ft != nil {
 		if au := decodeAdminUnits(ft.GetString("admin_units")); au != nil {
 			fillAdmin(&label, au)
 		}
