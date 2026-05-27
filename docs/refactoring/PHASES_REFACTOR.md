@@ -17,6 +17,33 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R8d done** (2026-05-27, Branch `refactor/R8d-addsample-fusion`,
+zwei Sub-Commits). Offline-Fusion im AddSample-Flow plus die zwei
+dafür nötigen Sync-/Wire-Fixes.
+
+Commit 1 (Sync/Wire): `LocalityClient`/`LocalityInput` schicken jetzt
+R3-aligned Feldnamen (`latitude`/`longitude`/`radius_m`/
+`location_source`/`version`/`client_uuid`/`client_updated_at`) statt
+der alten `centroid_*`. `SyncRunner` dispatcht `.locality/.create`:
+pusht die client-erzeugte Locality, tauscht die lokale UUID gegen die
+Backend-ID (reuse `applyRemap`) und re-pointet Samples;
+`LocalityPushClient`-Protokoll macht das testbar.
+`LocalLocalityStore.createLocal` + `fetchAll` neu.
+
+Commit 2 (VM/UI): `SampleEditorViewModel` bekommt einen Mode
+(`field`/`later`; `planned` = R11). Im Field-Modus läuft nach dem
+Sample-Create `LocalityFusion.offlineFuseLocality` gegen die lokalen
+Localities — Treffer übernimmt, Miss erzeugt eine neue lokale
+Locality + `.locality/.create`-Mutation; das Sample wird re-pointed.
+`SampleEditorView` zeigt den Segment-Picker + (im Later-Modus) einen
+Karten-Koordinaten-Button. `LocalSampleStore.createLocal` nimmt jetzt
+`locationSource`.
+
+5 neue Tests (2 SyncRunner-Locality, 3 VM-Fusion), keine Regression
+in `SyncRunnerTests`. iOS-Build grün.
+
+---
+
 **R8c done** (2026-05-27, Branch `refactor/R8c-remap-toast`).
 FlagAmbiguous-Badge + Remap-Toast. `needs_human_review` ist jetzt
 client-seitig: Wire-Feld in `Locality`, Spalte in `LocalLocality`
@@ -370,7 +397,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R8a | UI: Placemark-Display in Locality-Detail | done | R7 | – |
 | R8b | UI: Manual-Override-Sheet + Reset | done | R8a | – |
 | R8c | UI: Remap-Toast + FlagAmbiguous-Badge | done | R6 | – |
-| R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | pending | R6.3 | – |
+| R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | done | R6.3 | – |
 | R8e | UI: Map / Sample-ID-Template / Filter | pending | R8d | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
 | R10 | Daten-Migration Bestand | pending | R5, R6, R7 | – |
