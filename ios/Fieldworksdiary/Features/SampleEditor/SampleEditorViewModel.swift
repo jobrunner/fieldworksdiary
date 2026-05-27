@@ -31,6 +31,22 @@ final class SampleEditorViewModel: ObservableObject {
         }
     }
 
+    /// How the sample's location is obtained (Spec §7 / R8d).
+    /// `.planned` (a sample pre-staged before going out) is R11 — not
+    /// offered yet.
+    enum Mode: Equatable {
+        /// Live GPS fix → coordinate is `location_service`-sourced and
+        /// gets offline-fused against existing localities.
+        case field
+        /// Coordinate entered by hand on a map → `user`-sourced, no
+        /// fusion (the user is curating, not collecting in place).
+        case later
+    }
+
+    /// Drives GPS start/stop and whether `save()` runs offline fusion.
+    @Published var mode: Mode = .field {
+        didSet { handleModeChange(from: oldValue) }
+    }
     @Published var code: String = ""
     @Published var notes: String = ""
     @Published var pendingPhotos: [PendingPhoto] = []
@@ -51,6 +67,8 @@ final class SampleEditorViewModel: ObservableObject {
     private let store: LocalSampleStore
     private let photoStore: LocalPhotoStore
     private let fieldtripStore: LocalFieldtripStore
+    private let localitiesStore: LocalLocalityStore
+    private let mutationsStore: PendingMutationsStore
     private let sync: SyncRunner
     private let location: LocationProvider
 
@@ -61,11 +79,15 @@ final class SampleEditorViewModel: ObservableObject {
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
+        localitiesStore: LocalLocalityStore,
+        mutationsStore: PendingMutationsStore,
         sync: SyncRunner
     ) {
         self.store = store
         self.photoStore = photoStore
         self.fieldtripStore = fieldtripStore
+        self.localitiesStore = localitiesStore
+        self.mutationsStore = mutationsStore
         self.sync = sync
         location = LocationProvider()
 
@@ -96,11 +118,34 @@ final class SampleEditorViewModel: ObservableObject {
     // MARK: - GPS
 
     func startGPS() {
-        // Only relevant on the create path; for existing samples the
-        // coordinate is already in `savedSample`.
-        guard savedSample == nil else { return }
+        // Only relevant on the create path in field mode; for existing
+        // samples the coordinate is already in `savedSample`, and in
+        // `.later` mode the user picks the coordinate by hand.
+        guard savedSample == nil, mode == .field else { return }
         location.requestFix()
         observeLocation()
+    }
+
+    /// Manual coordinate for `.later` mode (picked on the map). Clears
+    /// the GPS-derived accuracy/altitude — those don't apply to a
+    /// hand-placed point.
+    func setManualCoordinate(latitude: Double, longitude: Double) {
+        coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        accuracyM = nil
+        altitudeM = nil
+    }
+
+    private func handleModeChange(from previous: Mode) {
+        guard previous != mode, savedSample == nil else { return }
+        switch mode {
+        case .field:
+            startGPS()
+        case .later:
+            // Stop listening to GPS; keep whatever coordinate is shown
+            // so a quick toggle doesn't lose the user's pick.
+            observerTask?.cancel()
+            observerTask = nil
+        }
     }
 
     private func observeLocation() {
@@ -152,15 +197,67 @@ final class SampleEditorViewModel: ObservableObject {
                 accuracy: accuracyM,
                 altitude: altitudeM,
                 notes: trimmedNotes,
-                overrideCode: userCode == store.peekNextCode() ? nil : userCode
+                overrideCode: userCode == store.peekNextCode() ? nil : userCode,
+                locationSource: mode == .field ? .locationService : .user
             )
             try persistPhotos(for: sample)
-            adoptExisting(sample)
+            // Offline fusion only for live GPS samples (Spec §5.1):
+            // attach to a nearby locality or spin up a fresh one.
+            if mode == .field {
+                try? attachFusedLocality(
+                    to: sample,
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude
+                )
+            }
+            // Re-read so `adoptExisting` reflects the locality we just set.
+            let fresh = (try? store.fetchById(sample.id)) ?? sample
+            adoptExisting(fresh)
             sync.kick()
             startObservingSync(sampleID: sample.id)
         } catch {
             saveError = error.localizedDescription
         }
+    }
+
+    /// Runs the trivial offline-fusion (R6.3) against the local
+    /// localities. A hit re-uses that locality; a miss creates a new
+    /// local one and enqueues its `.locality/.create` mutation so the
+    /// SyncRunner pushes it (FK-ordered before the sample). Either way
+    /// the sample is re-pointed at the resulting locality id.
+    private func attachFusedLocality(to sample: LocalSample, latitude: Double, longitude: Double) throws {
+        let candidates: [LocalityFusion.Candidate] = ((try? localitiesStore.fetchAll()) ?? [])
+            .compactMap { loc in
+                guard let lat = loc.latitude ?? loc.centroidLat,
+                      let lon = loc.longitude ?? loc.centroidLon else { return nil }
+                return LocalityFusion.Candidate(id: loc.id, latitude: lat, longitude: lon)
+            }
+
+        let localityID: String
+        if let match = LocalityFusion.offlineFuseLocality(
+            sampleLatitude: latitude,
+            sampleLongitude: longitude,
+            candidates: candidates
+        ) {
+            localityID = match.id
+        } else {
+            let newLocal = try localitiesStore.createLocal(
+                latitude: latitude,
+                longitude: longitude,
+                locationSource: .locationService
+            )
+            _ = try mutationsStore.enqueue(
+                entityType: .locality,
+                entityId: newLocal.id,
+                op: .create,
+                payload: Data()
+            )
+            localityID = newLocal.id
+        }
+
+        var working = sample
+        working.locality = localityID
+        try store.update(working)
     }
 
     // MARK: - private

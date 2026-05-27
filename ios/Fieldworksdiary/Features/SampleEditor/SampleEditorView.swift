@@ -34,6 +34,8 @@ struct SampleEditorView: View {
             store: container.store,
             photoStore: container.photos,
             fieldtripStore: container.fieldtrips,
+            localitiesStore: container.localitiesStore,
+            mutationsStore: container.mutations,
             sync: container.sync
         )
     }
@@ -47,11 +49,15 @@ private struct SampleEditorContent: View {
     @FocusState private var notesFocused: Bool
     @FocusState private var codeFocused: Bool
 
+    @State private var showingCoordinatePicker = false
+
     init(
         sampleID: String?,
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
+        localitiesStore: LocalLocalityStore,
+        mutationsStore: PendingMutationsStore,
         sync: SyncRunner
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
@@ -59,6 +65,8 @@ private struct SampleEditorContent: View {
             store: store,
             photoStore: photoStore,
             fieldtripStore: fieldtripStore,
+            localitiesStore: localitiesStore,
+            mutationsStore: mutationsStore,
             sync: sync
         ))
     }
@@ -105,6 +113,9 @@ private struct SampleEditorContent: View {
 
     private var editableSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if !viewModel.isExistingSample {
+                modePicker
+            }
             TextField("Code", text: $viewModel.code)
                 .font(.title2.weight(.semibold).monospaced())
                 .textInputAutocapitalization(.characters)
@@ -131,6 +142,10 @@ private struct SampleEditorContent: View {
                 photoStrip
             }
 
+            if viewModel.mode == .later {
+                manualCoordinateRow
+            }
+
             if let saveError = viewModel.saveError {
                 Text(saveError)
                     .font(.footnote)
@@ -140,6 +155,42 @@ private struct SampleEditorContent: View {
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 16)
+        .sheet(isPresented: $showingCoordinatePicker) {
+            CoordinatePickerView(selected: Binding(
+                get: { viewModel.coordinate },
+                set: { newValue in
+                    if let c = newValue {
+                        viewModel.setManualCoordinate(latitude: c.latitude, longitude: c.longitude)
+                    }
+                }
+            ))
+        }
+    }
+
+    /// "Jetzt im Feld" (GPS + Fusion) vs. "Nachträglich" (Koordinate
+    /// von Hand). „Geplant" folgt mit R11.
+    private var modePicker: some View {
+        Picker("Modus", selection: $viewModel.mode) {
+            Text("Jetzt im Feld").tag(SampleEditorViewModel.Mode.field)
+            Text("Nachträglich").tag(SampleEditorViewModel.Mode.later)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityLabel("Erfassungsmodus")
+    }
+
+    private var manualCoordinateRow: some View {
+        Button {
+            showingCoordinatePicker = true
+        } label: {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "mappin.and.ellipse")
+                    .accessibilityHidden(true)
+                Text(viewModel.coordinate == nil ? "Koordinate auf Karte wählen" : "Koordinate ändern")
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .accessibilityHint("Öffnet eine Karte zum Setzen der Koordinate.")
     }
 
     private var photoStrip: some View {
