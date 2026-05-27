@@ -43,6 +43,15 @@ final class AppConfig: ObservableObject {
         }
     }
 
+    /// User-chosen provisional sample-id format (R8e). Persisted so
+    /// the offline code generator (`SampleCodeTemplate.current`) picks
+    /// it up on the next sample.
+    @Published var sampleCodeTemplate: String {
+        didSet {
+            UserDefaults.standard.set(sampleCodeTemplate, forKey: SampleCodeTemplate.userDefaultsKey)
+        }
+    }
+
     /// Build-Channel — fix pro Build-Konfiguration (Debug/Staging/Release).
     let environment = AppEnvironment.current()
 
@@ -67,6 +76,11 @@ final class AppConfig: ObservableObject {
         } else {
             endpointURL = stored
         }
+
+        let storedTemplate = UserDefaults.standard.string(forKey: SampleCodeTemplate.userDefaultsKey)
+        sampleCodeTemplate = (storedTemplate?.isEmpty == false)
+            ? storedTemplate! // swiftlint:disable:this force_unwrapping
+            : SampleCodeTemplate.default.raw
     }
 
     fileprivate enum Keys {

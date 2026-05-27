@@ -1,32 +1,43 @@
 import MapKit
 import SwiftUI
 
-/// Map of every locality the local store knows about. Pins are
-/// clickable — tap navigates into the locality detail. Radius shows
-/// as a tinted circle so the user can see how generous a given
-/// locality is at a glance.
+/// Map of every locality the local store knows about, plus the
+/// individual samples as a secondary layer (R8e). Annotations cluster
+/// on zoom-out (native MapKit clustering via `clusteringIdentifier`)
+/// and split into single pins on zoom-in. Tapping a locality pin
+/// navigates into its detail; tapping a cluster zooms in.
 struct LocalitiesMapView: View {
     @EnvironmentObject var container: AppContainer
 
     var body: some View {
-        LocalitiesMapScreen(store: container.localitiesStore)
+        LocalitiesMapScreen(
+            localitiesStore: container.localitiesStore,
+            sampleStore: container.store
+        )
     }
 }
 
 private struct LocalitiesMapScreen: View {
     @StateObject private var viewModel: LocalitiesMapViewModel
-    @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var selectedID: String?
     @State private var navigationID: String?
 
-    init(store: LocalLocalityStore) {
-        _viewModel = StateObject(wrappedValue: LocalitiesMapViewModel(store: store))
+    init(localitiesStore: LocalLocalityStore, sampleStore: LocalSampleStore) {
+        _viewModel = StateObject(wrappedValue: LocalitiesMapViewModel(
+            localitiesStore: localitiesStore,
+            sampleStore: sampleStore
+        ))
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            map
-            if !viewModel.items.isEmpty {
+            ClusteredLocalitiesMap(
+                localities: viewModel.localities,
+                samples: viewModel.samples,
+                onSelectLocality: { navigationID = $0 }
+            )
+            .ignoresSafeArea(edges: .bottom)
+
+            if !viewModel.localities.isEmpty || !viewModel.samples.isEmpty {
                 countChip
             } else {
                 emptyOverlay
@@ -34,54 +45,19 @@ private struct LocalitiesMapScreen: View {
         }
         .navigationTitle("Fundorte (Karte)")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            viewModel.start()
-            updateCameraToFit()
-        }
-        .onChange(of: viewModel.items) { _, _ in updateCameraToFit() }
-        .onChange(of: selectedID) { _, newValue in
-            if let newValue {
-                navigationID = newValue
-                // Reset the map selection so the same pin can be
-                // re-tapped after returning from the detail.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    selectedID = nil
-                }
-            }
-        }
+        .onAppear { viewModel.start() }
         .navigationDestination(item: $navigationID) { id in
             LocalityDetailView(localityID: id)
         }
     }
 
-    private var map: some View {
-        Map(position: $cameraPosition, selection: $selectedID) {
-            ForEach(viewModel.items) { locality in
-                if let coord = locality.coordinate {
-                    Marker(locality.displayName, coordinate: coord)
-                        .tag(locality.id)
-                    if let radius = locality.radiusM, radius > 0 {
-                        MapCircle(center: coord, radius: radius)
-                            .foregroundStyle(.red.opacity(0.15))
-                            .stroke(.red.opacity(0.6), lineWidth: 1)
-                    }
-                }
-            }
-        }
-        .mapStyle(.standard(elevation: .realistic))
-        .mapControls {
-            MapUserLocationButton()
-            MapCompass()
-        }
-    }
-
     private var countChip: some View {
-        Text("\(viewModel.items.count) Fundort\(viewModel.items.count == 1 ? "" : "e")")
-            .font(.footnote)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 12)
+        Text("\(viewModel.localities.count) Fundort\(viewModel.localities.count == 1 ? "" : "e") · \(viewModel.samples.count) Proben")
+            .font(AppFont.caption)
+            .padding(.vertical, AppSpacing.xs)
+            .padding(.horizontal, AppSpacing.md)
             .background(.regularMaterial, in: Capsule())
-            .padding(.bottom, 16)
+            .padding(.bottom, AppSpacing.lg)
     }
 
     private var emptyOverlay: some View {
@@ -92,73 +68,240 @@ private struct LocalitiesMapScreen: View {
         }
         .background(.regularMaterial)
     }
-
-    private func updateCameraToFit() {
-        let coords = viewModel.items.compactMap { $0.coordinate }
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
-        guard let latMin = lats.min(), let latMax = lats.max(),
-              let lonMin = lons.min(), let lonMax = lons.max()
-        else {
-            cameraPosition = .region(.germany)
-            return
-        }
-        let center = CLLocationCoordinate2D(
-            latitude: (latMin + latMax) / 2,
-            longitude: (lonMin + lonMax) / 2
-        )
-        // 1.5× padding around the bounding box, but never tighter
-        // than a 1-km diagonal — otherwise the single-pin case looks
-        // like the map is broken at street zoom.
-        let latDelta = max(0.01, (latMax - latMin) * 1.5)
-        let lonDelta = max(0.01, (lonMax - lonMin) * 1.5)
-        cameraPosition = .region(MKCoordinateRegion(
-            center: center,
-            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lonDelta)
-        ))
-    }
 }
+
+// MARK: - View model
 
 @MainActor
 private final class LocalitiesMapViewModel: ObservableObject {
-    @Published private(set) var items: [LocalLocality] = []
+    @Published private(set) var localities: [LocalLocality] = []
+    @Published private(set) var samples: [LocalSample] = []
 
-    private let store: LocalLocalityStore
-    private var task: Task<Void, Never>?
+    private let localitiesStore: LocalLocalityStore
+    private let sampleStore: LocalSampleStore
+    private var localitiesTask: Task<Void, Never>?
+    private var samplesTask: Task<Void, Never>?
 
-    init(store: LocalLocalityStore) {
-        self.store = store
+    init(localitiesStore: LocalLocalityStore, sampleStore: LocalSampleStore) {
+        self.localitiesStore = localitiesStore
+        self.sampleStore = sampleStore
     }
 
-    deinit { task?.cancel() }
+    deinit {
+        localitiesTask?.cancel()
+        samplesTask?.cancel()
+    }
 
     func start() {
-        task?.cancel()
-        task = Task { [weak self] in
+        localitiesTask?.cancel()
+        localitiesTask = Task { [weak self] in
             guard let self else { return }
-            for await all in self.store.observeAll() {
-                self.items = all.filter { $0.coordinate != nil }
+            for await all in self.localitiesStore.observeAll() {
+                self.localities = all.filter { $0.mapCoordinate != nil }
+            }
+        }
+        samplesTask?.cancel()
+        samplesTask = Task { [weak self] in
+            guard let self else { return }
+            for await all in self.sampleStore.observeAll() {
+                self.samples = all.filter { $0.mapCoordinate != nil }
             }
         }
     }
 }
 
+// MARK: - Annotations
+
+private final class LocalityAnnotation: NSObject, MKAnnotation {
+    let id: String
+    let title: String?
+    let coordinate: CLLocationCoordinate2D
+    let radius: Double?
+
+    init(id: String, title: String, coordinate: CLLocationCoordinate2D, radius: Double?) {
+        self.id = id
+        self.title = title
+        self.coordinate = coordinate
+        self.radius = radius
+    }
+}
+
+private final class SampleAnnotation: NSObject, MKAnnotation {
+    let id: String
+    let title: String?
+    let coordinate: CLLocationCoordinate2D
+
+    init(id: String, title: String, coordinate: CLLocationCoordinate2D) {
+        self.id = id
+        self.title = title
+        self.coordinate = coordinate
+    }
+}
+
+// MARK: - Clustered MKMapView bridge
+
+private struct ClusteredLocalitiesMap: UIViewRepresentable {
+    let localities: [LocalLocality]
+    let samples: [LocalSample]
+    let onSelectLocality: (String) -> Void
+
+    func makeUIView(context: Context) -> MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator
+        map.showsUserLocation = true
+        map.pointOfInterestFilter = .excludingAll
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        context.coordinator.sync(map: map, localities: localities, samples: samples)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSelectLocality: onSelectLocality)
+    }
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private let onSelectLocality: (String) -> Void
+        private var didFit = false
+
+        init(onSelectLocality: @escaping (String) -> Void) {
+            self.onSelectLocality = onSelectLocality
+        }
+
+        func sync(map: MKMapView, localities: [LocalLocality], samples: [LocalSample]) {
+            map.removeAnnotations(map.annotations.filter { !($0 is MKUserLocation) })
+            map.removeOverlays(map.overlays)
+
+            var annotations: [MKAnnotation] = []
+            for loc in localities {
+                guard let coord = loc.mapCoordinate else { continue }
+                annotations.append(LocalityAnnotation(
+                    id: loc.id, title: loc.mapDisplayName, coordinate: coord, radius: loc.radiusM
+                ))
+                if let radius = loc.radiusM, radius > 0 {
+                    map.addOverlay(MKCircle(center: coord, radius: radius))
+                }
+            }
+            for sample in samples {
+                guard let coord = sample.mapCoordinate else { continue }
+                annotations.append(SampleAnnotation(
+                    id: sample.id, title: sample.sampleID, coordinate: coord
+                ))
+            }
+            map.addAnnotations(annotations)
+
+            // Fit once, on the first non-empty render.
+            if !didFit, !annotations.isEmpty {
+                map.showAnnotations(annotations, animated: false)
+                didFit = true
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if annotation is MKUserLocation { return nil }
+
+            if let cluster = annotation as? MKClusterAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "cluster", for: cluster
+                ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: "cluster")
+                view.annotation = cluster
+                // A cluster that contains any locality reads as a
+                // locality cluster (brand colour); pure-sample clusters
+                // stay muted.
+                let hasLocality = cluster.memberAnnotations.contains { $0 is LocalityAnnotation }
+                view.markerTintColor = hasLocality ? UIColor(AppColor.brandPrimary) : .secondaryLabel
+                return view
+            }
+
+            switch annotation {
+            case let loc as LocalityAnnotation:
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "locality", for: loc
+                ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: loc, reuseIdentifier: "locality")
+                view.annotation = loc
+                view.clusteringIdentifier = "fwd"
+                view.canShowCallout = true
+                view.markerTintColor = UIColor(AppColor.brandPrimary)
+                view.glyphImage = UIImage(systemName: "mappin")
+                view.rightCalloutAccessoryView = UIButton(type: .detailDisclosure)
+                view.displayPriority = .required
+                return view
+            case let sample as SampleAnnotation:
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "sample", for: sample
+                ) as? MKMarkerAnnotationView ?? MKMarkerAnnotationView(annotation: sample, reuseIdentifier: "sample")
+                view.annotation = sample
+                view.clusteringIdentifier = "fwd"
+                view.markerTintColor = .secondaryLabel
+                view.glyphImage = UIImage(systemName: "leaf")
+                view.displayPriority = .defaultLow
+                return view
+            default:
+                return nil
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            switch view.annotation {
+            case let cluster as MKClusterAnnotation:
+                // Zoom into the cluster's bounding region.
+                mapView.deselectAnnotation(cluster, animated: false)
+                let region = MKCoordinateRegion(
+                    center: cluster.coordinate,
+                    span: zoomedSpan(mapView.region.span)
+                )
+                mapView.setRegion(region, animated: true)
+            case let loc as LocalityAnnotation:
+                mapView.deselectAnnotation(loc, animated: false)
+                onSelectLocality(loc.id)
+            default:
+                break
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, annotationView: MKAnnotationView, calloutAccessoryControlTapped _: UIControl) {
+            if let loc = annotationView.annotation as? LocalityAnnotation {
+                onSelectLocality(loc.id)
+            }
+        }
+
+        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            guard let circle = overlay as? MKCircle else {
+                return MKOverlayRenderer(overlay: overlay)
+            }
+            let renderer = MKCircleRenderer(circle: circle)
+            renderer.fillColor = UIColor.systemRed.withAlphaComponent(0.15)
+            renderer.strokeColor = UIColor.systemRed.withAlphaComponent(0.6)
+            renderer.lineWidth = 1
+            return renderer
+        }
+
+        private func zoomedSpan(_ span: MKCoordinateSpan) -> MKCoordinateSpan {
+            MKCoordinateSpan(
+                latitudeDelta: max(0.002, span.latitudeDelta / 4),
+                longitudeDelta: max(0.002, span.longitudeDelta / 4)
+            )
+        }
+    }
+}
+
+// MARK: - Coordinate helpers
+
 private extension LocalLocality {
-    var coordinate: CLLocationCoordinate2D? {
-        guard let lat = centroidLat, let lon = centroidLon else { return nil }
+    var mapCoordinate: CLLocationCoordinate2D? {
+        guard let lat = latitude ?? centroidLat, let lon = longitude ?? centroidLon else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 
-    var displayName: String {
+    var mapDisplayName: String {
         name.isEmpty ? "(ohne Namen)" : name
     }
 }
 
-private extension MKCoordinateRegion {
-    static var germany: MKCoordinateRegion {
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 51, longitude: 10),
-            span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
-        )
+private extension LocalSample {
+    var mapCoordinate: CLLocationCoordinate2D? {
+        guard let lat = latitude, let lon = longitude else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 }

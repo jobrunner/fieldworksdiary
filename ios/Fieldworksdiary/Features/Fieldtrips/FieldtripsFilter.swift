@@ -21,6 +21,13 @@ struct FieldtripsFilter: Equatable {
 
     var date: DateMode = .off
     var country: String? // exact match on Fieldtrip.country
+    /// When true, keep only fieldtrips that have non-empty notes.
+    var requireNotes: Bool = false
+    /// When true, keep only fieldtrips that have a centroid coordinate.
+    var requireCoordinate: Bool = false
+    /// Case-insensitive substring match on the fieldtrip id. Empty/nil
+    /// ⇒ no id filter.
+    var fieldtripID: String?
 
     static let none = Self()
 
@@ -30,6 +37,8 @@ struct FieldtripsFilter: Equatable {
         default: return true
         }
         if country != nil { return true }
+        if requireNotes || requireCoordinate { return true }
+        if let id = fieldtripID, !id.isEmpty { return true }
         return false
     }
 
@@ -58,6 +67,16 @@ struct FieldtripsFilter: Equatable {
         }
         if let country, !country.isEmpty {
             guard let fieldtripCountry = fieldtrip.country, fieldtripCountry == country else { return false }
+        }
+        if requireNotes, fieldtrip.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return false
+        }
+        if requireCoordinate, fieldtrip.centroidLat == nil || fieldtrip.centroidLon == nil {
+            return false
+        }
+        if let id = fieldtripID, !id.isEmpty,
+           !fieldtrip.id.localizedCaseInsensitiveContains(id) {
+            return false
         }
         return true
     }

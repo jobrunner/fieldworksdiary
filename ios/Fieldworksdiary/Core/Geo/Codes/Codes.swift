@@ -20,13 +20,16 @@ enum Codes {
         return calendar.date(from: comps) ?? shifted
     }
 
-    /// Returns the canonical sample code "YYMMDD/N".
-    static func formatCode(day: Date, sequence: Int, timeZone: TimeZone) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "yyMMdd"
-        return "\(formatter.string(from: day))/\(sequence)"
+    /// Returns the sample code for `day`/`sequence`. The default
+    /// template reproduces the canonical "YYMMDD/N"; pass a custom
+    /// `template` (R8e) to honour a user-chosen format.
+    static func formatCode(
+        day: Date,
+        sequence: Int,
+        timeZone: TimeZone,
+        template: SampleCodeTemplate = .default
+    ) -> String {
+        template.format(day: day, sequence: sequence, timeZone: timeZone)
     }
 
     /// Returns the YYYY-MM-DD string used as the key in

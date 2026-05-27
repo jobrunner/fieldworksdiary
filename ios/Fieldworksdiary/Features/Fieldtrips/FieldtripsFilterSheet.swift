@@ -14,6 +14,9 @@ struct FieldtripsFilterSheet: View {
     @State private var seasonalToMonth = 5
     @State private var seasonalToDay = 15
     @State private var country: String = ""
+    @State private var requireNotes = false
+    @State private var requireCoordinate = false
+    @State private var fieldtripID: String = ""
 
     enum DateModeTag: String, CaseIterable, Identifiable {
         case off = "Aus"
@@ -66,6 +69,13 @@ struct FieldtripsFilterSheet: View {
                             }
                         }
                     }
+                }
+                Section("Eigenschaften") {
+                    Toggle("Nur mit Notizen", isOn: $requireNotes)
+                    Toggle("Nur mit Koordinate", isOn: $requireCoordinate)
+                    TextField("Exkursions-ID enthält …", text: $fieldtripID)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
                 }
             }
             .navigationTitle("Filter")
@@ -128,6 +138,9 @@ struct FieldtripsFilterSheet: View {
             seasonalToDay = td
         }
         country = filter.country ?? ""
+        requireNotes = filter.requireNotes
+        requireCoordinate = filter.requireCoordinate
+        fieldtripID = filter.fieldtripID ?? ""
     }
 
     private func apply() {
@@ -142,6 +155,10 @@ struct FieldtripsFilterSheet: View {
             filter.date = .seasonal(fromDOY: fromDOY, toDOY: toDOY)
         }
         filter.country = country.isEmpty ? nil : country
+        filter.requireNotes = requireNotes
+        filter.requireCoordinate = requireCoordinate
+        let trimmedID = fieldtripID.trimmingCharacters(in: .whitespacesAndNewlines)
+        filter.fieldtripID = trimmedID.isEmpty ? nil : trimmedID
     }
 
     private func monthDay(fromDOY doy: Int) -> (month: Int, day: Int) {

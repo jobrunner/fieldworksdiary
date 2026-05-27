@@ -29,6 +29,7 @@ struct SettingsScreen: View {
         Form {
             accountSection
             dataSection
+            sampleCodeSection
             endpointSection
             aboutSection
         }
@@ -122,6 +123,32 @@ struct SettingsScreen: View {
         } footer: {
             Text("Lädt alle eigenen Datensätze und PDFs als ZIP-Archiv vom Backend.")
         }
+    }
+
+    private var sampleCodeSection: some View {
+        Section {
+            Picker("Format", selection: $config.sampleCodeTemplate) {
+                ForEach(SampleCodeTemplate.presets, id: \.raw) { preset in
+                    Text(preset.raw).monospaced().tag(preset.raw)
+                }
+            }
+            LabeledContent("Beispiel") {
+                Text(sampleCodePreview)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Sample-ID-Format")
+        } footer: {
+            Text("Provisorisches Format für neue Proben. Tokens: <YY>/<YYYY>, <MM>, <DD>, <seq>. Das Backend kann die ID beim Sync neu vergeben.")
+        }
+    }
+
+    /// Renders today's first sample id under the selected template, so
+    /// the user sees the effect before creating a sample.
+    private var sampleCodePreview: String {
+        SampleCodeTemplate(raw: config.sampleCodeTemplate)
+            .format(day: Date(), sequence: 1, timeZone: TimeZone(identifier: "Europe/Berlin") ?? .current)
     }
 
     private var endpointSection: some View {

@@ -5,17 +5,21 @@ final class FieldtripsFilterTests: XCTestCase {
     private func fieldtrip(
         day: String = "2026-05-10",
         doy: Int? = 130,
-        country: String? = "Deutschland"
+        country: String? = "Deutschland",
+        id: String = UUID().uuidString,
+        notes: String = "",
+        lat: Double? = nil,
+        lon: Double? = nil
     ) -> LocalFieldtrip {
         LocalFieldtrip(
-            id: UUID().uuidString,
+            id: id,
             title: "Test",
             collectingDay: day,
             nightFieldtrip: false,
             beginDate: nil,
             endDate: nil,
-            centroidLat: nil,
-            centroidLon: nil,
+            centroidLat: lat,
+            centroidLon: lon,
             adminUnitsJson: nil,
             mtbJson: nil,
             astroJson: nil,
@@ -26,7 +30,7 @@ final class FieldtripsFilterTests: XCTestCase {
             adminArea: nil,
             permitNumber: nil,
             permitPDFFile: nil,
-            notes: "",
+            notes: notes,
             version: 1,
             backendUpdatedAt: Date()
         )
@@ -93,5 +97,41 @@ final class FieldtripsFilterTests: XCTestCase {
         XCTAssertEqual(DayOfYear.from(month: 4, day: 15), 105)
         XCTAssertEqual(DayOfYear.from(month: 5, day: 15), 135)
         XCTAssertEqual(DayOfYear.from(month: 12, day: 31), 365)
+    }
+
+    // MARK: - R8e property filters
+
+    func testRequireNotes() {
+        var filter = FieldtripsFilter.none
+        filter.requireNotes = true
+        XCTAssertTrue(filter.isActive)
+        XCTAssertTrue(filter.matches(fieldtrip(notes: "Bei Regen gesammelt")))
+        XCTAssertFalse(filter.matches(fieldtrip(notes: "")))
+        XCTAssertFalse(filter.matches(fieldtrip(notes: "   ")), "whitespace counts as empty")
+    }
+
+    func testRequireCoordinate() {
+        var filter = FieldtripsFilter.none
+        filter.requireCoordinate = true
+        XCTAssertTrue(filter.matches(fieldtrip(lat: 49.79, lon: 9.94)))
+        XCTAssertFalse(filter.matches(fieldtrip(lat: nil, lon: nil)))
+        XCTAssertFalse(filter.matches(fieldtrip(lat: 49.79, lon: nil)), "needs both")
+    }
+
+    func testFieldtripIDSubstringCaseInsensitive() {
+        var filter = FieldtripsFilter.none
+        filter.fieldtripID = "ABC"
+        XCTAssertTrue(filter.isActive)
+        XCTAssertTrue(filter.matches(fieldtrip(id: "xx-abc-123")))
+        XCTAssertFalse(filter.matches(fieldtrip(id: "xx-def-123")))
+    }
+
+    func testPropertyFiltersCombineWithCountry() {
+        var filter = FieldtripsFilter.none
+        filter.country = "Deutschland"
+        filter.requireNotes = true
+        // country matches but no notes → excluded
+        XCTAssertFalse(filter.matches(fieldtrip(country: "Deutschland", notes: "")))
+        XCTAssertTrue(filter.matches(fieldtrip(country: "Deutschland", notes: "x")))
     }
 }

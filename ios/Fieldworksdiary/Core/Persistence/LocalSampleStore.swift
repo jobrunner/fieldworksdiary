@@ -54,7 +54,7 @@ final class LocalSampleStore {
                 code = overrideCode
             } else {
                 let seq = try Self.nextSequence(db, userId: userId, dayKey: dayKey)
-                code = Codes.formatCode(day: day, sequence: seq, timeZone: timeZone)
+                code = Codes.formatCode(day: day, sequence: seq, timeZone: timeZone, template: .current)
             }
             let now = Date()
             var sample = LocalSample(
@@ -135,6 +135,15 @@ final class LocalSampleStore {
         }
     }
 
+    /// AsyncSequence over every sample, newest first. Used by the
+    /// localities map (R8e) to render samples as a secondary pin
+    /// layer that updates live as syncs land.
+    func observeAll() -> AsyncValueObservation<[LocalSample]> {
+        AsyncValueObservation(observation: ValueObservation.tracking { db in
+            try LocalSample.order(Column("begin_date").desc).fetchAll(db)
+        }, reader: database.reader)
+    }
+
     /// Returns the code that *would* be assigned to the next sample
     /// for `collectedFrom`'s collecting day. Non-destructive — the
     /// counter doesn't advance. Used to seed the code field in the
@@ -153,7 +162,7 @@ final class LocalSampleStore {
             }
             return 1
         }) ?? 1
-        return Codes.formatCode(day: day, sequence: next, timeZone: timeZone)
+        return Codes.formatCode(day: day, sequence: next, timeZone: timeZone, template: .current)
     }
 
     /// Most recently collected sample (regardless of sync state). Used

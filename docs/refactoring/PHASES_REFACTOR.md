@@ -17,6 +17,33 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**Initiative-Kern abgeschlossen** (2026-05-27). Die zu Beginn dieser
+Session offenen Phasen — R7.4 + R8b–R8e — sind alle `done` und auf
+`main` gemerged. Damit ist der Sample/Locality/Placemark-Refactor in
+seinem geplanten Scope durch; offen bleiben nur die ohnehin als
+Folge-Features gelisteten R9 (Export), R10 (Daten-Migration Bestand)
+und R11 (Planning) — keine davon war Teil der Refactor-Initiative.
+
+**R8e done** (2026-05-27, Branch `refactor/R8e-ui-finishing`). Drei
+unabhängige UI-Stränge:
+- **Map**: `LocalitiesMapView` auf eine clusternde `MKMapView`-Brücke
+  (`UIViewRepresentable`) umgebaut — native MapKit-Cluster via
+  `clusteringIdentifier`, Localities als Anker + Samples als
+  Sekundär-Layer, Radius-Overlays, Tap→Detail, Cluster-Tap→Zoom.
+  `LocalSampleStore.observeAll` neu.
+- **Sample-ID-Template**: `SampleCodeTemplate` (Tokens
+  `<YY>/<YYYY>/<MM>/<DD>/<seq>`), `Codes.formatCode` parametrisiert,
+  Default reproduziert „YYMMDD/N" byte-genau. Editor in den Settings
+  (`config.sampleCodeTemplate`, UserDefaults). `LocalSampleStore`
+  nutzt `SampleCodeTemplate.current`.
+- **Filter**: `FieldtripsFilter` um `requireNotes`/`requireCoordinate`/
+  `fieldtripID` erweitert + Sheet-Section „Eigenschaften".
+
+Tests: 4 SampleCodeTemplate, 4 neue FieldtripsFilter (11 gesamt),
+CodesTests weiter grün (Default-Template unverändert). iOS-Build grün.
+
+---
+
 **R8d done** (2026-05-27, Branch `refactor/R8d-addsample-fusion`,
 zwei Sub-Commits). Offline-Fusion im AddSample-Flow plus die zwei
 dafür nötigen Sync-/Wire-Fixes.
@@ -398,7 +425,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R8b | UI: Manual-Override-Sheet + Reset | done | R8a | – |
 | R8c | UI: Remap-Toast + FlagAmbiguous-Badge | done | R6 | – |
 | R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | done | R6.3 | – |
-| R8e | UI: Map / Sample-ID-Template / Filter | pending | R8d | – |
+| R8e | UI: Map / Sample-ID-Template / Filter | done | R8d | – |
 | R9 | Export (GPX/CSV/JSON) | pending | R7 | – |
 | R10 | Daten-Migration Bestand | pending | R5, R6, R7 | – |
 | R11 | Planning-Feature (`planned_locality`) | pending | R7 | – |
