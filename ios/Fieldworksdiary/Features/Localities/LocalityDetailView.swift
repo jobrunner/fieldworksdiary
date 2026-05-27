@@ -6,6 +6,7 @@ struct LocalityDetailView: View {
     @State private var local: LocalLocality?
     @State private var placemark: LocalPlacemark?
     @State private var editing = false
+    @State private var editingPlacemark = false
 
     var body: some View {
         ScrollView {
@@ -45,6 +46,32 @@ struct LocalityDetailView: View {
                 LocalityEditView(editing: locality)
             }
         }
+        .sheet(isPresented: $editingPlacemark) {
+            PlacemarkEditSheet(
+                localityID: localityID,
+                existing: placemark,
+                onSaved: handlePlacemarkSaved,
+                onCleared: handlePlacemarkCleared
+            )
+        }
+    }
+
+    /// PATCH returned a (possibly new) placemark: cache it, re-point
+    /// the local locality relation, and show it immediately.
+    private func handlePlacemarkSaved(_ pm: Placemark) {
+        try? container.placemarksStore.upsert(pm)
+        try? container.localitiesStore.setPlacemark(localityID: localityID, placemarkID: pm.id)
+        reload()
+        placemark = try? container.placemarksStore.fetchById(pm.id)
+    }
+
+    /// Override cleared: detach locally. The backend's auto-geocode
+    /// hook repopulates on the next locality update; until the next
+    /// pull the address simply shows as unset.
+    private func handlePlacemarkCleared() {
+        try? container.localitiesStore.setPlacemark(localityID: localityID, placemarkID: nil)
+        reload()
+        placemark = nil
     }
 
     private var navigationTitleText: String {
@@ -101,6 +128,13 @@ struct LocalityDetailView: View {
                                 .foregroundStyle(.orange)
                                 .accessibilityLabel("manuell gesetzt")
                         }
+                        Spacer()
+                        Button {
+                            editingPlacemark = true
+                        } label: {
+                            Image(systemName: "pencil")
+                        }
+                        .accessibilityLabel("Adresse bearbeiten")
                     }
                     placemarkLines(pm)
                 }
@@ -117,6 +151,20 @@ struct LocalityDetailView: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            // Keine Adresse — Einstieg zum manuellen Setzen anbieten.
+            GroupBox {
+                Button {
+                    editingPlacemark = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "house.lodge")
+                            .accessibilityHidden(true)
+                        Text("Adresse manuell setzen")
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }

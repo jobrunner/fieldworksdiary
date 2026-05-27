@@ -43,6 +43,19 @@ final class LocalLocalityStore {
         }
     }
 
+    /// Re-point a locality's placemark relation locally after a manual
+    /// override (PATCH) or reset (DELETE), so the detail view reflects
+    /// the change without waiting for the next full locality pull.
+    /// Passing `nil` detaches the placemark.
+    func setPlacemark(localityID: String, placemarkID: String?) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE local_localities SET placemark = ? WHERE id = ?",
+                arguments: [placemarkID, localityID]
+            )
+        }
+    }
+
     /// Empties the table. Called on logout/user switch.
     func reset() throws {
         try database.writer.write { db in

@@ -17,6 +17,22 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`.
 
 ## Aktive Phase
 
+**R8b done** (2026-05-27, Branch `refactor/R8b-placemark-override`).
+Manual-Override-Sheet im LocalityDetailView. `PlacemarkClient` hat
+jetzt `setManual(localityID:fields:)` (PATCH → liefert Placemark
+zurück) und `clearOverride(localityID:)` (DELETE). Neues
+`PlacemarkEditSheet` (Form mit 8 Feldern, Land Pflicht ISO-2,
+Reset-Sektion nur bei `geocodingSource == "manual"`).
+`LocalityDetailView`: Pencil-Button in der Adresse-Sektion +
+„Adresse manuell setzen", wenn noch kein Placemark da ist. Nach
+PATCH/DELETE wird der lokale Placemark-Pointer via neuem
+`LocalLocalityStore.setPlacemark(localityID:placemarkID:)`
+nachgezogen. `PlacemarkOverrideFields` mit `wireBody` (snake_case-
+Contract, Country-Uppercase) — 3 Unit-Tests pinnen den Contract.
+iOS-Build grün.
+
+---
+
 **R7.4 done** (2026-05-27, Branch `refactor/R7.4-drop-admin-units`).
 Die Legacy-Spalte `samples.admin_units` ist gedroppt. Migration
 `1700000021_phase_r7_drop_samples_admin_units.go` (idempotent, Down
@@ -337,7 +353,7 @@ Phase R8 (UI-Anpassungen) trifft die gleichen Folder. Empfehlung:
 | R7.3 | Backfill admin_units → Placemarks | done | R7.1 | R7.4 |
 | R7.4 | Drop samples.admin_units | done | R7.3 | – |
 | R8a | UI: Placemark-Display in Locality-Detail | done | R7 | – |
-| R8b | UI: Manual-Override-Sheet + Reset | pending | R8a | – |
+| R8b | UI: Manual-Override-Sheet + Reset | done | R8a | – |
 | R8c | UI: Remap-Toast + FlagAmbiguous-Badge | pending | R6 | – |
 | R8d | UI: AddSample-Sheet + Offline-Fusion-Integration | pending | R6.3 | – |
 | R8e | UI: Map / Sample-ID-Template / Filter | pending | R8d | – |
