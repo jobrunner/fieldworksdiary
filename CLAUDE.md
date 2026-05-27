@@ -11,6 +11,13 @@ Implementieren halten muss.
 eintragen, dann weiterarbeiten — die Datei ist die Single Source of
 Truth, an der eine neue Session erkennt, wo wir gerade stehen.
 
+> **Aktive Refactor-Initiative (Sample/Locality/Placemark).** Wenn
+> diese Datei existiert, sind noch Phasen offen:
+> **`docs/refactoring/CONTINUATION.md`** — Start-here für die nächste
+> Session: Workflow, Test-Quirks, ausführungsfertige Baupläne pro
+> offene Phase. Nach Abschluss aller Phasen löscht die letzte Session
+> die Datei (und entfernt diesen Block).
+
 ## Was ist das hier?
 
 Eine Felderfassungs-App für entomologische Aufsammlungen (Schwerpunkt
