@@ -100,19 +100,19 @@ final class SyncRunnerLocalityTests: XCTestCase {
     private func seedSample(id: String, locality: String) throws {
         try database.writer.write { db in
             try db.execute(sql: """
-                INSERT INTO local_samples (
-                    id, sample_id, user_id, collecting_day,
-                    latitude, longitude, begin_date,
-                    is_all_day, time_zone, version,
-                    notes, marked, locality, location_source,
-                    sync_status, created_at, updated_at
-                ) VALUES (?, ?, 'u1', '2026-05-19',
-                          49.79, 9.94, ?,
-                          0, 'Europe/Berlin', 1,
-                          '', 0, ?, 1,
-                          'synced', ?, ?)
-                """,
-                arguments: [id, "260519/1", Date(), locality, Date(), Date()])
+                           INSERT INTO local_samples (
+                               id, sample_id, user_id, collecting_day,
+                               latitude, longitude, begin_date,
+                               is_all_day, time_zone, version,
+                               notes, marked, locality, location_source,
+                               sync_status, created_at, updated_at
+                           ) VALUES (?, ?, 'u1', '2026-05-19',
+                                     49.79, 9.94, ?,
+                                     0, 'Europe/Berlin', 1,
+                                     '', 0, ?, 1,
+                                     'synced', ?, ?)
+                           """,
+                           arguments: [id, "260519/1", Date(), locality, Date(), Date()])
         }
     }
 
@@ -124,7 +124,7 @@ final class SyncRunnerLocalityTests: XCTestCase {
             "longitude": 9.94,
             "radius_m": 50,
             "location_source": "location_service",
-            "version": 1,
+            "version": 1
         ]
         // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: dict)

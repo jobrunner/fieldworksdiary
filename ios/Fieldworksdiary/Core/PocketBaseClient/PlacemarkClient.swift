@@ -24,7 +24,7 @@ struct PlacemarkOverrideFields: Equatable {
             "sub_locality": subLocality,
             "postal_code": postalCode,
             "name": name,
-            "thoroughfare": thoroughfare,
+            "thoroughfare": thoroughfare
         ]
     }
 

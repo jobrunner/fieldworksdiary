@@ -24,7 +24,7 @@ struct SampleCodeTemplate: Equatable {
         .default,
         SampleCodeTemplate(raw: "<YYYY><MM><DD>/<seq>"),
         SampleCodeTemplate(raw: "<YY><MM><DD>-<seq>"),
-        SampleCodeTemplate(raw: "<seq>/<YY><MM><DD>"),
+        SampleCodeTemplate(raw: "<seq>/<YY><MM><DD>")
     ]
 
     /// UserDefaults key the template is persisted under. Owned here so

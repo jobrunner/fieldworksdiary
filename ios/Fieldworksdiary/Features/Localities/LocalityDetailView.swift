@@ -169,7 +169,6 @@ struct LocalityDetailView: View {
         }
     }
 
-    @ViewBuilder
     private func placemarkLines(_ pm: LocalPlacemark) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             if let n = pm.name, !n.isEmpty {

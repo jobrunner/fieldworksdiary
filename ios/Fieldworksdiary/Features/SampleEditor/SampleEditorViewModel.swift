@@ -47,6 +47,7 @@ final class SampleEditorViewModel: ObservableObject {
     @Published var mode: Mode = .field {
         didSet { handleModeChange(from: oldValue) }
     }
+
     @Published var code: String = ""
     @Published var notes: String = ""
     @Published var pendingPhotos: [PendingPhoto] = []

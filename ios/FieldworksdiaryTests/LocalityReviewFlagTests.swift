@@ -13,13 +13,13 @@ final class LocalityReviewFlagTests: XCTestCase {
 
         try database.writer.write { db in
             try db.execute(sql: """
-                INSERT INTO local_localities
-                (id, name, location_source, version, notes,
-                 needs_human_review, backend_updated_at)
-                VALUES
-                ('flagged', 'Duplicate', 0, 1, '', 1, ?),
-                ('clean',   'Survivor',  0, 1, '', 0, ?)
-                """, arguments: [Date(), Date()])
+            INSERT INTO local_localities
+            (id, name, location_source, version, notes,
+             needs_human_review, backend_updated_at)
+            VALUES
+            ('flagged', 'Duplicate', 0, 1, '', 1, ?),
+            ('clean',   'Survivor',  0, 1, '', 0, ?)
+            """, arguments: [Date(), Date()])
         }
 
         let flagged = try XCTUnwrap(store.fetchById("flagged"))

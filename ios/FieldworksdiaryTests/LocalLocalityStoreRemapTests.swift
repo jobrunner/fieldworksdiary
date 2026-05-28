@@ -18,12 +18,12 @@ final class LocalLocalityStoreRemapTests: XCTestCase {
         // Two localities; we'll merge "old" into "new".
         try database.writer.write { db in
             try db.execute(sql: """
-                INSERT INTO local_localities
-                (id, name, location_source, version, notes, backend_updated_at)
-                VALUES
-                ('old', 'Duplicate', 0, 1, '', ?),
-                ('new', 'Survivor',  0, 1, '', ?)
-                """, arguments: [Date(), Date()])
+            INSERT INTO local_localities
+            (id, name, location_source, version, notes, backend_updated_at)
+            VALUES
+            ('old', 'Duplicate', 0, 1, '', ?),
+            ('new', 'Survivor',  0, 1, '', ?)
+            """, arguments: [Date(), Date()])
         }
     }
 
@@ -37,19 +37,19 @@ final class LocalLocalityStoreRemapTests: XCTestCase {
     private func seedSample(id: String, locality: String) throws {
         try database.writer.write { db in
             try db.execute(sql: """
-                INSERT INTO local_samples (
-                    id, sample_id, user_id, collecting_day,
-                    latitude, longitude, begin_date,
-                    is_all_day, time_zone, version,
-                    notes, marked, locality, location_source,
-                    sync_status, created_at, updated_at
-                ) VALUES (?, ?, 'u1', '2026-05-19',
-                          49.79, 9.94, ?,
-                          0, 'Europe/Berlin', 1,
-                          '', 0, ?, 0,
-                          'synced', ?, ?)
-                """,
-                arguments: [id, "260519/1", Date(), locality, Date(), Date()])
+                           INSERT INTO local_samples (
+                               id, sample_id, user_id, collecting_day,
+                               latitude, longitude, begin_date,
+                               is_all_day, time_zone, version,
+                               notes, marked, locality, location_source,
+                               sync_status, created_at, updated_at
+                           ) VALUES (?, ?, 'u1', '2026-05-19',
+                                     49.79, 9.94, ?,
+                                     0, 'Europe/Berlin', 1,
+                                     '', 0, ?, 0,
+                                     'synced', ?, ?)
+                           """,
+                           arguments: [id, "260519/1", Date(), locality, Date(), Date()])
         }
     }
 

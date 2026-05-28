@@ -114,9 +114,9 @@ func TestServerFuse_CustomMinRadius(t *testing.T) {
 
 func TestSignificantCoordChange(t *testing.T) {
 	cases := []struct {
-		name                                 string
+		name                             string
 		prevLat, prevLon, newLat, newLon float64
-		want                                 bool
+		want                             bool
 	}{
 		{"first set from 0,0", 0, 0, 49.79, 9.94, true},
 		{"unchanged", 49.79, 9.94, 49.79, 9.94, false},

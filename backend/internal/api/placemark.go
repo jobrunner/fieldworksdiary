@@ -13,10 +13,10 @@
 //     empty → fusion-style "needs re-fuse" branch fires).
 //
 // Both routes are owner-scoped: the locality has to belong to the
-// authenticated user, otherwise the call gets a 403. We could
-// rely on PocketBase's `viewRule = "@request.auth.id != '' &&
-// owner = @request.auth.id"` for the lookup, but checking
-// explicitly here keeps the error message human-readable.
+// authenticated user, otherwise the call gets a 403. We could rely on
+// PocketBase's owner-scoped viewRule (require an authenticated
+// `@request.auth.id` plus `owner = @request.auth.id`) for the lookup,
+// but checking explicitly here keeps the error message human-readable.
 package api
 
 import (

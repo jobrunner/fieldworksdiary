@@ -108,20 +108,6 @@ func fakeLabelloc(t *testing.T, locality string) *httptest.Server {
 	return srv
 }
 
-// seedLocality is the minimum a placemark-aware locality needs.
-func seedLocality(t *testing.T, app interface {
-	Dao() interface {
-		FindCollectionByNameOrId(string) (interface{}, error)
-		SaveRecord(*models.Record) error
-	}
-},
-	ownerID string, lat, lon float64,
-) *models.Record {
-	t.Helper()
-	t.Skip("seedLocality is a placeholder — see makeLocality in the hooks-test package")
-	return nil
-}
-
 func TestPlacemarkEnricher_LookupOrCreateOnFirstRun(t *testing.T) {
 	app := newAppForRecordsOnly(t)
 	// Owner + locality via raw DAO so we don't trigger the create-hook

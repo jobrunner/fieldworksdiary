@@ -25,7 +25,7 @@ final class PlacemarkOverrideFieldsTests: XCTestCase {
         XCTAssertEqual(body["thoroughfare"] as? String, "Sanderring")
         XCTAssertEqual(Set(body.keys), [
             "country", "administrative_area", "sub_administrative_area",
-            "locality", "sub_locality", "postal_code", "name", "thoroughfare",
+            "locality", "sub_locality", "postal_code", "name", "thoroughfare"
         ])
     }
 

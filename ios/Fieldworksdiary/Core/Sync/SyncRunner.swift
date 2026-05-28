@@ -89,7 +89,10 @@ final class SyncRunner: ObservableObject {
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
          clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
-         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(endpoint: $0, auth: $1) },
+         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(
+             endpoint: $0,
+             auth: $1
+         ) },
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
     {
@@ -181,7 +184,8 @@ final class SyncRunner: ObservableObject {
         // local row has vanished (manual reset, account switch),
         // the mutation is garbage — dequeue silently.
         guard let localId = mutation.entityId,
-              let sample = try? store.fetchById(localId) else {
+              let sample = try? store.fetchById(localId)
+        else {
             try? mutationsStore.dequeue(mutation.id)
             return
         }
@@ -324,7 +328,7 @@ final class SyncRunner: ObservableObject {
         if pending.isEmpty { return }
         let outboxed: Set<String>
         do {
-            outboxed = Set(try mutationsStore.fetch(entityType: .sample)
+            outboxed = try Set(mutationsStore.fetch(entityType: .sample)
                 .filter { $0.op == .create }
                 .compactMap(\.entityId))
         } catch {

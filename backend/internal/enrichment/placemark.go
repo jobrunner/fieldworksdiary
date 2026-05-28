@@ -179,10 +179,10 @@ func (e *PlacemarkEnricher) run(localityID string) error {
 	)
 
 	pmRec, err := lookupOrCreatePlacemark(dao, hash, placemarkFields{
-		country:              country,
-		administrativeArea:   result.AdminArea,
+		country:               country,
+		administrativeArea:    result.AdminArea,
 		subAdministrativeArea: result.AdminArea2,
-		locality:             result.Locality,
+		locality:              result.Locality,
 	})
 	if err != nil {
 		return err

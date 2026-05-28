@@ -87,7 +87,7 @@ func TestProcessSample_AssignsFreshCodeForFirstSampleOfDay(t *testing.T) {
 	owner := createTestUser(t, app, "ada@example.com")
 
 	rec := newSampleRecord(t, app)
-	rec.Set("begin_date",time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
+	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
@@ -110,7 +110,7 @@ func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	first := newSampleRecord(t, app)
-	first.Set("begin_date",day)
+	first.Set("begin_date", day)
 	if err := processSample(app.Dao(), first, owner.Id); err != nil {
 		t.Fatalf("first: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
 	}
 
 	second := newSampleRecord(t, app)
-	second.Set("begin_date",day.Add(2*time.Hour))
+	second.Set("begin_date", day.Add(2*time.Hour))
 	if err := processSample(app.Dao(), second, owner.Id); err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -140,13 +140,13 @@ func TestProcessSample_DifferentOwnersGetSeparateFieldtripsAndSequences(t *testi
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	aliceSample := newSampleRecord(t, app)
-	aliceSample.Set("begin_date",day)
+	aliceSample.Set("begin_date", day)
 	if err := processSample(app.Dao(), aliceSample, alice.Id); err != nil {
 		t.Fatalf("alice: %v", err)
 	}
 
 	bobSample := newSampleRecord(t, app)
-	bobSample.Set("begin_date",day)
+	bobSample.Set("begin_date", day)
 	if err := processSample(app.Dao(), bobSample, bob.Id); err != nil {
 		t.Fatalf("bob: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestProcessSample_RespectsTagesrolloverBeforeCutoff(t *testing.T) {
 	// 19.05.2026 um 03:00 Uhr Berlin liegt VOR dem 5-Uhr-Cutoff →
 	// gehört noch zum Sammeltag des 18.05.
 	rec := newSampleRecord(t, app)
-	rec.Set("begin_date",time.Date(2026, 5, 19, 3, 0, 0, 0, berlin))
+	rec.Set("begin_date", time.Date(2026, 5, 19, 3, 0, 0, 0, berlin))
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
@@ -208,7 +208,7 @@ func TestProcessSample_HonorsClientCodeWithoutConflict(t *testing.T) {
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
 	rec := newSampleRecord(t, app)
-	rec.Set("begin_date",day)
+	rec.Set("begin_date", day)
 	rec.Set("sample_id", "260519/7") // Offline-vergebener Code
 
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
@@ -227,7 +227,7 @@ func TestProcessSample_HonorsClientCodeWithoutConflict(t *testing.T) {
 		t.Fatalf("save: %v", err)
 	}
 	next := newSampleRecord(t, app)
-	next.Set("begin_date",day)
+	next.Set("begin_date", day)
 	if err := processSample(app.Dao(), next, owner.Id); err != nil {
 		t.Fatalf("next: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestProcessSample_ReassignsCodeOnConflict(t *testing.T) {
 
 	// Vorbelegung: ein Sample mit Code 260519/3 existiert bereits.
 	existing := newSampleRecord(t, app)
-	existing.Set("begin_date",day)
+	existing.Set("begin_date", day)
 	if err := processSample(app.Dao(), existing, owner.Id); err != nil {
 		t.Fatalf("seed processSample: %v", err)
 	}
@@ -256,7 +256,7 @@ func TestProcessSample_ReassignsCodeOnConflict(t *testing.T) {
 	// Zweiter User pusht denselben Code (z. B. Multi-Device-Offline).
 	other := createTestUser(t, app, "george@example.com")
 	rec := newSampleRecord(t, app)
-	rec.Set("begin_date",day)
+	rec.Set("begin_date", day)
 	rec.Set("sample_id", "260519/3")
 
 	if err := processSample(app.Dao(), rec, other.Id); err != nil {

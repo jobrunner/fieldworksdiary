@@ -7,6 +7,7 @@ require (
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.22.14
+	golang.org/x/text v0.37.0
 )
 
 require (
@@ -62,12 +63,11 @@ require (
 	gocloud.dev v0.37.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/image v0.40.0 // indirect
-	golang.org/x/net v0.54.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/term v0.43.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/api v0.184.0 // indirect

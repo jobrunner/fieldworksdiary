@@ -136,6 +136,6 @@ final class PendingMutationsStore {
         .fieldtrip,
         .sample,
         .samplePhoto,
-        .determination,
+        .determination
     ]
 }

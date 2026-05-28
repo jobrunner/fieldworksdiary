@@ -140,7 +140,9 @@ struct SettingsScreen: View {
         } header: {
             Text("Sample-ID-Format")
         } footer: {
-            Text("Provisorisches Format für neue Proben. Tokens: <YY>/<YYYY>, <MM>, <DD>, <seq>. Das Backend kann die ID beim Sync neu vergeben.")
+            Text(
+                "Provisorisches Format für neue Proben. Tokens: <YY>/<YYYY>, <MM>, <DD>, <seq>. Das Backend kann die ID beim Sync neu vergeben."
+            )
         }
     }
 

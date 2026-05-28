@@ -79,8 +79,8 @@ func (s Settings) minRadius() float64 {
 //
 //  1. Compute an adaptive radius
 //     R = max(MinRadius,
-//             2 * incoming.HorizontalAccuracy,
-//             2 * max(c.HorizontalAccuracy for c in candidates))
+//     2 * incoming.HorizontalAccuracy,
+//     2 * max(c.HorizontalAccuracy for c in candidates))
 //  2. Collect every candidate (excluding incoming itself) whose
 //     centroid is within R metres (haversine).
 //  3. Decide:

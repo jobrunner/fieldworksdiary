@@ -107,8 +107,7 @@ func TestDecodeAdminUnits(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatalf("got nil, want non-nil")
-			}
-			if got.Locality != c.wantField {
+			} else if got.Locality != c.wantField {
 				t.Errorf("Locality = %q, want %q", got.Locality, c.wantField)
 			}
 		})

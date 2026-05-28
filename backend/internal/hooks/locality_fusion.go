@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"runtime/debug"
-	"strings"
 
 	"go.mett.io/fwd-backend/internal/fusion"
 
@@ -240,14 +239,4 @@ func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID str
 		// Finally, drop the now-empty duplicate.
 		return txDao.DeleteRecord(loc)
 	})
-}
-
-// quietPocketBaseInternalError pretty-prints PocketBase's
-// stringly-typed validation errors. Reserved for future use when
-// the hook reports back to the user via a custom endpoint.
-func quietPocketBaseInternalError(err error) string {
-	if err == nil {
-		return ""
-	}
-	return strings.TrimSpace(err.Error())
 }

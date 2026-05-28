@@ -71,7 +71,7 @@ final class PendingMutationsStoreTests: XCTestCase {
 
         let ordered = try store.fetchAllOrdered()
         XCTAssertEqual(ordered.map(\.entityType), [
-            .placemark, .locality, .fieldtrip, .sample, .samplePhoto, .determination,
+            .placemark, .locality, .fieldtrip, .sample, .samplePhoto, .determination
         ])
     }
 

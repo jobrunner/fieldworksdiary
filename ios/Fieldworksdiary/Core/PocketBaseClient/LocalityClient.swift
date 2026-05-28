@@ -30,7 +30,7 @@ struct LocalityInput {
             "radius_m": radiusM,
             "notes": notes,
             "location_source": locationSource.wireValue,
-            "version": version,
+            "version": version
         ]
         if let clientUuid, !clientUuid.isEmpty {
             dict["client_uuid"] = clientUuid

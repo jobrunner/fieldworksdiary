@@ -58,8 +58,8 @@ final class LocalityFusionTests: XCTestCase {
         let result = LocalityFusion.offlineFuseLocality(
             sampleLatitude: 49.79, sampleLongitude: 9.94,
             candidates: [
-                cand("far", 49.79, 9.94042),  // ~30 m east
-                cand("near", 49.79, 9.94014)  // ~10 m east
+                cand("far", 49.79, 9.94042), // ~30 m east
+                cand("near", 49.79, 9.94014) // ~10 m east
             ]
         )
         XCTAssertEqual(result?.id, "near")
@@ -72,7 +72,7 @@ final class LocalityFusionTests: XCTestCase {
         let result = LocalityFusion.offlineFuseLocality(
             sampleLatitude: 49.79, sampleLongitude: 9.94,
             candidates: [
-                cand("self", 49.79, 9.94),    // 0 m — but excluded
+                cand("self", 49.79, 9.94), // 0 m — but excluded
                 cand("other", 49.79, 9.940418) // ~30 m east
             ],
             excludingID: "self"

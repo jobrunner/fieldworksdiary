@@ -26,7 +26,7 @@ struct RemapEventClient {
         )
         var query = [
             URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "created"), // oldest first — apply in order
+            URLQueryItem(name: "sort", value: "created") // oldest first — apply in order
         ]
         if let since {
             // PocketBase filter syntax: `created > "ISO-instant"`.

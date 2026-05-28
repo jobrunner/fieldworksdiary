@@ -76,7 +76,7 @@ private func haversineMeters(
     _ lat1: Double, _ lon1: Double,
     _ lat2: Double, _ lon2: Double
 ) -> Double {
-    let earthRadius = 6371000.0
+    let earthRadius = 6_371_000.0
     let phi1 = lat1 * .pi / 180
     let phi2 = lat2 * .pi / 180
     let dPhi = (lat2 - lat1) * .pi / 180

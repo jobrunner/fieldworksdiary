@@ -75,7 +75,8 @@ struct FieldtripsFilter: Equatable {
             return false
         }
         if let id = fieldtripID, !id.isEmpty,
-           !fieldtrip.id.localizedCaseInsensitiveContains(id) {
+           !fieldtrip.id.localizedCaseInsensitiveContains(id)
+        {
             return false
         }
         return true

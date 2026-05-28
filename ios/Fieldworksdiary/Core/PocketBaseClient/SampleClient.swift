@@ -27,7 +27,8 @@ enum SampleClientError: LocalizedError {
 /// parseable — defensive against shape drift.
 func parseConflictVersion(from body: String) -> Int {
     guard let data = body.data(using: .utf8),
-          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else {
         return 0
     }
     // PocketBase wraps the hook's `data` map under `"data"` in its
