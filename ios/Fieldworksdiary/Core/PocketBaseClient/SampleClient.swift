@@ -14,10 +14,40 @@ enum SampleClientError: LocalizedError {
         switch self {
         case .noEndpoint: "Kein Backend-Endpoint gesetzt."
         case .invalidEndpoint: "Endpoint-URL ist ungültig."
-        case let .http(status, body): "HTTP \(status): \(body)"
+        case let .http(status, body): Self.formatPocketBaseError(status: status, body: body)
         case let .conflict(version, _):
             "Konflikt: serverseitige Version ist \(version). Bitte neu laden."
         case let .decoding(message): "Antwort konnte nicht gelesen werden: \(message)"
+        }
+    }
+
+    /// PocketBase returns errors as
+    /// `{"code":400,"message":"...","data":{"field":{"code":"...","message":"..."}}}`.
+    /// Surface that as a readable sentence instead of the raw blob so
+    /// the user can actually read what went wrong (this was the
+    /// problem with the Apple-login 400 in the WelcomeView footnote).
+    static func formatPocketBaseError(status: Int, body: String) -> String {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return "HTTP \(status): \(body)"
+        }
+        let top = (json["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var fields: [String] = []
+        if let payload = json["data"] as? [String: Any] {
+            for key in payload.keys.sorted() {
+                if let entry = payload[key] as? [String: Any],
+                   let msg = entry["message"] as? String, !msg.isEmpty
+                {
+                    fields.append("\(key): \(msg)")
+                }
+            }
+        }
+        switch (top.isEmpty, fields.isEmpty) {
+        case (true, true): return "HTTP \(status): \(body)"
+        case (false, true): return "HTTP \(status) — \(top)"
+        case (true, false): return "HTTP \(status) — \(fields.joined(separator: " · "))"
+        case (false, false): return "HTTP \(status) — \(top) (\(fields.joined(separator: " · ")))"
         }
     }
 }
