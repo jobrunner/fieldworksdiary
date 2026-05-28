@@ -3,6 +3,7 @@ module go.mett.io/fwd-backend
 go 1.26.3
 
 require (
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
 	github.com/pocketbase/dbx v1.12.0
@@ -40,7 +41,6 @@ require (
 	github.com/ganigeorgiev/fexpr v0.4.1 // indirect
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
-	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.4 // indirect

@@ -38,24 +38,20 @@ struct AuthClient {
         ])
     }
 
-    // periphery:ignore — Parameter wird vom Call-Site (AppleSignInButton)
-    // weitergereicht. Aktuell ungenutzt im Request-Body, weil PocketBase's
-    // OAuth2-Endpoint mit `code` allein zufrieden ist. Wir behalten den
-    // Parameter, damit wir bei einer alternativen PB-Provider-Konfig
-    // den identityToken einsetzen können, ohne Call-Sites zu ändern.
-    func signInWithApple(identityToken _: String, code: String) async throws -> AuthResponse {
-        // PocketBase Apple OAuth2 expects an internal "code" produced
-        // by its OAuth2 flow. For native Apple-Sign-In on iOS we send
-        // identityToken via the OAuth2 endpoint. Whether the backend
-        // honours this depends on the PB-Admin-UI provider config —
-        // out of scope for the iOS code, but the call site is here so
-        // the UI can wire to it.
-        try await post("/api/collections/users/auth-with-oauth2", body: [
-            "provider": "apple",
-            "code": code,
-            "codeVerifier": "",
-            "redirectUrl": "",
-            "createData": [:]
+    // Native Sign in with Apple (Phase R8). We send only the
+    // identityToken — a JWT signed by Apple, audience = the app's
+    // bundle id — to our own `/api/auth/apple-native` route. The
+    // backend verifies it against Apple's JWKS, links/creates a user
+    // by the stable `sub` claim, and returns the standard PB auth
+    // response (`{token, record}`). The `code` is unused by this
+    // path; the parameter stays so the AppleSignInButton call-site
+    // doesn't have to change shape.
+    // periphery:ignore — `code` is captured by the credential and
+    // kept on the API for forward-compat with a future server-side
+    // exchange flow.
+    func signInWithApple(identityToken: String, code _: String) async throws -> AuthResponse {
+        try await post("/api/auth/apple-native", body: [
+            "identity_token": identityToken
         ])
     }
 

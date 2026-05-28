@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"go.mett.io/fwd-backend/internal/api"
@@ -21,6 +23,34 @@ const (
 	labellocBaseURL = "https://labelloc.example.org"
 	mtbBaseURL      = "https://coordstomtb.example.org"
 )
+
+// defaultAppleAudiences are the iOS bundle ids the native Sign in
+// with Apple flow may legitimately produce identityTokens for. The
+// `APPLE_ALLOWED_AUDIENCES` env var (comma-separated) overrides this
+// list — useful for staging environments with their own bundle ids.
+var defaultAppleAudiences = []string{
+	"org.fieldworksdiary.dev",
+	"org.fieldworksdiary.staging",
+	"org.fieldworksdiary.prod",
+}
+
+func resolveAppleAudiences() []string {
+	raw := strings.TrimSpace(os.Getenv("APPLE_ALLOWED_AUDIENCES"))
+	if raw == "" {
+		return defaultAppleAudiences
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return defaultAppleAudiences
+	}
+	return out
+}
 
 func main() {
 	app := pocketbase.New()
@@ -60,6 +90,12 @@ func main() {
 	// PATCH sets a `geocoding_source = manual` placemark; DELETE
 	// clears it so the next coord tick re-runs the auto-geocoder.
 	api.RegisterPlacemarkOverrideRoutes(app)
+
+	// Phase R8: native Sign in with Apple. Verifies the iOS-issued
+	// identityToken against Apple's JWKS, links the user by the
+	// stable `sub` claim, and returns a PB auth token in the same
+	// shape as the other auth endpoints.
+	api.RegisterAppleNativeSignIn(app, services.NewAppleVerifier(resolveAppleAudiences()))
 
 	// Phase 2 + R7.1: async enrichment. Sample-side fills
 	// admin_units / mtb / astro on insert; locality-side reverse-
