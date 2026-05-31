@@ -246,7 +246,7 @@ jobs:
 
       - name: Build-Artifact (für manuelle Inspektion)
         if: always() && steps.precheck.outputs.ready == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ios-staging-ipa
           path: ios/build/Fieldworksdiary-Staging/*.ipa

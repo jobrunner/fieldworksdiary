@@ -56,7 +56,7 @@ jobs:
           output: trivy-fs.sarif
       - name: Upload Trivy fs SARIF
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-fs-sarif
           path: trivy-fs.sarif
@@ -88,7 +88,7 @@ jobs:
           output: trivy-image.sarif
       - name: Upload Trivy image SARIF
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-image-sarif
           path: trivy-image.sarif
@@ -144,7 +144,7 @@ jobs:
             --sarif --output semgrep.sarif
       - name: Upload Semgrep SARIF
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-sarif
           path: semgrep.sarif
@@ -187,7 +187,7 @@ jobs:
 
       - name: Upload zizmor SARIF
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zizmor-sarif
           path: zizmor.sarif
@@ -231,7 +231,7 @@ jobs:
           go-licenses report ./... > ../dist/licenses-backend.csv
 
       - name: Upload SBOM + Lizenz-Reports
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-and-licenses
           path: dist/
