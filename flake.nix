@@ -63,6 +63,19 @@
             # braucht aber Apples xcrun aus /usr/bin.
             export PATH="/usr/bin:$PATH"
 
+            # mkShell propagiert auf Darwin ein Nix-eigenes apple-sdk (z.B.
+            # apple-sdk-14.4) und setzt SDKROOT dorthin. Dieses SDK ist
+            # unvollständig (u.a. fehlt libresolv), wodurch `go build` von
+            # cgo-Code mit `ld: library 'resolv' not found` abbricht. Wir
+            # zwingen SDKROOT auf das CLT-SDK, wenn xcrun verfügbar ist.
+            if command -v /usr/bin/xcrun >/dev/null 2>&1; then
+              _system_sdk="$(/usr/bin/xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)"
+              if [ -n "$_system_sdk" ]; then
+                export SDKROOT="$_system_sdk"
+              fi
+              unset _system_sdk
+            fi
+
             echo "fieldworksdiary-ng dev-shell"
             echo "  go:             $(go version 2>/dev/null | awk '{print $3}')"
             echo "  golangci-lint:  $(golangci-lint --version 2>/dev/null | head -1 | awk '{print $4}')"
