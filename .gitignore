@@ -28,5 +28,11 @@ ios/**/*.xcuserstate
 .vscode/
 *.swp
 
+# direnv (generated dev-shell state, per-machine)
+.direnv/
+
+# Per-machine direnv secrets (loaded by .envrc via dotenv_if_exists)
+.envrc.local
+
 # Build artifacts (SBOM, license reports)
 dist/
