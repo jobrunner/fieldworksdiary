@@ -156,7 +156,7 @@ private struct HomeContent: View {
     @ViewBuilder
     private var recentSampleDestination: some View {
         if let recent = viewModel.recentSample {
-            SampleDetailView(sampleID: recent.id)
+            SampleEditorView(sampleID: recent.id)
         } else {
             SamplesListScreen()
         }

@@ -64,6 +64,16 @@ final class SampleEditorViewModel: ObservableObject {
     @Published private(set) var savedFieldtrip: LocalFieldtrip?
     @Published private(set) var saveError: String?
     @Published private(set) var isSaving = false
+    /// Inline validation hint for the code field. Set by `recheckCode`
+    /// (called from the view on every keystroke). nil means "looks
+    /// fine" — display nothing.
+    @Published private(set) var codeValidationError: String?
+
+    /// Snapshot of the persisted values at the moment we adopted an
+    /// existing row. Drives dirty-detection so the save button only
+    /// lights up after the user actually changes something.
+    private var originalCode: String = ""
+    private var originalNotes: String = ""
 
     private let store: LocalSampleStore
     private let photoStore: LocalPhotoStore
@@ -108,12 +118,27 @@ final class SampleEditorViewModel: ObservableObject {
         savedSample != nil
     }
 
+    /// True when at least one user-editable field differs from the
+    /// adopted snapshot, or new (unsaved) photos are queued.
+    var hasUnsavedEdits: Bool {
+        guard isExistingSample else { return false }
+        let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedCode != originalCode { return true }
+        if trimmedNotes != originalNotes { return true }
+        if !pendingPhotos.isEmpty { return true }
+        return false
+    }
+
     var canSave: Bool {
-        if isExistingSample { return false }
         if isSaving { return false }
-        if coordinate == nil { return false }
         if code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
-        return true
+        if codeValidationError != nil { return false }
+        if isExistingSample {
+            return hasUnsavedEdits
+        }
+        // Create path: need a coordinate.
+        return coordinate != nil
     }
 
     // MARK: - GPS
@@ -179,7 +204,102 @@ final class SampleEditorViewModel: ObservableObject {
         pendingPhotos.removeAll { $0.id == id }
     }
 
+    // MARK: - marked toggle
+
+    /// Flips the star on the adopted sample. Writes the local row
+    /// instantly so the UI updates without waiting on the network,
+    /// then PATCHes the backend if the row has a backend id. After
+    /// the response we adopt the server's bumped `version` locally —
+    /// otherwise the next `saveEdits` would send a stale counter
+    /// (the server bumps via the legacy `incoming == 0` path of
+    /// `enforceVersion`) and get 409'd, losing the user's edit.
+    func toggleMarked(endpoint: String, auth: AuthSession?) {
+        guard var working = savedSample else { return }
+        let next = !working.marked
+        do {
+            try store.setMarked(id: working.id, marked: next)
+        } catch {
+            Log.persistence.error("toggle marked write failed: \(error.localizedDescription)")
+            return
+        }
+        working.marked = next
+        savedSample = working
+
+        guard let backendID = working.backendId, !backendID.isEmpty else { return }
+        let client = SampleClient(endpoint: endpoint, auth: auth)
+        let localID = working.id
+        Task { [weak self] in
+            do {
+                let updated = try await client.setMarked(id: backendID, marked: next)
+                await MainActor.run {
+                    guard let self else { return }
+                    guard var fresh = try? self.store.fetchById(localID) else { return }
+                    fresh.version = updated.version
+                    try? self.store.update(fresh)
+                    if self.savedSample?.id == localID {
+                        self.savedSample = fresh
+                    }
+                }
+            } catch {
+                Log.sync.error("toggle marked PATCH failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    // MARK: - code validation
+
+    /// Recomputes `codeValidationError`. Called from the view on
+    /// every keystroke (cheap — regex + an indexed `sample_id`
+    /// lookup). Empty input is treated as "still typing" → nil so
+    /// the field doesn't shout at the user while they edit.
+    func recheckCode() {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            codeValidationError = nil
+            return
+        }
+        if trimmed.range(of: #"^\d{6}/\d+$"#, options: .regularExpression) == nil {
+            codeValidationError = "Format: YYMMDD/Nr (z. B. 260605/3)."
+            return
+        }
+        if (try? store.findByCode(trimmed, excludingId: savedSample?.id)) != nil {
+            codeValidationError = "Code ist bereits an einer anderen Probe vergeben."
+            return
+        }
+        codeValidationError = nil
+    }
+
     // MARK: - save
+
+    /// Persists user edits (code, notes, new photos) on a sample
+    /// that's already been adopted via `init(sampleID:…)`. Idempotent:
+    /// re-running with no further changes is a no-op (`canSave` blocks
+    /// the button in that case anyway).
+    func saveEdits() async {
+        guard isExistingSample, !isSaving, var working = savedSample else { return }
+        recheckCode()
+        if codeValidationError != nil { return }
+
+        isSaving = true
+        defer { isSaving = false }
+        saveError = nil
+
+        working.sampleID = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        working.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            try store.saveEdits(working, mutationsStore: mutationsStore)
+            try persistPhotos(for: working)
+            let fresh = (try? store.fetchById(working.id)) ?? working
+            adoptExisting(fresh)
+            sync.kick()
+            // The push round-trip may rewrite the code (collision) or
+            // refresh enrichment fields. Re-use the create-path's
+            // background poller to surface those updates.
+            startObservingSync(sampleID: working.id)
+        } catch {
+            saveError = error.localizedDescription
+        }
+    }
 
     func save() async {
         guard let coordinate else { return }
@@ -294,10 +414,40 @@ final class SampleEditorViewModel: ObservableObject {
         }
     }
 
+    /// Re-reads the persisted row + photos + fieldtrip without
+    /// disturbing the user's in-progress edits (code/notes are
+    /// `@Published` and considered user-owned). Used on view appear
+    /// and on pull-to-refresh so background sync updates (enrichment,
+    /// newly-pulled photos, backend id arriving) become visible
+    /// without having to leave the editor.
+    func refreshDerivedFields() {
+        guard let id = savedSample?.id, let fresh = try? store.fetchById(id) else { return }
+        savedSample = fresh
+        savedPhotos = (try? photoStore.fetchBySample(id)) ?? []
+        if let ftID = fresh.fieldtrip, !ftID.isEmpty {
+            savedFieldtrip = try? fieldtripStore.fetchById(ftID)
+        } else {
+            savedFieldtrip = nil
+        }
+        if let lat = fresh.latitude, let lon = fresh.longitude {
+            coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+        accuracyM = fresh.horizontalAccuracy
+        altitudeM = fresh.altitude
+    }
+
     private func adoptExisting(_ sample: LocalSample) {
         savedSample = sample
-        code = sample.sampleID
-        notes = sample.notes
+        // Snapshot the *trimmed* persisted values for dirty-detection —
+        // legacy/imported rows with stray whitespace would otherwise
+        // open the editor as already-dirty, since `hasUnsavedEdits`
+        // compares trimmed user input against these.
+        let trimmedCode = sample.sampleID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNotes = sample.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        code = trimmedCode
+        notes = trimmedNotes
+        originalCode = trimmedCode
+        originalNotes = trimmedNotes
         if let lat = sample.latitude, let lon = sample.longitude {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         } else {
@@ -310,6 +460,7 @@ final class SampleEditorViewModel: ObservableObject {
             savedFieldtrip = try? fieldtripStore.fetchById(ftID)
         }
         pendingPhotos = []
+        codeValidationError = nil
     }
 
     /// Polls the store for the just-created sample so the bottom

@@ -217,6 +217,56 @@ final class LocalSampleStore {
         }
     }
 
+    /// Persists user-editable fields on an existing sample and — if
+    /// the row has a backend id — enqueues a `.sample/.update`
+    /// outbox row whose payload is built fresh at execute time.
+    ///
+    /// The mutation carries the *local* sample id as `entityId`
+    /// (same shape as `.sample/.create`) and an empty payload; the
+    /// SyncRunner reads the current row at PATCH time, so successive
+    /// edits never need to coalesce or rewrite payload JSON — the
+    /// latest committed row state always wins. Multiple PATCHes per
+    /// logical edit are wasteful but eventually consistent (the
+    /// backend bumps `version` each round).
+    ///
+    /// Rows that haven't been pushed yet (`backendId == nil`) get
+    /// no update mutation: the pending `.create` will pick up the
+    /// freshly-edited values when the SyncRunner reads from the row
+    /// (see `executeSampleCreate`).
+    func saveEdits(_ sample: LocalSample, mutationsStore: PendingMutationsStore) throws {
+        var working = sample
+        working.updatedAt = Date()
+        try database.writer.write { db in
+            try working.update(db)
+        }
+
+        guard let backendID = working.backendId, !backendID.isEmpty else { return }
+        _ = backendID
+
+        _ = try mutationsStore.enqueue(
+            entityType: .sample,
+            entityId: working.id,
+            op: .update,
+            payload: Data()
+        )
+    }
+
+    /// Returns the first local sample whose `sample_id` matches `code`
+    /// for the current user, optionally excluding a given row by id.
+    /// Used by the editor's pre-save uniqueness check.
+    func findByCode(_ code: String, excludingId: String? = nil) throws -> LocalSample? {
+        let userId = self.userId
+        return try database.reader.read { db in
+            var query = LocalSample
+                .filter(Column("sample_id") == code)
+                .filter(Column("user_id") == userId)
+            if let excludingId {
+                query = query.filter(Column("id") != excludingId)
+            }
+            return try query.fetchOne(db)
+        }
+    }
+
     /// Merges a batch of remote samples into the local store. Local
     /// rows that haven't been pushed yet (`.pending` / `.syncing`) are
     /// left untouched — the SyncRunner is mid-flight on those and a

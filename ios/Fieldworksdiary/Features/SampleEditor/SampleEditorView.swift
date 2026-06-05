@@ -43,6 +43,7 @@ struct SampleEditorView: View {
 
 private struct SampleEditorContent: View {
     @StateObject private var viewModel: SampleEditorViewModel
+    @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingCamera = false
@@ -50,6 +51,7 @@ private struct SampleEditorContent: View {
     @FocusState private var codeFocused: Bool
 
     @State private var showingCoordinatePicker = false
+    @State private var showingDiscardConfirm = false
 
     init(
         sampleID: String?,
@@ -78,12 +80,38 @@ private struct SampleEditorContent: View {
                 Divider()
                 locationTimeSection
                 MapSnippetView(coordinate: viewModel.coordinate)
+                if viewModel.isExistingSample {
+                    SampleDeterminationsSection(
+                        localSampleID: viewModel.savedSample?.id ?? "",
+                        backendSampleID: viewModel.savedSample?.backendId
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 24)
+                }
             }
         }
         .background(Color(.systemBackground))
         .navigationTitle(viewModel.isExistingSample ? "Probe" : "Neue Probe")
         .navigationBarTitleDisplayMode(.inline)
+        // When there are unsaved edits, swap out the default back
+        // chevron for a guarded one so accidental taps don't silently
+        // drop the user's work.
+        .navigationBarBackButtonHidden(viewModel.isExistingSample && viewModel.hasUnsavedEdits)
         .toolbar {
+            if viewModel.isExistingSample, viewModel.hasUnsavedEdits {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingDiscardConfirm = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.backward")
+                            Text("Zurück")
+                        }
+                        .accessibilityLabel("Zurück mit ungespeicherten Änderungen")
+                    }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingCamera = true
@@ -93,19 +121,61 @@ private struct SampleEditorContent: View {
                         .accessibilityLabel("Foto aufnehmen")
                 }
             }
-            if !viewModel.isExistingSample {
+            if viewModel.isExistingSample, let sample = viewModel.savedSample {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        viewModel.toggleMarked(
+                            endpoint: container.config.endpointURL,
+                            auth: container.auth
+                        )
+                    } label: {
+                        Image(systemName: sample.marked ? "star.fill" : "star")
+                            .foregroundStyle(sample.marked ? .yellow : .secondary)
+                            .accessibilityLabel(sample.marked ? "Markierung entfernen" : "Probe markieren")
+                    }
+                    .frame(minWidth: 44, minHeight: 44)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Sichern") {
+                        Task {
+                            await viewModel.saveEdits()
+                            if viewModel.saveError == nil {
+                                notesFocused = false
+                                codeFocused = false
+                            }
+                        }
+                    }
+                    .disabled(!viewModel.canSave)
+                    .accessibilityHint("Sichert die Änderungen lokal und stößt den Sync an.")
+                }
+            } else {
                 ToolbarItem(placement: .bottomBar) {
                     saveButton
                 }
             }
         }
-        .task { viewModel.startGPS() }
+        .task {
+            viewModel.startGPS()
+            viewModel.refreshDerivedFields()
+        }
+        .refreshable { viewModel.refreshDerivedFields() }
+        .onChange(of: viewModel.code) { _, _ in viewModel.recheckCode() }
         .sheet(isPresented: $showingCamera) {
             CameraPicker { image in
                 if let image { viewModel.addPhoto(image) }
                 showingCamera = false
             }
             .ignoresSafeArea()
+        }
+        .confirmationDialog(
+            "Änderungen verwerfen?",
+            isPresented: $showingDiscardConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Verwerfen", role: .destructive) { dismiss() }
+            Button("Weiter bearbeiten", role: .cancel) {}
+        } message: {
+            Text("Die nicht gespeicherten Änderungen gehen verloren.")
         }
     }
 
@@ -124,6 +194,27 @@ private struct SampleEditorContent: View {
                 .focused($codeFocused)
                 .accessibilityLabel("Sample-Code")
                 .accessibilityHint("Standardmäßig YYMMDD/Nr. Anpassbar, falls du eine andere Nummer auf dem Röhrchen hast.")
+
+            if let codeError = viewModel.codeValidationError {
+                Text(codeError)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Fehler im Code-Feld: \(codeError)")
+            }
+
+            // Server reassigned the tube label on collision; surface
+            // the audit trail (mirrors the old SampleDetailView hint).
+            if let sample = viewModel.savedSample,
+               let backendCode = sample.backendCode,
+               backendCode != sample.sampleID
+            {
+                Text("Server: \(backendCode) — Original: \(sample.sampleID)")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel(
+                        "Hinweis: Server hat den Code zu \(backendCode) umbenannt. Original auf dem Röhrchen: \(sample.sampleID)."
+                    )
+            }
 
             Divider()
 

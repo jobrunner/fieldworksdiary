@@ -35,7 +35,7 @@ struct PhotosGalleryScreen: View {
                     LazyVGrid(columns: columns, spacing: 4) {
                         ForEach(photos) { photo in
                             NavigationLink {
-                                SampleDetailView(sampleID: photo.sampleId)
+                                SampleEditorView(sampleID: photo.sampleId)
                             } label: {
                                 GalleryTile(photo: photo, tile: tile)
                             }

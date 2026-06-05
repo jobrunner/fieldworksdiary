@@ -239,11 +239,19 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
     var createResponse: Sample?
     var fetchResponse: Sample?
     var createError: Error?
+    var updateResponse: Sample?
+    var updateError: Error?
 
     func createSample(_: SampleCreateInput) async throws -> Sample {
         if let createError { throw createError }
         // swiftlint:disable:next force_unwrapping
         return createResponse!
+    }
+
+    func updateSample(id _: String, input _: SampleUpdateInput) async throws -> Sample {
+        if let updateError { throw updateError }
+        // swiftlint:disable:next force_unwrapping
+        return updateResponse!
     }
 
     func fetchSample(id _: String) async throws -> Sample {

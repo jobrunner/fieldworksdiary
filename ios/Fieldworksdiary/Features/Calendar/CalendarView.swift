@@ -224,7 +224,7 @@ private struct DaySamplesScreen: View {
             } else {
                 List(samples) { sample in
                     NavigationLink {
-                        SampleDetailView(sampleID: sample.id)
+                        SampleEditorView(sampleID: sample.id)
                     } label: {
                         HStack(spacing: 12) {
                             Text(sample.backendCode ?? sample.sampleID)

@@ -25,7 +25,7 @@ struct MarkedSamplesScreen: View {
             } else {
                 List(samples) { sample in
                     NavigationLink {
-                        SampleDetailView(sampleID: sample.id)
+                        SampleEditorView(sampleID: sample.id)
                     } label: {
                         row(for: sample)
                     }

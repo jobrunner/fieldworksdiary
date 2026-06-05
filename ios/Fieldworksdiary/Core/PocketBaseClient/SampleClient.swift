@@ -124,6 +124,34 @@ struct SampleClient {
         return try await send(request)
     }
 
+    /// Pushes a user-editable field set (code + notes) for an
+    /// already-synced sample. Idempotent over `client_uuid`/
+    /// `client_updated_at`, and carries the optimistic-lock `version`
+    /// so the backend's `enforceVersion` hook can reject stale
+    /// writes with 409.
+    func updateSample(id: String, input: SampleUpdateInput) async throws -> Sample {
+        let url = try makeURL(path: "/api/collections/samples/records/\(id)")
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        var body: [String: Any] = [
+            "sample_id": input.code,
+            "version": input.version,
+            "client_uuid": input.clientUuid,
+            "client_updated_at": isoFormatter.string(from: input.clientUpdatedAt)
+        ]
+        // Empty notes are intentional clears, not omissions — send "".
+        body["notes"] = input.notes ?? ""
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.timeoutInterval = 10
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return try await send(request)
+    }
+
     func fetchSample(id: String) async throws -> Sample {
         let url = try makeURL(path: "/api/collections/samples/records/\(id)")
         var request = URLRequest(url: url)

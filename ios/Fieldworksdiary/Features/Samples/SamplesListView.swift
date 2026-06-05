@@ -35,7 +35,7 @@ struct SamplesListScreen: View {
                 Section(group.day) {
                     ForEach(group.samples) { sample in
                         NavigationLink {
-                            SampleDetailView(sampleID: sample.id)
+                            SampleEditorView(sampleID: sample.id)
                         } label: {
                             row(for: sample)
                         }

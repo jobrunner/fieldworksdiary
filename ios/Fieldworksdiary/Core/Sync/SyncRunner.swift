@@ -17,11 +17,28 @@ struct SampleCreateInput {
     var clientUpdatedAt: Date?
 }
 
+/// Payload-Bundle für `SamplePushClient.updateSample`. Nur die
+/// user-editierbaren Felder (Code, Notiz) plus Idempotenz/Versions-
+/// Trio. Andere Spalten (Koordinaten, beginDate, …) werden über ein
+/// separates Formular geändert und tragen dann ihre eigene Mutation.
+///
+/// `Codable` weil die Outbox den Snapshot beim Enqueue als JSON
+/// persistiert (`pending_mutations.payload_json`) und der SyncRunner
+/// ihn beim Replay zurücklädt.
+struct SampleUpdateInput: Codable, Equatable {
+    var code: String
+    var notes: String?
+    var clientUuid: String
+    var clientUpdatedAt: Date
+    var version: Int
+}
+
 /// Schnittstelle, gegen die `SyncRunner` testet. Produktiv konformt
-/// `SampleClient`; in Tests reicht ein Mock, der nur diese zwei
+/// `SampleClient`; in Tests reicht ein Mock, der nur diese drei
 /// Methoden implementiert (siehe `SyncRunnerTests`).
 protocol SamplePushClient {
     func createSample(_ input: SampleCreateInput) async throws -> Sample
+    func updateSample(id: String, input: SampleUpdateInput) async throws -> Sample
     func fetchSample(id: String) async throws -> Sample
 }
 
@@ -160,13 +177,16 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// Dispatch by (entityType, op). Today only Sample-Create is
-    /// wired; other ops still flow through their direct-from-UI
-    /// PATCH clients and won't show up in the outbox.
+    /// Dispatch by (entityType, op). Sample create/update + locality
+    /// create are wired through the outbox; star-toggles still flow
+    /// through their direct-from-UI PATCH client (setMarked) and don't
+    /// show up here.
     private func execute(_ mutation: PendingMutation, via client: SamplePushClient) async {
         switch (mutation.entityType, mutation.op) {
         case (.sample, .create):
             await executeSampleCreate(mutation, via: client)
+        case (.sample, .update):
+            await executeSampleUpdate(mutation, via: client)
         case (.locality, .create):
             await executeLocalityCreate(mutation)
         default:
@@ -258,6 +278,125 @@ final class SyncRunner: ObservableObject {
             try? store.update(working)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample push failed: \(message)")
+        }
+    }
+
+    /// Pushes a user edit (code/notes) on a previously-synced sample.
+    ///
+    /// The outbox row carries the *local* sample id as `entityId`
+    /// (same shape as `.sample/.create`) and an empty payload. The
+    /// payload is built fresh from the current local row right before
+    /// the PATCH, so any user edits that landed in the row between
+    /// enqueue and execute are pushed automatically — no coalescing
+    /// race. After the response we re-read the row again to avoid
+    /// clobbering edits that landed during the network hop.
+    ///
+    /// OCC: the backend's `enforceVersion` hook (versionedCollections
+    /// in version_conflict.go) rejects `incoming <= current` with 409.
+    /// We send `current + 1`; on 409 we surface the conflict as a
+    /// `.failed` status with a localised error rather than silently
+    /// dropping the user's edit.
+    private func executeSampleUpdate(_ mutation: PendingMutation, via client: SamplePushClient) async {
+        guard let localID = mutation.entityId, !localID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+
+        let preLocal: LocalSample
+        do {
+            guard let row = try store.fetchById(localID) else {
+                // Sample row vanished (reset / account switch) — mutation is moot.
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+            preLocal = row
+        } catch {
+            // Transient DB read error — keep the mutation in the
+            // outbox and surface the failure so the next pass retries.
+            let message = "local row read failed: \(error.localizedDescription)"
+            Log.sync.error("\(message)")
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            return
+        }
+
+        guard let backendID = preLocal.backendId, !backendID.isEmpty else {
+            // Create push hasn't landed yet — leave the mutation
+            // queued; we'll come back next pass once create assigns a
+            // backend id.
+            return
+        }
+
+        var working = preLocal
+        working.syncStatus = .syncing
+        working.syncError = nil
+        try? store.update(working)
+
+        let input = SampleUpdateInput(
+            code: working.sampleID,
+            notes: working.notes,
+            clientUuid: working.id,
+            clientUpdatedAt: working.updatedAt,
+            version: working.version + 1
+        )
+
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+
+            let updated = try await client.updateSample(id: backendID, input: input)
+
+            // Re-read after the network hop: the user may have saved
+            // further edits during the await. Preserve user-owned
+            // fields (notes, sampleID) and merge only the server-
+            // derived ones in.
+            var fresh = (try? store.fetchById(localID)) ?? working
+            fresh.version = updated.version
+            fresh.adminUnitsLocality = updated.adminUnits?.locality
+            fresh.adminUnitsCountry = updated.adminUnits?.country
+            fresh.mtbSheetNumber = updated.mtb?.sheetNumber
+            fresh.mtbSheetName = updated.mtb?.sheetName
+            if updated.sampleID != input.code {
+                // Server reassigned on collision — keep the user's
+                // tube label as `originalCode` and adopt the server's
+                // authoritative id.
+                fresh.backendCode = updated.sampleID
+                fresh.originalCode = updated.originalCode ?? input.code
+            } else {
+                fresh.backendCode = nil
+                fresh.originalCode = updated.originalCode
+            }
+            fresh.syncStatus = .synced
+            fresh.syncError = nil
+            try store.update(fresh)
+            try? mutationsStore.dequeue(mutation.id)
+
+            // Pick up any photos that the edit added on top of an
+            // already-synced sample (same best-effort semantics as
+            // the create path).
+            await pushPhotos(for: fresh, backendSampleID: backendID, endpoint: endpointProvider())
+        } catch let SampleClientError.conflict(serverVersion, _) {
+            // Another writer beat us to the row. We intentionally do
+            // NOT overwrite local with the server's values — the
+            // user's typed code/notes stay put so they can review,
+            // retry, or discard. Just flip the row to .failed with
+            // a localised error so listing/badge UI surfaces the
+            // conflict instead of silently swallowing it.
+            Log.sync.warning(
+                "sample update 409 (server version \(serverVersion, privacy: .public))"
+            )
+            var aborted = (try? store.fetchById(localID)) ?? working
+            aborted.syncStatus = .failed
+            aborted.syncError = "Konflikt: Probe wurde auf einem anderen Gerät geändert. Bitte neu laden."
+            try? store.update(aborted)
+            try? mutationsStore.dequeue(mutation.id)
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            var failed = (try? store.fetchById(localID)) ?? working
+            failed.syncStatus = .failed
+            failed.syncError = message
+            try? store.update(failed)
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("sample update push failed: \(message)")
         }
     }
 

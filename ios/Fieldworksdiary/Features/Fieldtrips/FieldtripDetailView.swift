@@ -152,7 +152,7 @@ struct FieldtripDetailView: View {
                 } else {
                     ForEach(samples) { s in
                         NavigationLink {
-                            SampleDetailView(sample: s)
+                            SampleEditorView(sampleID: s.id)
                         } label: {
                             sampleRow(s)
                         }
