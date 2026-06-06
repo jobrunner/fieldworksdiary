@@ -182,7 +182,7 @@ private struct SampleEditorContent: View {
     // MARK: - editable section
 
     private var editableSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: AppSpacing.lg) {
             if !viewModel.isExistingSample {
                 modePicker
             }
@@ -218,7 +218,7 @@ private struct SampleEditorContent: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text("Notizen")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -243,9 +243,13 @@ private struct SampleEditorContent: View {
                     .foregroundStyle(.red)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
+        // Stretch the inner VStack so children (TextField, TextEditor)
+        // inherit the same leading edge as the container padding,
+        // instead of letting them claim more than their natural width.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.top, AppSpacing.md)
+        .padding(.bottom, AppSpacing.lg)
         .sheet(isPresented: $showingCoordinatePicker) {
             CoordinatePickerView(selected: Binding(
                 get: { viewModel.coordinate },
@@ -323,114 +327,163 @@ private struct SampleEditorContent: View {
     // MARK: - bottom section
 
     private var locationTimeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text("STANDORT UND ZEIT")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.top, AppSpacing.lg)
                 .accessibilityAddTraits(.isHeader)
 
             locationRow
-                .padding(.horizontal, 16)
 
             if hasAdminInfo {
-                Divider().padding(.leading, 56)
-                adminRow.padding(.horizontal, 16)
+                // Leading-inset of `40` aligns the divider with the
+                // right edge of the icon column (40pt) inside each
+                // row; the outer container padding adds the remaining
+                // 16pt to reach the legacy 56pt indent from the
+                // screen edge.
+                Divider().padding(.leading, 40)
+                adminRow
             }
 
-            Divider().padding(.leading, 56)
-            timeRow.padding(.horizontal, 16)
+            Divider().padding(.leading, 40)
+            timeRow
         }
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.bottom, AppSpacing.md)
+        // Stretch so the background fills the full width even when
+        // the inner content is shorter than the screen; padding wraps
+        // the content, frame+background wrap the padding.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemBackground))
     }
 
     private var locationRow: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: AppSpacing.lg) {
             GPSStatusIcon(status: locationIconStatus)
                 .frame(width: 40)
-                .padding(.top, 4)
+                .padding(.top, AppSpacing.xs)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(coordinateText)
-                    .font(.body.monospacedDigit())
-                if let acc = viewModel.accuracyM {
-                    HStack(spacing: 6) {
-                        Text("Genauigkeit").foregroundStyle(.secondary)
-                        Text(String(format: "±%.0f m", acc))
-                    }
-                    .font(.footnote)
+            // Side-by-side at default widths, stacked vertically when
+            // either Dynamic Type or a narrower device pushes the
+            // right-column off-screen. Truncation is the second-line
+            // defense; `ViewThatFits` is the first.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .top, spacing: AppSpacing.md) {
+                    coordinateBlock
+                    Spacer(minLength: AppSpacing.sm)
+                    altitudeBlock(alignment: .trailing)
+                }
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    coordinateBlock
+                    altitudeBlock(alignment: .leading)
                 }
             }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Höhe")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text(altitudeText)
-                    .font(.body.monospacedDigit())
-            }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, AppSpacing.md)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(locationA11yLabel)
     }
 
+    private var coordinateBlock: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            Text(coordinateText)
+                .font(.body.monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            if let acc = viewModel.accuracyM {
+                HStack(spacing: AppSpacing.xs) {
+                    Text("Genauigkeit").foregroundStyle(.secondary)
+                    Text(String(format: "±%.0f m", acc))
+                }
+                .font(.footnote)
+            }
+        }
+    }
+
+    private func altitudeBlock(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: AppSpacing.xxs) {
+            Text("Höhe")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text(altitudeText)
+                .font(.body.monospacedDigit())
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+    }
+
     private var adminRow: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: AppSpacing.lg) {
             Color.clear.frame(width: 40, height: 1)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 if let admin = adminLines {
                     ForEach(admin, id: \.self) { line in
-                        Text(line).font(.body)
+                        Text(line).font(.body).lineLimit(2)
                     }
                 }
-                if let fieldtripName, !fieldtripName.isEmpty {
-                    HStack(spacing: 6) {
+                // The label "Sammeltag" is rendered exactly once here;
+                // `fieldtripName` (computed) returns nil when no
+                // human-readable title is loaded yet — no "Sammeltag
+                // Sammeltag" stutter.
+                if let fieldtripName {
+                    HStack(spacing: AppSpacing.xs) {
                         Text("Sammeltag")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                         Text(fieldtripName)
                             .font(.footnote)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
                     }
                 }
                 if let mtb = viewModel.savedSample?.mtbSheetName {
                     Text("MTB \(mtb)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .lineLimit(2)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: AppSpacing.sm)
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, AppSpacing.sm)
         .accessibilityElement(children: .combine)
     }
 
     private var timeRow: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .top, spacing: AppSpacing.lg) {
             Image(systemName: moonSymbol)
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: 40)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(longDateText)
                     .font(.body)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
                 if let sunrise = sunriseText, let sunset = sunsetText {
-                    HStack(spacing: 16) {
-                        Label(sunrise, systemImage: "sunrise.fill")
-                        Label(sunset, systemImage: "sunset.fill")
+                    // Wrap sunrise/sunset into a second row when the
+                    // first one wouldn't fit horizontally (AX5 +
+                    // narrow device).
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: AppSpacing.lg) {
+                            Label(sunrise, systemImage: "sunrise.fill")
+                            Label(sunset, systemImage: "sunset.fill")
+                        }
+                        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                            Label(sunrise, systemImage: "sunrise.fill")
+                            Label(sunset, systemImage: "sunset.fill")
+                        }
                     }
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: AppSpacing.sm)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, AppSpacing.md)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(timeA11yLabel)
     }
@@ -502,10 +555,16 @@ private struct SampleEditorContent: View {
         return lines.isEmpty ? nil : lines
     }
 
+    /// Human-readable fieldtrip title or nil. The previous code
+    /// returned the literal string "Sammeltag" as a fallback when
+    /// only the fieldtrip id was known — that produced the
+    /// "Sammeltag Sammeltag" stutter in the admin row, because the
+    /// label itself is already rendered there. Returning nil now
+    /// means the entire row is hidden until the SyncRunner hydrates
+    /// a real title.
     private var fieldtripName: String? {
-        if let ft = viewModel.savedFieldtrip, !ft.title.isEmpty { return ft.title }
-        if let id = viewModel.savedSample?.fieldtrip, !id.isEmpty { return "Sammeltag" }
-        return nil
+        guard let ft = viewModel.savedFieldtrip, !ft.title.isEmpty else { return nil }
+        return ft.title
     }
 
     private var moonSymbol: String {
