@@ -166,3 +166,31 @@ Endpoint `http://<host>:8090` setzen.
 `ios/project.yml` regeneriert (`xcodegen generate`). Quelle für
 Projekt-Änderungen ist immer `project.yml`, nicht das `.xcodeproj`.
 
+### Lokales iOS-Testing auf macOS Tahoe (26)
+
+Apple-Bug: `xcodebuild build` für SwiftPM-Targets (z.B. GRDB)
+schlägt auf macOS Tahoe an einer ld-Argv-Parser-Strenge fehl
+(`ld: -objc_abi_version '-Xlinker' not supported`). Tritt mit
+Xcode 16.x und 26.x gleichermaßen auf, sobald Host = Tahoe.
+CI auf macos-15 ist nicht betroffen.
+
+**Lokaler Workaround** (bis Apple das fixt):
+
+1. In Xcode 26 IDE einmal `Product > Build for Testing`
+   (`Cmd+Shift+U`). Die IDE umgeht den Bug durch eine andere
+   Driver-Pipeline und legt das fertige App-Bundle + eine
+   `.xctestrun`-Datei in DerivedData ab.
+2. Anschließend Tests headless via CLI:
+   ```bash
+   bash scripts/test-ios-no-build.sh         # Default: iPhone 17
+   bash scripts/test-ios-no-build.sh "iPhone 17 Pro"
+   ```
+   Der Script findet die jüngste `.xctestrun` automatisch und
+   ruft `xcodebuild test-without-building` — kein erneuter
+   problematischer Link-Step.
+
+Nach Code-Änderungen → wieder Schritt 1, dann Schritt 2.
+Für reine Builds (ohne Tests) reicht die IDE per `Cmd+B`.
+`scripts/check-ios.sh` (volle CI-Suite mit `xcodebuild build`)
+bleibt für CI gedacht und scheitert lokal auf Tahoe.
+
