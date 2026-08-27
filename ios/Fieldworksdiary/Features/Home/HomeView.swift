@@ -60,7 +60,13 @@ private struct HomeContent: View {
                 }
             }
             .background(Color(.systemGroupedBackground))
-            .navigationBarHidden(true)
+            // `.navigationBarHidden(_:)` ist seit iOS 16 deprecated.
+            // Auf iOS 26 (Liquid Glass) erzeugt der dynamische
+            // NavBar-Wechsel beim Push (Home: hidden → Detail: shown)
+            // ein Re-Layout, das das beobachtete „kurz korrekt, dann
+            // clippt" auf Detail-Views auslösen kann. Die moderne
+            // `.toolbar(.hidden, …)`-API verhält sich vorhersagbarer.
+            .toolbar(.hidden, for: .navigationBar)
             .task { viewModel.refresh() }
             .onChange(of: sync.inFlight) { _, _ in viewModel.refresh() }
             .onChange(of: presentingNewSample) { _, isPresented in
