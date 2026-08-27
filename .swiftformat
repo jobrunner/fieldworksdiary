@@ -31,3 +31,13 @@
 
 # Disabled: SwiftFormat würde sonst SwiftUI-Property-Wrapper umsortieren
 --disable wrapAttributes
+
+# Disabled 2026-08-27: seit dem letzten grünen ios.yml-Lauf (2026-06-06)
+# ist `brew install swiftformat` (immer "latest", keine Versions-Pin)
+# auf eine Version gewandert, die diese zwei Rules standardmäßig aktiviert
+# hat. Beide würden ~130 bestehende Dateien anfassen — reiner Stil-Sweep,
+# keine funktionale Änderung, aber zu groß für einen ungeplanten CI-Fix.
+# Bei Bedarf gezielt als eigene "style(ios): swiftformat-Sweep"-PR
+# nachholen (siehe COMMITS.md), dann hier wieder entfernen.
+--disable wrapIfStatementBodies
+--disable redundantSwiftUIGroup
