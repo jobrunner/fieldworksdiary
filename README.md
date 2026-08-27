@@ -35,6 +35,21 @@ Damit sind verfügbar: `go`, `golangci-lint`, `govulncheck`, `gofumpt`,
 **Fallback ohne Nix:** `bash scripts/install-qa-tools.sh` installiert
 die Tools via Homebrew bzw. `go install`.
 
+### Claude Code Skills (Submodul)
+
+Die Skills unter `.claude/skills/` sind Symlinks ins Submodul
+`vendor/claude-skills`. Beim Klonen `--recurse-submodules` verwenden
+(oder einmalig `git submodule update --init`), sonst zeigen die Symlinks ins Leere:
+
+```bash
+git clone --recurse-submodules git@github.com:jobrunner/fieldworksdiary-ng.git
+# bestehender Checkout:
+git submodule update --init vendor/claude-skills
+# auf neueste Skills aktualisieren:
+git -C vendor/claude-skills pull origin main \
+  && git add vendor/claude-skills && git commit -m "chore: bump claude-skills"
+```
+
 ### Commit-Konvention
 
 [Conventional Commits](https://www.conventionalcommits.org/) sind via

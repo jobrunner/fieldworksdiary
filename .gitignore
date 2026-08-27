@@ -5,6 +5,9 @@
 # alles andere unter .claude/ ist per-user und bleibt ignoriert.
 .claude/*
 !.claude/settings.json
+# skills/ sind geteilt: Symlinks auf das claude-skills-Submodul (Auto-Discovery).
+!.claude/skills
+!.claude/skills/**
 
 # Backend
 backend/pb_data/

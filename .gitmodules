@@ -1,0 +1,3 @@
+[submodule "vendor/claude-skills"]
+	path = vendor/claude-skills
+	url = git@github.com:jobrunner/claude-skills.git
