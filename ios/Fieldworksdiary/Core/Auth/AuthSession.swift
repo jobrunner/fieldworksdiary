@@ -36,18 +36,45 @@ final class AuthSession: ObservableObject {
         currentUser != nil && currentToken != nil
     }
 
-    /// Called once at app launch. Tries to refresh whatever token is
-    /// in the Keychain; failure → silently clear the session. The UI
-    /// then lands on the WelcomeView.
+    /// Called once at app launch. Tries to refresh the Keychain token.
+    /// On 401/403 the token is revoked → clears the session.
+    /// On network or server errors the backend is temporarily
+    /// unreachable; we keep the cached user alive so the user doesn't
+    /// have to re-authenticate every time the backend is down.
     func restoreOnLaunch() async {
         guard let token = currentToken else { return }
         do {
             let resp = try await AuthClient(endpoint: endpointProvider())
                 .refresh(token: token)
             persist(token: resp.token, user: resp.record)
+        } catch let error as SampleClientError {
+            switch error {
+            case .http(let status, _) where status == 401 || status == 403:
+                Log.auth.notice("token revoked (HTTP \(status, privacy: .public)) — clearing session")
+                clearLocal()
+            default:
+                Log.auth.warning("token refresh failed, restoring session from cache")
+                restoreUserFromKeychain()
+            }
         } catch {
-            clearLocal()
+            Log.auth.warning("token refresh failed, restoring session from cache")
+            restoreUserFromKeychain()
         }
+    }
+
+    private func restoreUserFromKeychain() {
+        guard
+            let json = keychain.string(forKey: KeychainStore.Keys.userJSON),
+            let data = json.data(using: .utf8),
+            let user = try? JSONDecoder.fieldworks.decode(AuthUser.self, from: data)
+        else {
+            // JSON absent (e.g. first launch after upgrading from an old version
+            // that never wrote it) or corrupt — leave token and currentUser
+            // untouched. isSignedIn stays false so WelcomeView appears; the
+            // next successful online refresh will write the JSON and fix this.
+            return
+        }
+        currentUser = user
     }
 
     func signInWithPassword(email: String, password: String) async throws {
@@ -102,6 +129,10 @@ final class AuthSession: ObservableObject {
         keychain.setString(token, forKey: KeychainStore.Keys.token)
         keychain.setString(user.id, forKey: KeychainStore.Keys.userId)
         keychain.setString(user.email, forKey: KeychainStore.Keys.email)
+        if let data = try? JSONEncoder().encode(user),
+           let json = String(data: data, encoding: .utf8) {
+            keychain.setString(json, forKey: KeychainStore.Keys.userJSON)
+        }
         currentUser = user
         signInError = nil
     }

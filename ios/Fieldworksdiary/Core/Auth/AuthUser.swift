@@ -3,7 +3,7 @@ import Foundation
 /// The PocketBase `users` record shape — only the fields we surface
 /// to the UI. PocketBase returns plenty more (created/updated, etc.)
 /// but we ignore them at this layer.
-struct AuthUser: Decodable, Equatable, Identifiable {
+struct AuthUser: Codable, Equatable, Identifiable {
     let id: String
     let email: String
     let displayName: String

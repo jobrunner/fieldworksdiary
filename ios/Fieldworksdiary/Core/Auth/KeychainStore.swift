@@ -51,7 +51,7 @@ struct KeychainStore {
     }
 
     func clear() {
-        for key in [Keys.token, Keys.userId, Keys.email] {
+        for key in [Keys.token, Keys.userId, Keys.email, Keys.userJSON] {
             delete(key: key)
         }
     }
@@ -60,5 +60,6 @@ struct KeychainStore {
         static let token = "auth_token"
         static let userId = "auth_user_id"
         static let email = "auth_email"
+        static let userJSON = "auth_user_json"
     }
 }
