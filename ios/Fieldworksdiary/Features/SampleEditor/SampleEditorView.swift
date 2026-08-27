@@ -73,24 +73,53 @@ private struct SampleEditorContent: View {
         ))
     }
 
+    /// Linker Außen-Inset für den Editor-Inhalt. Auf iOS 26 schiebt
+    /// der NavigationStack-Push die Destination etwas nach links —
+    /// SwiftUI rechnet logisch korrekt (frames und safeAreaInsets
+    /// melden null), aber die GPU rendert verschoben. Wir kompensieren
+    /// mit zusätzlichen 16pt `contentMargins(.leading)` nur unter iOS 26.
+    ///
+    /// 16pt ist ein iterativer Mittelwert: +32 war zu großzügig (Editor
+    /// hatte ~70pt links statt ~20pt wie die Proben-Liste), +0 brachte
+    /// das Original-Clipping zurück.
+    ///
+    /// TODO: nach Apple-Fix oder iOS-26.x-Update entfernen.
+    private var leadingMargin: CGFloat {
+        if #available(iOS 26.0, *) {
+            return AppSpacing.lg + AppSpacing.lg // 32pt total
+        }
+        return AppSpacing.lg
+    }
+
+    private var trailingMargin: CGFloat {
+        AppSpacing.lg
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
                 editableSection
                 Divider()
                 locationTimeSection
+                // Karte bewusst edge-to-edge — negiert die
+                // contentMargins via gleichgroße negative padding.
                 MapSnippetView(coordinate: viewModel.coordinate)
+                    .padding(.leading, -leadingMargin)
+                    .padding(.trailing, -trailingMargin)
                 if viewModel.isExistingSample {
                     SampleDeterminationsSection(
                         localSampleID: viewModel.savedSample?.id ?? "",
                         backendSampleID: viewModel.savedSample?.backendId
                     )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 24)
+                    .padding(.top, AppSpacing.lg)
+                    .padding(.bottom, AppSpacing.xl)
                 }
             }
         }
+        // contentMargins greift VOR dem iOS-26-CALayer-Shift und ist
+        // unsere einzige Stellschraube auf der ScrollView-Ebene.
+        .contentMargins(.leading, leadingMargin, for: .scrollContent)
+        .contentMargins(.trailing, trailingMargin, for: .scrollContent)
         .background(Color(.systemBackground))
         .navigationTitle(viewModel.isExistingSample ? "Probe" : "Neue Probe")
         .navigationBarTitleDisplayMode(.inline)
@@ -243,11 +272,10 @@ private struct SampleEditorContent: View {
                     .foregroundStyle(.red)
             }
         }
-        // Stretch the inner VStack so children (TextField, TextEditor)
-        // inherit the same leading edge as the container padding,
-        // instead of letting them claim more than their natural width.
+        // Horizontale Margin sitzt auf der ScrollView (contentMargins).
+        // Hier nur vertikale Paddings + frame-Stretching für TextField/
+        // TextEditor.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, AppSpacing.lg)
         .padding(.top, AppSpacing.md)
         .padding(.bottom, AppSpacing.lg)
         .sheet(isPresented: $showingCoordinatePicker) {
@@ -349,13 +377,17 @@ private struct SampleEditorContent: View {
             Divider().padding(.leading, 40)
             timeRow
         }
-        .padding(.horizontal, AppSpacing.lg)
+        // Horizontale Margin sitzt auf der ScrollView. Background
+        // soll trotzdem edge-to-edge — Color in der background-Closure
+        // wird mit negativer horizontaler Padding über die
+        // contentMargins-Grenze hinaus aufgeweitet.
         .padding(.bottom, AppSpacing.md)
-        // Stretch so the background fills the full width even when
-        // the inner content is shorter than the screen; padding wraps
-        // the content, frame+background wrap the padding.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background {
+            Color(.secondarySystemBackground)
+                .padding(.leading, -leadingMargin)
+                .padding(.trailing, -trailingMargin)
+        }
     }
 
     private var locationRow: some View {
