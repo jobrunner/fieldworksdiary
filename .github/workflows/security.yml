@@ -31,7 +31,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0   # gitleaks scannt die History
           persist-credentials: false
@@ -43,7 +43,7 @@ jobs:
     name: Trivy Filesystem-Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
       - name: Trivy fs (vuln + secret + misconfig)
@@ -67,7 +67,7 @@ jobs:
     name: Trivy Image-Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
       - name: Set up Docker Buildx
@@ -102,7 +102,7 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
       - uses: actions/setup-go@v6
@@ -123,7 +123,7 @@ jobs:
     # Nightly + Push, aber kein PR-Block (continue-on-error in den
     # SARIF-Upload-Step verlagern, wenn sich False-Positives häufen).
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
       - name: Run semgrep
@@ -156,7 +156,7 @@ jobs:
     name: GitHub-Actions-Audit (zizmor)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           # Default-Verhalten von `checkout` schreibt einen Token in
           # `.git/config`, der allen späteren Steps zugänglich ist —
@@ -199,7 +199,7 @@ jobs:
     name: SBOM + License-Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
       - uses: actions/setup-go@v6
