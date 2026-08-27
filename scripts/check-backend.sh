@@ -39,9 +39,9 @@ else
   missing "golangci-lint"
 fi
 
-section "govulncheck (CVE-Scan)"
+section "govulncheck (CVE-Scan, gegen backend/govulncheck-allowlist.txt)"
 if command -v govulncheck >/dev/null 2>&1; then
-  if govulncheck ./...; then ok "Keine bekannten Vulns"; else bad "Vulnerabilities gefunden"; fi
+  if "$ROOT/scripts/govulncheck-gate.sh"; then ok "Keine neuen Vulns"; else bad "Neue Vulnerabilities gefunden"; fi
 else
   missing "govulncheck"
 fi

@@ -58,7 +58,8 @@ jobs:
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          ../scripts/govulncheck-gate.sh
 
       - name: go test (race + coverage)
         run: go test -race -coverprofile=coverage.out ./...

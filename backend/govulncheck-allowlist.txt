@@ -1,0 +1,19 @@
+# Bekannte, akzeptierte govulncheck-Funde — mit Begründung.
+#
+# Format: eine GO-ID pro Zeile, Kommentare mit '#'. scripts/govulncheck-gate.sh
+# vergleicht die tatsächlich aufgerufenen Findings (govulncheck-Textausgabe,
+# "Vulnerability #N: GO-..."-Zeilen) gegen diese Liste. Alles Neue lässt den
+# Check failen; Einträge hier, die nicht mehr auftauchen, werden als Warnung
+# gemeldet (stale — zum Aufräumen), nicht als Fehler.
+#
+# GO-2026-6293 — echo/v5: Encoded-Slash (%2F) umgeht Route-Level-Protection
+# bei statischen Files. pocketbase v0.22.42 pinnt intern eine echo/v5-
+# Pseudo-Version (v5.0.0-20230722203903-ec5b858dab61); der offizielle Fix
+# (echo/v5 v5.2.0) hat eine inkompatible Context-API (struct statt
+# *Context) und bricht pocketbase/tools/rest. Verifiziert: jede getaggte
+# echo/v5-Version ab v5.0.1 bricht denselben Build — der API-Schnitt kam
+# mit dem allerersten Tag, kein Zwischenstand verfügbar. Fix erfordert
+# einen pocketbase-Major-Sprung (0.22 -> 0.4x, breaking), außerhalb des
+# Scopes des govulncheck-Fixes vom 2026-08-27. Neu bewerten, sobald
+# pocketbase migriert wird (R9/R10-Bereich, siehe PHASES.md).
+GO-2026-6293

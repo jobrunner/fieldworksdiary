@@ -113,7 +113,8 @@ jobs:
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          ../scripts/govulncheck-gate.sh
 
   semgrep:
     name: Semgrep SAST
