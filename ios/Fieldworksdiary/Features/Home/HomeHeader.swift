@@ -34,7 +34,7 @@ struct HomeHeader: View {
         .padding(.horizontal, hPad)
         .padding(.vertical, vPad)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppColor.brandPrimary)
+        .background(AppColor.brandPrimary.ignoresSafeArea(edges: .top))
         .foregroundStyle(AppColor.brandOnPrimary)
     }
 
