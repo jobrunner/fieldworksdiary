@@ -60,12 +60,14 @@ git config core.hooksPath .githooks
 ```
 
 Konvention im Detail: [`.claude/rules/COMMITS.md`](.claude/rules/COMMITS.md).
-Changelog generieren (Konfiguration in `cliff.toml`):
 
-```bash
-git-cliff -o CHANGELOG.md             # alles
-git-cliff --unreleased --tag v0.2.0   # nächster Release
-```
+Version + Changelog laufen automatisch über
+[release-please](https://github.com/googleapis/release-please)
+(Konfiguration in `release-please-config.json`): jeder Push auf `main`
+aktualisiert eine offene Release-PR, die `VERSION` +
+`ios/project.yml`s `MARKETING_VERSION` hochzählt und `CHANGELOG.md`
+befüllt. Merge dieser PR taggt den Release und legt die
+GitHub-Release automatisch an — nichts davon manuell anfassen.
 
 ### Quality Checks
 

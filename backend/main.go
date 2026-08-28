@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"go.mett.io/fwd-backend/internal/fusion"
 	"go.mett.io/fwd-backend/internal/hooks"
 	"go.mett.io/fwd-backend/internal/services"
+	"go.mett.io/fwd-backend/internal/version"
 	_ "go.mett.io/fwd-backend/migrations"
 
 	"github.com/pocketbase/pocketbase"
@@ -53,12 +55,33 @@ func resolveAppleAudiences() []string {
 }
 
 func main() {
+	// JSON-Output, weil PocketBase in Docker läuft → Logs gehen über
+	// Docker-Driver in ELK/Loki/whatever. Kein Text-Format mit Farben.
+	// Siehe .claude/rules/LOGGING.md. Debug-Level nur mit PB_LOG_LEVEL=debug.
+	logLevel := slog.LevelInfo
+	if strings.EqualFold(os.Getenv("PB_LOG_LEVEL"), "debug") {
+		logLevel = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level:     logLevel,
+		AddSource: false,
+	})))
+
 	app := pocketbase.New()
+
+	slog.Info("starting fieldworksdiary",
+		slog.String("version", version.Version),
+		slog.String("commit", version.Commit),
+	)
 
 	// Auto-run Go-based migrations on start.
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
 		Automigrate: true,
 	})
+
+	// Public build-identity endpoint — the iOS "Status" screen shows
+	// this next to the app's own version.
+	api.RegisterVersionRoute(app)
 
 	// Phase 1: code-vergabe + auto-grouping on sample insert.
 	hooks.RegisterSampleCreate(app)

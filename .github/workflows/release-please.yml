@@ -1,0 +1,49 @@
+# Release automation via release-please.
+#
+# On every push to main, release-please inspects the Conventional
+# Commits since the last release and maintains a "release PR" that:
+#   - bumps VERSION + ios/project.yml's MARKETING_VERSION (generic
+#     updater, `# x-release-please-version` marker),
+#   - cuts CHANGELOG.md ([Unreleased]-style accumulation → a
+#     versioned section),
+#   - and, when merged, tags vX.Y.Z + creates the GitHub Release.
+#
+# One version for the whole monorepo (backend + iOS) — see
+# release-please-config.json (single "." package, release-type
+# "simple"). deploy-prod.yml / deploy-staging.yml read the same
+# `VERSION` file at Docker-build time (build-args), so the released
+# version always matches what both components report at runtime.
+#
+# No goreleaser job here — the backend ships as a Docker image (see
+# deploy-*.yml), not as a standalone binary release, and iOS ships via
+# TestFlight/App Store, not a GitHub Release asset.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # create the release PR, tag, and GitHub Release
+      pull-requests: write   # open/maintain the release PR
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Prefer a PAT so release-please's commits on the release PR
+          # TRIGGER required-status-check workflows — commits pushed
+          # with the default GITHUB_TOKEN do NOT (GitHub's workflow
+          # loop-prevention), which leaves the release PR permanently
+          # blocked once checks are required. Falls back to
+          # GITHUB_TOKEN when the secret is unset. To activate: create
+          # a RELEASE_PLEASE_TOKEN secret from a PAT (classic → repo +
+          # workflow scopes; fine-grained → Contents + Pull requests,
+          # both read/write).
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}

@@ -1,9 +1,26 @@
+# syntax=docker/dockerfile:1
 FROM golang:1.26.6-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/fieldworksdiary .
+# VERSION/COMMIT werden vom CI-Build-Step gesetzt (siehe deploy-*.yml
+# build-args) — release-please pflegt die Monorepo-weite `VERSION`-
+# Datei im Repo-Root. Ohne Build-Arg (lokales `docker compose up
+# --build`) bleibt es bei den version.go-Defaults ("dev"/"unknown"),
+# was einen unversionierten Dev-Build absichtlich sichtbar macht statt
+# ihn stillschweigend als Release auszugeben.
+#
+# deploy-*.yml pushen bei JEDEM Push auf main/staging, auch bei reinen
+# iOS-Commits ohne Backend-Änderung — COMMIT ändert sich damit auf
+# jedem Build und würde ohne Cache-Mount den kompletten go-build-Layer
+# neu kompilieren lassen, obwohl der Quellcode identisch ist. Der
+# BuildKit-Cache-Mount hält GOCACHE zwischen Builds warm, damit ein
+# reiner Version-Bump trotzdem ein Sekunden- statt Minuten-Rebuild ist.
+ARG VERSION=dev
+ARG COMMIT=unknown
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X go.mett.io/fwd-backend/internal/version.Version=${VERSION} -X go.mett.io/fwd-backend/internal/version.Commit=${COMMIT}" -o /out/fieldworksdiary .
 
 FROM alpine:3.24.1
 RUN apk add --no-cache ca-certificates tzdata

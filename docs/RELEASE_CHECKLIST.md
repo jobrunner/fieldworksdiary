@@ -22,16 +22,21 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
       `done` markiert
 - [ ] **Backup von `pb_data/`** angelegt:
       `KEEP_LAST=60 bash scripts/backup-pbdata.sh /Volumes/Backup/wapp`
-- [ ] CHANGELOG mit `git-cliff --unreleased --tag vX.Y.Z` aktualisiert,
-      Top-Sektion auf Lesbarkeit gegengelesen
+- [ ] **release-please-PR reviewt + gemergt** (öffnet sich automatisch
+      auf `main`, bumpt `VERSION` + `ios/project.yml`s
+      `MARKETING_VERSION` + `CHANGELOG.md` aus den Conventional
+      Commits seit dem letzten Release). Top-Sektion des CHANGELOG
+      auf Lesbarkeit gegenlesen, **bevor** die PR gemergt wird — danach
+      taggt der Merge automatisch `vX.Y.Z` + legt die GitHub-Release
+      an. Kein manuelles Tag mehr setzen (siehe unten).
 
 ## Backend-Release (Docker-Image)
 
-- [ ] Version-Tag vergeben — SemVer:
-      - `patch` für Bugfix-only-Releases
-      - `minor` für additive Features
-      - `major`/Breaking nur vor `v1.0.0` ohne Vorlauf, danach mit ADR
-- [ ] `git tag -s vX.Y.Z -m "release vX.Y.Z"` (signiert, falls GPG da)
+- [ ] Der Versions-Tag ist bereits durch den release-please-PR-Merge
+      gesetzt (SemVer aus den Commit-Typen: `fix`→patch, `feat`→minor,
+      `!`/`BREAKING CHANGE`→major, vor `v1.0.0` ohne ADR-Zwang) —
+      **kein** manuelles `git tag` mehr, das würde mit release-please
+      kollidieren.
 - [ ] `docker compose build` lokal — ohne Cache:
       `docker compose build --no-cache --pull`
 - [ ] `docker image inspect …` zeigt korrekte Labels (Git-SHA, Version)
@@ -54,8 +59,11 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
 ## iOS-Release (TestFlight → App Store)
 
 ### Vorbereitung
-- [ ] `ios/project.yml` Marketing-Version `MARKETING_VERSION` hochgezählt
-- [ ] `CURRENT_PROJECT_VERSION` (Build-Number) inkrementiert
+- [ ] `MARKETING_VERSION` in `ios/project.yml` ist bereits durch den
+      release-please-PR-Merge hochgezählt (extra-files-Updater) —
+      nachschauen, nicht manuell setzen
+- [ ] `CURRENT_PROJECT_VERSION` (Build-Number) inkrementiert — das ist
+      NICHT die Marketing-Version, release-please rührt sie nicht an
 - [ ] `cd ios && xcodegen generate`
 - [ ] `PrivacyInfo.xcprivacy` reviewt: nur tatsächlich verwendete
       Required-Reason-APIs gelistet
@@ -86,8 +94,9 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
 - [ ] Submit for Review im ASC
 
 ### Post-Release
-- [ ] GitHub-Release-Note aus dem CHANGELOG erstellt
-      (`gh release create vX.Y.Z --notes-from-tag`)
+- [ ] GitHub-Release existiert bereits (release-please legt sie beim
+      PR-Merge automatisch an, inkl. Notes aus dem CHANGELOG) —
+      nur noch gegenlesen, nichts manuell erstellen
 - [ ] `PHASES.md`: Release-Eintrag mit Datum + Build-Number
 - [ ] Monitoring: 48 h MetricKit + PocketBase-Logs gegenchecken
 

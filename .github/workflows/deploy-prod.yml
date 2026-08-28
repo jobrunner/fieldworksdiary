@@ -56,6 +56,17 @@ jobs:
             type=sha,prefix=prod-,format=short
             type=semver,pattern={{version}},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # `VERSION` (Monorepo-weite Datei, von release-please gepflegt)
+      # + Short-SHA gehen als Build-Args ins Image, damit `/api/version`
+      # und der Startup-Log die echte Version zeigen statt version.go's
+      # "dev"/"unknown"-Defaults. `cut` schneidet den
+      # `# x-release-please-version`-Marker-Kommentar ab.
+      - name: Version-Build-Args ermitteln
+        id: version
+        run: |
+          echo "value=$(cut -d' ' -f1 VERSION)" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       # Scan-before-push: erst lokal bauen + laden, scannen, dann
       # nur bei grünem Scan veröffentlichen. So landet kein
       # kompromittiertes Image im Registry, das sich versehentlich
@@ -68,6 +79,9 @@ jobs:
           file: backend/Dockerfile
           load: true
           tags: fieldworksdiary:prod-${{ github.sha }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha,scope=backend-prod
           cache-to: type=gha,scope=backend-prod,mode=max
 
@@ -92,6 +106,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha,scope=backend-prod
           cache-to: type=gha,scope=backend-prod,mode=max
 

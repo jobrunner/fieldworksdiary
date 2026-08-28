@@ -29,7 +29,6 @@
           go-licenses      # License-Compliance-Check
           semgrep          # Multi-Sprach-SAST (Go + Swift Rulesets)
           zizmor           # GitHub-Actions-Workflows-Audit
-          git-cliff        # Changelog-Generator aus Conventional Commits
           jq
           coreutils
           git

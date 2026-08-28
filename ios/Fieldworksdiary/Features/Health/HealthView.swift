@@ -33,6 +33,8 @@ struct HealthScreen: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(config.endpointURL.isEmpty)
+
+            versionSection
         }
         .padding()
         .navigationTitle("Status")
@@ -40,5 +42,20 @@ struct HealthScreen: View {
         .onChange(of: config.endpointURL) { _, _ in
             Task { await checker.check(endpoint: config.endpointURL) }
         }
+    }
+
+    private var versionSection: some View {
+        VStack(spacing: AppSpacing.xs) {
+            Divider()
+                .padding(.bottom, AppSpacing.xs)
+            LabeledContent("App", value: AppVersion.display)
+                .font(.footnote)
+            if let backend = checker.backendVersion {
+                LabeledContent("Backend", value: "\(backend.version) (\(backend.commit))")
+                    .font(.footnote)
+            }
+        }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
     }
 }

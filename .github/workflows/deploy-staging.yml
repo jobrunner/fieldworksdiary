@@ -54,6 +54,15 @@ jobs:
             type=raw,value=staging-${{ github.sha }}
             type=sha,prefix=staging-,format=short
 
+      # `VERSION` (Monorepo-weite Datei, von release-please gepflegt)
+      # + Short-SHA gehen als Build-Args ins Image — siehe
+      # deploy-prod.yml für die volle Rationale.
+      - name: Version-Build-Args ermitteln
+        id: version
+        run: |
+          echo "value=$(cut -d' ' -f1 VERSION)" >> "$GITHUB_OUTPUT"
+          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
       # Scan-before-push: lokal bauen + laden, scannen, dann
       # publishen. Der gha-Cache wird zwischen beiden Builds geteilt,
       # der Push-Build hat damit faktisch 0 Build-Zeit.
@@ -64,6 +73,9 @@ jobs:
           file: backend/Dockerfile
           load: true
           tags: fieldworksdiary:staging-${{ github.sha }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
@@ -86,6 +98,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.value }}
+            COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
