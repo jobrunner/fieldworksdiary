@@ -112,3 +112,8 @@ private struct GalleryTile: View {
         }
     }
 }
+
+#Preview {
+    PhotosGalleryView()
+        .environmentObject(AppContainer())
+}

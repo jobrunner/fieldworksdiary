@@ -37,7 +37,17 @@ final class AppContainer: ObservableObject {
         let config = AppConfig()
         let database: Database
         do {
-            database = try Database()
+            // Xcode Canvas setzt diese Env-Var für jeden #Preview-Render.
+            // Ohne die Weiche würde jede Preview-Iteration den echten
+            // Produktions-Datenstand unter applicationSupportDirectory
+            // öffnen (WAL-Locking, Migrations-Re-Runs) — reiner Nebeneffekt
+            // des Canvas-Renderns, den Tests genau deshalb schon über
+            // `Database(inMemory:)` umgehen.
+            if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+                database = try Database(inMemory: ())
+            } else {
+                database = try Database()
+            }
         } catch {
             fatalError("Database open failed: \(error)")
         }
@@ -162,6 +172,13 @@ final class AppContainer: ObservableObject {
             // ausgeblendet hätte.
             Log.persistence.error("local-store wipe failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Public entry point for foreground re-hydration (scene phase,
+    /// pull-to-refresh). No-ops when signed out or no endpoint is set.
+    func hydrate() async {
+        guard auth.isSignedIn else { return }
+        await hydrateAll()
     }
 
     private func hydrateAll() async {

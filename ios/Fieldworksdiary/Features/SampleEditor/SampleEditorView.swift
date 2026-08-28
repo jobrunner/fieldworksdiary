@@ -95,6 +95,13 @@ private struct SampleEditorContent: View {
         AppSpacing.lg
     }
 
+    /// `TextEditor` bringt einen eigenen ~5pt Text-Container-Inset mit,
+    /// den `TextField` nicht hat — ohne Korrektur steht der Notizen-Text
+    /// sichtbar weiter rechts als alle anderen Felder in der Section.
+    /// Kein AppSpacing-Wert (System-Quirk, keine Rhythmus-Entscheidung),
+    /// deshalb hier als benannte Konstante statt Magic-Number inline.
+    private let notesTextContainerCorrection: CGFloat = -5
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -253,6 +260,7 @@ private struct SampleEditorContent: View {
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
                 TextEditor(text: $viewModel.notes)
+                    .padding(.leading, notesTextContainerCorrection)
                     .frame(minHeight: 100, maxHeight: 220)
                     .focused($notesFocused)
                     .accessibilityLabel("Notizen zur Probe")
@@ -699,4 +707,9 @@ private struct SavedPhotoThumbnail: View {
             image = img
         }
     }
+}
+
+#Preview {
+    SampleEditorView(sampleID: nil)
+        .environmentObject(AppContainer())
 }
