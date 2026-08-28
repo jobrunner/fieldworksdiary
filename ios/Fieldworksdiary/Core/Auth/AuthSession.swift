@@ -49,7 +49,7 @@ final class AuthSession: ObservableObject {
             persist(token: resp.token, user: resp.record)
         } catch let error as SampleClientError {
             switch error {
-            case .http(let status, _) where status == 401 || status == 403:
+            case let .http(status, _) where status == 401 || status == 403:
                 Log.auth.notice("token revoked (HTTP \(status, privacy: .public)) — clearing session")
                 clearLocal()
             default:
@@ -130,7 +130,8 @@ final class AuthSession: ObservableObject {
         keychain.setString(user.id, forKey: KeychainStore.Keys.userId)
         keychain.setString(user.email, forKey: KeychainStore.Keys.email)
         if let data = try? JSONEncoder().encode(user),
-           let json = String(data: data, encoding: .utf8) {
+           let json = String(data: data, encoding: .utf8)
+        {
             keychain.setString(json, forKey: KeychainStore.Keys.userJSON)
         }
         currentUser = user
