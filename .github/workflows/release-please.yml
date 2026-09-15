@@ -33,17 +33,24 @@ jobs:
       contents: write       # create the release PR, tag, and GitHub Release
       pull-requests: write   # open/maintain the release PR
     steps:
+      # Installation token from the same release-please GitHub App used
+      # for ortus/tempus/hostus (secrets RELEASE_PLEASE_APP_ID /
+      # RELEASE_PLEASE_APP_KEY) — not the default GITHUB_TOKEN. Pushes
+      # and PRs made with an app token DO trigger workflows, so the
+      # release PR gets its required status checks instead of sitting
+      # permanently blocked (GitHub's loop-prevention only exempts the
+      # built-in GITHUB_TOKEN). The app needs Contents + Pull requests
+      # read/write on this repo, and must be installed on it (Settings →
+      # GitHub Apps → Install, or via the app's own settings page).
+      - name: Mint GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_PLEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PLEASE_APP_KEY }}
+
       - uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-          # Prefer a PAT so release-please's commits on the release PR
-          # TRIGGER required-status-check workflows — commits pushed
-          # with the default GITHUB_TOKEN do NOT (GitHub's workflow
-          # loop-prevention), which leaves the release PR permanently
-          # blocked once checks are required. Falls back to
-          # GITHUB_TOKEN when the secret is unset. To activate: create
-          # a RELEASE_PLEASE_TOKEN secret from a PAT (classic → repo +
-          # workflow scopes; fine-grained → Contents + Pull requests,
-          # both read/write).
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
