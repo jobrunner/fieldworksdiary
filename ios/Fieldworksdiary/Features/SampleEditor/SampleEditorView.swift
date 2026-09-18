@@ -153,7 +153,7 @@ private struct SampleEditorContent: View {
                     showingCamera = true
                 } label: {
                     Image(systemName: "camera.fill")
-                        .foregroundStyle(AppColor.brandPrimary)
+                        .foregroundStyle(AppColor.brandPrimaryText)
                         .accessibilityLabel("Foto aufnehmen")
                 }
             }

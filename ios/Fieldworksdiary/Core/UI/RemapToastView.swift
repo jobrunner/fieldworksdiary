@@ -34,7 +34,7 @@ private struct RemapToastModifier: ViewModifier {
     private func toast(_ text: String) -> some View {
         HStack(spacing: AppSpacing.sm) {
             Image(systemName: "arrow.triangle.merge")
-                .foregroundStyle(AppColor.brandPrimary)
+                .foregroundStyle(AppColor.brandPrimaryText)
                 .accessibilityHidden(true)
             Text(text)
                 .font(AppFont.subhead)

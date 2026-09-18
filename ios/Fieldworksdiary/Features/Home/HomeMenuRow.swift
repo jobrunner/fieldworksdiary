@@ -21,7 +21,7 @@ struct HomeMenuRow: View {
         HStack(spacing: AppSpacing.lg) {
             Image(systemName: systemImage)
                 .font(.system(size: iconSize * 0.7))
-                .foregroundStyle(AppColor.brandPrimary)
+                .foregroundStyle(AppColor.brandPrimaryText)
                 .frame(width: iconSize, height: iconSize)
                 .accessibilityHidden(true)
             Text(title)

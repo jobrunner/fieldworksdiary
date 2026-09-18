@@ -18,15 +18,40 @@ import UIKit
 ///   inline error messages, sync indicators.
 ///
 /// Contrast notes:
-///   - Light `BrandPrimary` `#1B6B2F` → contrast vs. white ≈ 6.85:1
-///   - Dark  `BrandPrimary` `#3FA85A` → contrast vs. white ≈ 3.45:1
+///   - `BrandPrimary` `#186029` (same in both schemes) → contrast
+///     vs. white ≈ 7.65:1
+///   - Light `BrandPrimaryText` `#186029` → contrast vs. white
+///     background ≈ 7.31:1
+///   - Dark  `BrandPrimaryText` `#6ECB86` → contrast vs. dark card
+///     background ≈ 7.35:1
 enum AppColor {
     // MARK: - Brand
 
-    /// Primary brand colour — home header background, FAB, primary
-    /// action tint. White (`brandOnPrimary`) is the only legible
-    /// foreground on this surface.
+    /// Primary brand colour used as a **surface** — home header
+    /// background, FAB fill. White (`brandOnPrimary`) is the only
+    /// legible foreground on this surface.
+    ///
+    /// `brandPrimary` and `brandPrimaryText` are deliberately two
+    /// separate tokens, not one colour reused for both jobs: a fill
+    /// that carries white text must stay dark in both schemes (this
+    /// token is `#186029` everywhere, 7.65:1 against white), while a
+    /// colour drawn as foreground on the page background must
+    /// lighten in dark mode to stay legible there. The former
+    /// single-role `BrandPrimary` (`#1B6B2F` light / `#3FA85A` dark)
+    /// tried to serve both roles and met neither at 7:1: only 6.58:1
+    /// as a light-mode fill under white text, and only 3.02:1 when
+    /// the dark variant was itself used as a foreground/text colour.
+    /// Do **not** use this token for text/icon foregrounds — use
+    /// `brandPrimaryText`.
     static let brandPrimary = Color("BrandPrimary")
+
+    /// Primary brand colour used as a **foreground** — icon tints,
+    /// `tint`/`foregroundStyle` on brand-coloured controls, text set
+    /// in the brand colour. Lightens in dark mode (`#186029` light /
+    /// `#6ECB86` dark) so it keeps ≥7:1 contrast against the page
+    /// background in both schemes; see `brandPrimary` above for why
+    /// this can't be the same token as the surface colour.
+    static let brandPrimaryText = Color("BrandPrimaryText")
 
     /// The "on" pair to `brandPrimary` — text/icons sitting on a
     /// brand surface. Always white in both colour schemes.

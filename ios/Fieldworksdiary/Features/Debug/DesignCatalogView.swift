@@ -88,6 +88,7 @@
         private var brandSwatches: [ColorSwatch] {
             [
                 .init(name: "brandPrimary", color: AppColor.brandPrimary),
+                .init(name: "brandPrimaryText", color: AppColor.brandPrimaryText),
                 .init(name: "brandOnPrimary", color: AppColor.brandOnPrimary),
                 .init(name: "brandPrimaryMuted", color: AppColor.brandPrimaryMuted)
             ]

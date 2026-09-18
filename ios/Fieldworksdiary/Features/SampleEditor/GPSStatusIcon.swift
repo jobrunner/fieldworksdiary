@@ -38,7 +38,7 @@ struct GPSStatusIcon: View {
 
     private var color: Color {
         switch status {
-        case .fixed: return AppColor.brandPrimary
+        case .fixed: return AppColor.brandPrimaryText
         case .denied, .failed: return .red
         case .idle, .requestingAuthorization, .locating: return .secondary
         }
