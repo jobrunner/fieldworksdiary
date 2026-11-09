@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/models"
+
 	"go.mett.io/fwd-backend/internal/adminlabels"
 )
 
@@ -37,7 +39,7 @@ func TestPlacemarksOrtusMigration_Schema(t *testing.T) {
 	if !found {
 		t.Errorf("composite index missing: %v", pm.Indexes)
 	}
-	if pm.ListRule == nil || !strings.Contains(*pm.ListRule, "owner = ''") {
+	if pm.ListRule == nil || !strings.Contains(*pm.ListRule, "owner = '' && geocoding_source = 'backend_service'") {
 		t.Errorf("list rule = %v", pm.ListRule)
 	}
 	if pm.CreateRule != nil || pm.UpdateRule != nil || pm.DeleteRule != nil {
@@ -82,5 +84,64 @@ func TestPlacemarksOrtusMigration_DownRestores(t *testing.T) {
 	}
 	if pm.Schema.GetFieldByName("administrative_area") == nil {
 		t.Errorf("legacy column lost")
+	}
+	for _, r := range []*string{pm.ListRule, pm.ViewRule} {
+		if r == nil || *r != "@request.auth.id != ''" {
+			t.Errorf("rule after down = %v, want pre-O rule", r)
+		}
+	}
+}
+
+func TestPlacemarksOrtusMigration_ViewRuleHidesOrphanedManualRows(t *testing.T) {
+	app := setupTestApp(t)
+	dao := app.Dao()
+	users, _ := dao.FindCollectionByNameOrId("users")
+	mkUser := func(email string) *models.Record {
+		u := models.NewRecord(users)
+		_ = u.SetEmail(email)
+		_ = u.SetUsername(strings.SplitN(email, "@", 2)[0])
+		_ = u.SetPassword("password1234")
+		if err := dao.SaveRecord(u); err != nil {
+			t.Fatalf("user: %v", err)
+		}
+		return u
+	}
+	alice := mkUser("alice@example.com")
+	bob := mkUser("bob@example.com")
+	pmColl, _ := dao.FindCollectionByNameOrId("placemarks")
+	mkPM := func(owner, source, hash string) *models.Record {
+		r := models.NewRecord(pmColl)
+		r.Set("country", "DE")
+		r.Set("geocoding_source", source)
+		r.Set("dedup_hash", hash)
+		if owner != "" {
+			r.Set("owner", owner)
+		}
+		if err := dao.SaveRecord(r); err != nil {
+			t.Fatalf("placemark: %v", err)
+		}
+		return r
+	}
+	cases := []struct {
+		name string
+		rec  *models.Record
+		want bool
+	}{
+		{"shared backend row", mkPM("", "backend_service", "h1"), true},
+		{"own manual row", mkPM(alice.Id, "manual", "h2"), true},
+		{"foreign manual row", mkPM(bob.Id, "manual", "h3"), false},
+		{"orphaned manual row", mkPM("", "manual", "h4"), false},
+	}
+	info := &models.RequestInfo{AuthRecord: alice}
+	for _, rule := range []*string{pmColl.ListRule, pmColl.ViewRule} {
+		for _, c := range cases {
+			got, err := dao.CanAccessRecord(c.rec, info, rule)
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			if got != c.want {
+				t.Errorf("%s: access = %v, want %v (rule %q)", c.name, got, c.want, *rule)
+			}
+		}
 	}
 }

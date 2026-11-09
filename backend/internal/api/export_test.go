@@ -272,6 +272,17 @@ func TestExport_PlacemarksRespectOwnership(t *testing.T) {
 	if err := app.Dao().SaveRecord(samples[0]); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
+	// Ownerless manual row (owner cleared by an account deletion): not
+	// shared, must not be exported either.
+	orphan := makePlacemark(t, app, "DE", "Hessen", "Waise")
+	orphan.Set("geocoding_source", "manual")
+	if err := app.Dao().SaveRecord(orphan); err != nil {
+		t.Fatalf("save orphan placemark: %v", err)
+	}
+	samples[1].Set("placemark", orphan.Id)
+	if err := app.Dao().SaveRecord(samples[1]); err != nil {
+		t.Fatalf("save sample: %v", err)
+	}
 	app.ResetEventCalls()
 
 	var captured []byte

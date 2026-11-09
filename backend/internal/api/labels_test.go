@@ -398,3 +398,40 @@ func echoContextWithJSON(t *testing.T, body []byte) echo.Context {
 // _ = apis stops the "imported and not used" complaint when only
 // constants are referenced in some Go versions.
 var _ = apis.ContextAuthRecordKey
+
+func TestBatchLoadPlacemarks_FiltersInvisible(t *testing.T) {
+	app := setupTestApp(t)
+	alice := makeUser(t, app, "alice@example.com")
+	bob := makeUser(t, app, "bob@example.com")
+	ft := makeFieldtrip(t, app, alice.Id)
+	shared := makePlacemark(t, app, "DE", "Bayern", "Ochsenfurt")
+	own := makePlacemark(t, app, "DE", "Bayern", "Eigen")
+	own.Set("owner", alice.Id)
+	own.Set("geocoding_source", "manual")
+	foreign := makePlacemark(t, app, "DE", "Hessen", "Fulda")
+	foreign.Set("owner", bob.Id)
+	foreign.Set("geocoding_source", "manual")
+	orphan := makePlacemark(t, app, "DE", "Hessen", "Waise")
+	orphan.Set("geocoding_source", "manual")
+	for _, r := range []*models.Record{own, foreign, orphan} {
+		if err := app.Dao().SaveRecord(r); err != nil {
+			t.Fatalf("save placemark: %v", err)
+		}
+	}
+	var samples []*models.Record
+	for i, pm := range []*models.Record{shared, own, foreign, orphan} {
+		s := makeSample(t, app, alice.Id, "260519/"+string(rune('1'+i)), ft.Id)
+		s.Set("placemark", pm.Id)
+		samples = append(samples, s)
+	}
+	got, err := batchLoadPlacemarks(app.Dao(), samples, alice.Id)
+	if err != nil {
+		t.Fatalf("batchLoadPlacemarks: %v", err)
+	}
+	if got[shared.Id] == nil || got[own.Id] == nil {
+		t.Errorf("visible placemarks missing: %v", got)
+	}
+	if got[foreign.Id] != nil || got[orphan.Id] != nil {
+		t.Errorf("invisible placemarks returned: %v", got)
+	}
+}

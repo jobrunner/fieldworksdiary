@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/pdf"
 
 	"github.com/labstack/echo/v5"
@@ -56,7 +57,7 @@ func handleLocalityLabel(app core.App, c echo.Context) error {
 		return err
 	}
 	dao := app.Dao()
-	labels, sampleRecs, err := loadLocalityLabels(dao, req.SampleIDs)
+	labels, sampleRecs, err := loadLocalityLabels(dao, req.SampleIDs, ownerID)
 	if err != nil {
 		return apis.NewBadRequestError("Failed to load samples.", err)
 	}
@@ -196,7 +197,7 @@ func saveLabelPDF(app core.App, c echo.Context,
 
 // ---- Loaders ---------------------------------------------------------------
 
-func loadLocalityLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.SampleLabel, []*models.Record, error) {
+func loadLocalityLabels(dao *daos.Dao, sampleIDs []string, ownerID string) ([]pdf.SampleLabel, []*models.Record, error) {
 	samples, err := dao.FindRecordsByIds("samples", sampleIDs)
 	if err != nil {
 		return nil, nil, err
@@ -205,7 +206,7 @@ func loadLocalityLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.SampleLabel, [
 	if err != nil {
 		return nil, nil, err
 	}
-	pmByID, err := batchLoadPlacemarks(dao, samples)
+	pmByID, err := batchLoadPlacemarks(dao, samples, ownerID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -325,8 +326,10 @@ func batchLoadFieldtrips(dao *daos.Dao, samples []*models.Record) (map[string]*m
 }
 
 // batchLoadPlacemarks loads the placemarks referenced by the samples
-// in one query, keyed by record id.
-func batchLoadPlacemarks(dao *daos.Dao, samples []*models.Record) (map[string]*models.Record, error) {
+// in one query, keyed by record id. Placemarks the caller may not see
+// (geoplace.VisibleTo) are dropped, so a foreign manual placemark never
+// ends up on a label.
+func batchLoadPlacemarks(dao *daos.Dao, samples []*models.Record, ownerID string) (map[string]*models.Record, error) {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0, len(samples))
 	for _, s := range samples {
@@ -349,7 +352,9 @@ func batchLoadPlacemarks(dao *daos.Dao, samples []*models.Record) (map[string]*m
 		return nil, err
 	}
 	for _, r := range recs {
-		out[r.Id] = r
+		if geoplace.VisibleTo(r, ownerID) {
+			out[r.Id] = r
+		}
 	}
 	return out, nil
 }

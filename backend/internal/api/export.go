@@ -16,6 +16,8 @@ import (
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
+
+	"go.mett.io/fwd-backend/internal/geoplace"
 )
 
 // RegisterExportRoute wires `GET /api/export`. The endpoint returns
@@ -97,8 +99,9 @@ func handleExport(app core.App, c echo.Context) error {
 	}
 	payload.LabelPDFs = exportAll(labelPDFs)
 
-	// Placemarks are a shared, ownerless reference table: export only the
-	// ones referenced by this user's samples and localities.
+	// Placemarks mix shared backend rows and per-user manual rows: export
+	// the ones referenced by this user's samples and localities that the
+	// user may see (geoplace.VisibleTo).
 	if payload.Placemarks, err = exportReferencedPlacemarks(dao, ownerID); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "Failed to load placemarks.", err)
 	}
@@ -210,10 +213,10 @@ func exportReferencedPlacemarks(dao *daos.Dao, ownerID string) ([]map[string]any
 	if err != nil {
 		return nil, err
 	}
-	// Mirror the collection's view rule: shared (owner empty) or own rows.
+	// Mirror the collection's view rule: shared backend rows or own rows.
 	visible := recs[:0]
 	for _, r := range recs {
-		if o := r.GetString("owner"); o == "" || o == ownerID {
+		if geoplace.VisibleTo(r, ownerID) {
 			visible = append(visible, r)
 		}
 	}

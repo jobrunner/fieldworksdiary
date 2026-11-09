@@ -9,8 +9,8 @@
 //     composite (dedup_hash, geocoding_source, owner). Uniqueness is
 //     guaranteed by LookupOrCreate; a UNIQUE index would make
 //     PocketBase derive a form validator (see Phase 3b / 1700000017).
-//   - Rules: list/view for authenticated users on shared or own rows;
-//     writes backend-only.
+//   - Rules: list/view for authenticated users on shared rows (ownerless
+//     AND backend_service) or own rows; writes backend-only.
 //
 // Legacy columns (administrative_area, …) stay until O3.
 package migrations
@@ -92,7 +92,10 @@ func placemarksOrtusUp(db dbx.Builder) error {
 	})
 	pm.Indexes = append(idx, placemarksCompIdx)
 
-	rule := types.Pointer("@request.auth.id != '' && (owner = '' || owner = @request.auth.id)")
+	// Shared = ownerless AND backend-produced. A manual row whose owner
+	// was cleared (account deletion) must not become world-readable.
+	// Twin of geoplace.VisibleTo.
+	rule := types.Pointer("@request.auth.id != '' && ((owner = '' && geocoding_source = 'backend_service') || owner = @request.auth.id)")
 	pm.ListRule = rule
 	pm.ViewRule = rule
 	pm.CreateRule, pm.UpdateRule, pm.DeleteRule = nil, nil, nil
