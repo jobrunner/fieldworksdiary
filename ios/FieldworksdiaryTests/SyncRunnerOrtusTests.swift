@@ -465,6 +465,96 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(log.calls, ["update"])
     }
 
+    // MARK: - Task 17 place edits on the wire
+
+    func testUpdate_DismissedSuggestion_SendsExplicitEmptyRelation() async throws {
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        sample.placemarkSuggestion = "pmsuggestion01"
+        try store.update(sample)
+        try store.dismissPlacemarkSuggestion(id: sample.id, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000001", version: 3)
+        await runUntilQuiescent(makeRunner(push: push))
+
+        let body = try XCTUnwrap(push.lastUpdate?.location.wireBody)
+        XCTAssertEqual(body["placemark_suggestion"] as? String, "", "server must drop its suggestion too")
+        XCTAssertEqual(body["placemark"] as? String, "pmmanual000001")
+        XCTAssertEqual(body["location_status"] as? String, "manual")
+        XCTAssertNil(body["mtb_sheet_number"], "no coordinate clears on a suggestion clear")
+        XCTAssertNil(try store.fetchById(sample.id)?.placemarkSuggestion)
+    }
+
+    func testUpdate_PlainEdit_DoesNotClearSuggestion() async throws {
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        try store.update(sample)
+        sample.notes = "edit"
+        try store.saveEdits(sample, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual", version: 3)
+        await runUntilQuiescent(makeRunner(push: push))
+
+        XCTAssertNil(push.lastUpdate?.location.wireBody["placemark_suggestion"])
+    }
+
+    func testUpdate_AcceptedLocalSuggestion_IsResolvedAndSentAsPlacemark() async throws {
+        let pmRow = try placemarks.lookupOrCreate(place: place, source: .backendService)
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        sample.placemarkSuggestion = pmRow.id
+        try store.update(sample)
+        try store.acceptPlacemarkSuggestion(id: sample.id, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                     placemark: "pmbackend00001", version: 3)
+        let pm = MockPlacemarks(log: log)
+        pm.resolveResponse = remotePlacemark(id: "pmbackend00001")
+        await runUntilQuiescent(makeRunner(push: push, placemarks: pm))
+
+        let body = try XCTUnwrap(push.lastUpdate?.location.wireBody)
+        XCTAssertEqual(body["placemark"] as? String, "pmbackend00001")
+        XCTAssertEqual(body["placemark_suggestion"] as? String, "")
+        XCTAssertEqual(body["location_status"] as? String, "backend_service")
+    }
+
+    func testUpdate_ManualPlaceFromEditor_IsResolvedAsManual() async throws {
+        let sample = try seedSyncedSample(status: .backendService)
+        _ = try store.setManualPlace(id: sample.id, place: place, placemarks: placemarks,
+                                     mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000009", version: 3)
+        let pm = MockPlacemarks(log: log)
+        pm.resolveResponse = remotePlacemark(id: "pmmanual000009", source: "manual", owner: "u1")
+        await runUntilQuiescent(makeRunner(push: push, placemarks: pm))
+
+        XCTAssertEqual(pm.resolved.first?.source, .manual)
+        XCTAssertEqual(push.lastUpdate?.location.wireBody["placemark"] as? String, "pmmanual000009")
+        XCTAssertEqual(push.lastUpdate?.location.locationStatus, .manual)
+    }
+
+    func testResendFailed_AfterGivingUp_PushesTheKeptEdit() async throws {
+        var sample = try seedSyncedSample(status: .backendService)
+        sample.notes = "kept edit"
+        try store.update(sample)
+        try store.setSyncState(id: sample.id, status: .failed, error: "Konflikt")
+        try store.resendFailed(id: sample.id, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service", version: 3)
+        await runUntilQuiescent(makeRunner(push: push))
+
+        XCTAssertEqual(push.lastUpdate?.notes, "kept edit")
+        XCTAssertEqual(try store.fetchById(sample.id)?.syncStatus, .synced)
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
     // MARK: - hydration / enrichment
 
     func testHydration_OfflineSampleEnrichedByBackend_GetsPlacemarkAndFeatures() async throws {

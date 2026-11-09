@@ -115,6 +115,7 @@ final class SampleLocationResolver {
               abs(curLat - lat) < Self.coordEpsilon, abs(curLon - lon) < Self.coordEpsilon
         else { return false }
         if sample.locationStatus == .backendService { return true }
+        let hadSuggestion = sample.placemarkSuggestion != nil
 
         if let place = result.place {
             let candidate = try placemarks.lookupOrCreate(place: place, source: .backendService)
@@ -140,7 +141,10 @@ final class SampleLocationResolver {
         Self.applyDEMHeight(result.geo, to: &sample)
         try samples.update(sample)
         try features.replace(sampleID: sampleID, features: result.features)
-        enqueueUpdateIfPushed(sample, pushFeatures: true)
+        // A manual sample whose stale suggestion was dropped must clear
+        // it on the server too (nil is never sent on its own).
+        let clearsSuggestion = hadSuggestion && sample.placemarkSuggestion == nil
+        enqueueUpdateIfPushed(sample, pushFeatures: true, clearsSuggestion: clearsSuggestion)
 
         Log.location.info(
             "sample \(sampleID, privacy: .public) resolved via ortus: status \(sample.locationStatus.rawValue, privacy: .public), \(result.features.count, privacy: .public) features"
@@ -152,14 +156,14 @@ final class SampleLocationResolver {
     /// already landed; before that the pending create carries it.
     /// A failed enqueue is logged, not thrown: the local write already
     /// succeeded and must not be reported as a failed resolution.
-    private func enqueueUpdateIfPushed(_ sample: LocalSample, pushFeatures: Bool) {
+    private func enqueueUpdateIfPushed(_ sample: LocalSample, pushFeatures: Bool, clearsSuggestion: Bool = false) {
         guard let mutations, let backendID = sample.backendId, !backendID.isEmpty else { return }
         do {
             _ = try mutations.enqueue(
                 entityType: .sample,
                 entityId: sample.id,
                 op: .update,
-                payload: SampleUpdatePayload(pushFeatures: pushFeatures).encoded
+                payload: SampleUpdatePayload(pushFeatures: pushFeatures, clearsSuggestion: clearsSuggestion).encoded
             )
         } catch {
             Log.persistence.error(

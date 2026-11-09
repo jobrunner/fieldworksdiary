@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 import GRDB
 
@@ -267,12 +268,19 @@ final class LocalSampleStore {
     /// status and explicit clears for the derived columns, and then
     /// waits for the backend's re-enrichment. Callers re-run
     /// `SampleLocationResolver.resolveOnline` afterwards.
+    ///
+    /// `keepManualPlace` is the answer to the editor's „Ortsangaben neu
+    /// übernehmen?“ dialog for a `manual` sample: true („Meine Angaben
+    /// behalten“) keeps the curated placemark (the resolver may then
+    /// offer a suggestion); false („Übernehmen“) drops it like for any
+    /// other status, so the new point's place is taken.
     func updateCoordinate(
         id: String,
         latitude: Double,
         longitude: Double,
         horizontalAccuracy: Double? = nil,
         locationSource: LocationSource = .user,
+        keepManualPlace: Bool = true,
         mutationsStore: PendingMutationsStore
     ) throws {
         let backendID: String? = try database.writer.write { db in
@@ -281,7 +289,7 @@ final class LocalSampleStore {
             sample.longitude = longitude
             sample.horizontalAccuracy = horizontalAccuracy
             sample.locationSource = locationSource.rawValue
-            sample.clearDerivedLocation()
+            sample.clearDerivedLocation(keepManualPlace: keepManualPlace)
             sample.updatedAt = Date()
             try sample.update(db)
             _ = try LocalSampleFeature.filter(Column("sample_id") == id).deleteAll(db)
@@ -337,6 +345,107 @@ final class LocalSampleStore {
             op: .update,
             payload: Data()
         )
+    }
+
+    // MARK: - Phase O2 place edits (Task 17)
+
+    /// Saves a place the user typed in: looks up or creates the
+    /// `manual` placemark for `place` and points only this sample at
+    /// it (other samples sharing the old placemark keep it; the old
+    /// row itself is never edited). Status becomes `manual`, a pending
+    /// suggestion is dropped (also on the server). The sync pushes the
+    /// manual placemark through `/api/placemarks/resolve` first.
+    @discardableResult
+    func setManualPlace(
+        id: String,
+        place: Place,
+        placemarks: LocalPlacemarkStore,
+        mutationsStore: PendingMutationsStore
+    ) throws -> LocalPlacemark {
+        let placemark = try placemarks.lookupOrCreate(place: place, source: .manual)
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore,
+                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+            sample.placemark = placemark.id
+            sample.placemarkSuggestion = nil
+            sample.locationStatus = .manual
+            return true
+        }
+        return placemark
+    }
+
+    /// A height typed by the user: source `manual`, no measured
+    /// accuracy. Never overwritten by GPS or the DEM afterwards.
+    func setManualElevation(id: String, elevation: Double, mutationsStore: PendingMutationsStore) throws {
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore, payload: SampleUpdatePayload()) { sample in
+            sample.elevation = elevation
+            sample.elevationSource = .manual
+            sample.verticalAccuracy = nil
+            return true
+        }
+    }
+
+    /// „Übernehmen“ on „Neue Ortsangaben verfügbar“: the backend's
+    /// suggestion becomes the placemark, status `backend_service`.
+    /// No-op without a suggestion.
+    func acceptPlacemarkSuggestion(id: String, mutationsStore: PendingMutationsStore) throws {
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore,
+                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+            guard let suggestion = sample.placemarkSuggestion, !suggestion.isEmpty else { return false }
+            sample.placemark = suggestion
+            sample.placemarkSuggestion = nil
+            sample.locationStatus = .backendService
+            return true
+        }
+    }
+
+    /// „Verwerfen“: drops the suggestion, the user's place stays. The
+    /// queued update sends `placemark_suggestion: ""` so the server
+    /// forgets it too (a plain nil is never sent).
+    func dismissPlacemarkSuggestion(id: String, mutationsStore: PendingMutationsStore) throws {
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore,
+                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+            guard let suggestion = sample.placemarkSuggestion, !suggestion.isEmpty else { return false }
+            sample.placemarkSuggestion = nil
+            return true
+        }
+    }
+
+    /// „Erneut senden“ for a `.failed` sample. A pushed row whose
+    /// update the SyncRunner gave up on (repeated 409) gets a fresh
+    /// `.sample/.update`; an unpushed row without a queued create gets
+    /// its `.create` back. If a mutation is still queued, only the
+    /// state is reset (the caller kicks the sync). No-op for rows that
+    /// are not failed.
+    func resendFailed(id: String, mutationsStore: PendingMutationsStore) throws {
+        guard let sample = try fetchById(id), sample.syncStatus == .failed else { return }
+        let queued = try mutationsStore.fetch(entityType: .sample).filter { $0.entityId == id }
+        try setSyncState(id: id, status: .pending, error: nil)
+        guard queued.isEmpty else { return }
+        if let backendID = sample.backendId, !backendID.isEmpty {
+            _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .update, payload: Data())
+        } else {
+            _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .create, payload: Data())
+        }
+    }
+
+    /// Applies `change` to the stored row (only the columns it sets)
+    /// in one transaction and queues an update when the row is pushed.
+    /// `change` returns false for "nothing to do".
+    private func writePlaceEdit(
+        id: String,
+        mutationsStore: PendingMutationsStore,
+        payload: SampleUpdatePayload,
+        change: (inout LocalSample) -> Bool
+    ) throws {
+        let backendID: String? = try database.writer.write { db in
+            guard var sample = try LocalSample.fetchOne(db, key: id) else { return nil }
+            guard change(&sample) else { return nil }
+            sample.updatedAt = Date()
+            try sample.update(db)
+            return sample.backendId
+        }
+        guard let backendID, !backendID.isEmpty else { return }
+        _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .update, payload: payload.encoded)
     }
 
     /// Placemark of the most recently collected sample on
@@ -656,7 +765,7 @@ extension LocalSample {
 extension LocalSample {
     /// Clears everything derived from the coordinate (see
     /// `LocalSampleStore.updateCoordinate`).
-    mutating func clearDerivedLocation() {
+    mutating func clearDerivedLocation(keepManualPlace: Bool = true) {
         mtbSheetNumber = nil
         mtbSheetName = nil
         mtbQuadrant = nil
@@ -677,9 +786,9 @@ extension LocalSample {
             verticalAccuracy = nil
         }
         switch locationStatus {
-        case .manual:
+        case .manual where keepManualPlace:
             placemarkSuggestion = nil
-        case .pending, .inherited, .backendService:
+        case .manual, .pending, .inherited, .backendService:
             placemark = nil
             placemarkSuggestion = nil
             locationStatus = .pending

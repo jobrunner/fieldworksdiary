@@ -39,6 +39,10 @@ struct SampleLocationFields: Codable, Equatable {
     /// hand back — values of the old point. Not set otherwise: a nil
     /// usually only means "not known yet".
     var clearsDerived = false
+    /// Set for a push after the user accepted or dismissed a backend
+    /// suggestion (or saved a manual place): a nil suggestion is sent
+    /// as an explicit `""`, so the server drops it as well.
+    var clearsSuggestion = false
 
     /// Wire keys of the PocketBase `samples` record (migration
     /// 1700000024). `elevation_source` always accompanies an
@@ -85,6 +89,9 @@ struct SampleLocationFields: Codable, Equatable {
         }
         if clearsDerived {
             addClears(to: &body)
+        }
+        if clearsSuggestion, body["placemark_suggestion"] == nil {
+            body["placemark_suggestion"] = ""
         }
         return body
     }
@@ -181,16 +188,22 @@ struct SampleUpdatePayload: Codable, Equatable {
     /// a moved coordinate (explicit clears, `pending` allowed, poll for
     /// the backend's re-enrichment afterwards).
     var coordinateChanged = false
+    /// Queued by the suggestion accept/dismiss and manual-place edits:
+    /// a nil `placemark_suggestion` is sent as `""` (see
+    /// `SampleLocationFields.clearsSuggestion`).
+    var clearsSuggestion = false
 
-    init(pushFeatures: Bool = false, coordinateChanged: Bool = false) {
+    init(pushFeatures: Bool = false, coordinateChanged: Bool = false, clearsSuggestion: Bool = false) {
         self.pushFeatures = pushFeatures
         self.coordinateChanged = coordinateChanged
+        self.clearsSuggestion = clearsSuggestion
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         pushFeatures = (try? c.decode(Bool.self, forKey: .pushFeatures)) ?? false
         coordinateChanged = (try? c.decode(Bool.self, forKey: .coordinateChanged)) ?? false
+        clearsSuggestion = (try? c.decode(Bool.self, forKey: .clearsSuggestion)) ?? false
     }
 
     static func decode(_ data: Data) -> SampleUpdatePayload {
@@ -661,6 +674,7 @@ final class SyncRunner: ObservableObject {
         let (current, pushedLocation) = pushed
         var location = pushedLocation
         location.clearsDerived = payload.coordinateChanged
+        location.clearsSuggestion = payload.clearsSuggestion
         let input = SampleUpdateInput(
             code: current.sampleID,
             notes: current.notes,
