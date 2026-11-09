@@ -2,10 +2,10 @@ import FieldworksGeo
 import Foundation
 import GRDB
 
-/// CRUD for `local_samples` plus the per-(user, collecting_day)
-/// sequence allocation. Sequences are derived strictly from
-/// successfully-inserted samples — if an insert fails, the
-/// transaction rolls back and the counter doesn't advance.
+/// CRUD for `local_samples`. Sample ids come from
+/// `SampleIDTemplate.nextSuggestion` over the user's local ids; the
+/// running counter (`<n>`) is only advanced when a suggestion is
+/// taken over unchanged.
 final class LocalSampleStore {
     let database: Database
     /// The user id the local rows are tagged with. Mutable so the
@@ -13,27 +13,40 @@ final class LocalSampleStore {
     /// rows from the previous user are wiped first via `reset()`, so
     /// changing this on the fly is safe.
     var userId: String
-    let cutoffHour: Int
+    /// Zone used for new samples (the device zone) and as the fallback
+    /// when a remote row carries no usable zone.
     let timeZone: TimeZone
+    private let defaults: UserDefaults
+    private let settingsProvider: () -> SampleIDSettings
 
+    /// `settings` defaults to a fresh read of the persisted app settings.
     init(database: Database,
          userId: String = "default",
-         cutoffHour: Int = 5,
-         timeZone: TimeZone = TimeZone(identifier: "Europe/Berlin") ?? .current)
+         timeZone: TimeZone = .current,
+         defaults: UserDefaults = .standard,
+         settings: (() -> SampleIDSettings)? = nil)
     {
         self.database = database
         self.userId = userId
-        self.cutoffHour = cutoffHour
         self.timeZone = timeZone
+        self.defaults = defaults
+        settingsProvider = settings ?? { SampleIDSettings.current(defaults: defaults) }
     }
 
-    /// Inserts a new sample with locally-allocated provisional code.
-    /// Returns the persisted record.
+    var cutoffHour: Int { settingsProvider().cutoffHour }
+
+    /// Inserts a new sample. Returns the persisted record.
     ///
-    /// If `overrideCode` is non-nil, that code is used verbatim and the
-    /// local sequence counter is not advanced (matches the backend
-    /// contract: the user-typed code goes on the tube; a server-side
-    /// collision is resolved via `original_code`).
+    /// Time: the zone is the store's (device) zone, `timezone_source`
+    /// is `.device`. Begin/end are the default 15-minute window around
+    /// `collectedFrom`; the collecting day is derived from the creation
+    /// instant `collectedFrom` (not the rounded begin) with the
+    /// configured rollover, in that zone.
+    ///
+    /// ID: if `overrideCode` is non-nil it is used verbatim (the empty
+    /// string is a valid, stored id) and the running counter is not
+    /// touched. With nil the current suggestion is used; if it came
+    /// from the running counter, that counter is advanced.
     func createLocal(
         lat: Double,
         lon: Double,
@@ -45,18 +58,21 @@ final class LocalSampleStore {
         overrideCode: String? = nil,
         locationSource: LocationSource = .locationService
     ) throws -> LocalSample {
-        let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
-        let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
-        let userId = self.userId
+        let settings = settingsProvider()
         let timeZone = self.timeZone
+        let dayKey = SampleTime.collectingDay(collectedFrom, cutoffHour: settings.cutoffHour, in: timeZone)
+        let window = SampleTime.defaultWindow(createdAt: collectedFrom, in: timeZone)
+        let userId = self.userId
 
-        return try database.writer.write { db in
+        let (sample, consumedRunning) = try database.writer.write { db in
             let code: String
-            if let overrideCode, !overrideCode.isEmpty {
+            var running: Int?
+            if let overrideCode {
                 code = overrideCode
             } else {
-                let seq = try Self.nextSequence(db, userId: userId, dayKey: dayKey)
-                code = Codes.formatCode(day: day, sequence: seq, timeZone: timeZone, template: .current)
+                let suggestion = try Self.suggestion(db, userId: userId, day: dayKey, settings: settings)
+                code = suggestion.id
+                running = suggestion.running
             }
             let now = Date()
             var sample = LocalSample(
@@ -72,8 +88,8 @@ final class LocalSampleStore {
                 horizontalAccuracy: accuracy,
                 verticalAccuracy: verticalAccuracy,
                 elevation: elevation,
-                beginDate: collectedFrom,
-                endDate: nil,
+                beginDate: window.begin,
+                endDate: window.end,
                 isAllDay: false,
                 timezone: timeZone.identifier,
                 timezoneSource: .device,
@@ -94,8 +110,26 @@ final class LocalSampleStore {
                 elevationSource: elevation == nil ? nil : .locationService
             )
             try sample.insert(db)
-            return sample
+            return (sample, running)
         }
+        if let consumedRunning {
+            defaults.set(consumedRunning, forKey: SampleIDSettings.Keys.lastRunning)
+        }
+        return sample
+    }
+
+    /// Suggestion for `day` from the user's non-empty local ids.
+    private static func suggestion(
+        _ db: GRDB.Database, userId: String, day: String, settings: SampleIDSettings
+    ) throws -> (id: String, running: Int?) {
+        let ids = try String.fetchAll(
+            db, sql: "SELECT sample_id FROM local_samples WHERE user_id = ? AND sample_id != ''",
+            arguments: [userId]
+        )
+        return SampleIDTemplate.nextSuggestion(
+            template: settings.template, prefix: settings.prefix, day: day,
+            existingIDs: Set(ids), lastRunning: settings.lastRunning, offset: settings.offset
+        )
     }
 
     /// All samples flagged with `marked = true`. Ordered newest-first
@@ -148,25 +182,24 @@ final class LocalSampleStore {
         }, reader: database.reader)
     }
 
-    /// Returns the code that *would* be assigned to the next sample
-    /// for `collectedFrom`'s collecting day. Non-destructive — the
-    /// counter doesn't advance. Used to seed the code field in the
-    /// editor so the user sees a sensible default.
-    func peekNextCode(for collectedFrom: Date = Date()) -> String {
-        let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
-        let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
+    /// The id that *would* be suggested for the next sample created at
+    /// `collectedFrom`. No side effects — the running counter does not
+    /// advance. `running` is the consumed number when the format uses
+    /// `<n>`; the caller passes the id back via `createLocal` only if
+    /// the user kept it, otherwise the counter must stay untouched.
+    func peekSuggestion(for collectedFrom: Date = Date()) -> (id: String, running: Int?) {
+        let settings = settingsProvider()
+        let day = SampleTime.collectingDay(collectedFrom, cutoffHour: settings.cutoffHour, in: timeZone)
         let userId = self.userId
-        let next = (try? database.reader.read { db -> Int in
-            if let row = try SequenceRow.fetchOne(
-                db,
-                sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
-                arguments: [userId, dayKey]
-            ) {
-                return row.lastSeq + 1
-            }
-            return 1
-        }) ?? 1
-        return Codes.formatCode(day: day, sequence: next, timeZone: timeZone, template: .current)
+        let result = try? database.reader.read { db in
+            try Self.suggestion(db, userId: userId, day: day, settings: settings)
+        }
+        return result ?? (id: "", running: nil)
+    }
+
+    /// Convenience for the editor's seed value.
+    func peekNextCode(for collectedFrom: Date = Date()) -> String {
+        peekSuggestion(for: collectedFrom).id
     }
 
     /// Most recently collected sample (regardless of sync state). Used
@@ -487,8 +520,10 @@ final class LocalSampleStore {
 
     /// Returns the first local sample whose `sample_id` matches `code`
     /// for the current user, optionally excluding a given row by id.
-    /// Used by the editor's pre-save uniqueness check.
+    /// Used by the editor's pre-save uniqueness check. The empty id is
+    /// never "taken" — any number of samples may have none.
     func findByCode(_ code: String, excludingId: String? = nil) throws -> LocalSample? {
+        guard !code.isEmpty else { return nil }
         let userId = self.userId
         return try database.reader.read { db in
             var query = LocalSample
@@ -514,13 +549,17 @@ final class LocalSampleStore {
     func upsert(_ remote: [Sample]) throws {
         let userId = self.userId
         let cutoffHour = self.cutoffHour
-        let timeZone = self.timeZone
+        let fallbackZone = self.timeZone
 
         try database.writer.write { db in
             for r in remote {
                 guard let collectedFrom = r.beginDate else { continue }
-                let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
-                let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
+                // The server's collecting day (in the sample's own zone)
+                // is authoritative. Only without it compute locally —
+                // then in the sample's zone, not the device zone.
+                let zone = TimeZone(identifier: r.timezone) ?? fallbackZone
+                let dayKey = r.collectingDay
+                    ?? SampleTime.collectingDay(collectedFrom, cutoffHour: cutoffHour, in: zone)
 
                 // Server placemark ids map onto the local row that
                 // already represents them (locally created rows keep a
@@ -558,13 +597,6 @@ final class LocalSampleStore {
                     local.mergeServerLocation(r, localPlacemarkID: localPlacemarkID)
                     try local.insert(db)
                 }
-
-                // Keep the sequence counter in sync with hydrated codes
-                // so future offline allocations don't collide with
-                // already-assigned numbers on the same day.
-                if let seq = sequenceNumber(in: r.sampleID) {
-                    try Self.bumpSequence(db, userId: userId, dayKey: dayKey, atLeast: seq)
-                }
             }
         }
     }
@@ -575,7 +607,6 @@ final class LocalSampleStore {
     func reset() throws {
         try database.writer.write { db in
             try db.execute(sql: "DELETE FROM local_samples")
-            try db.execute(sql: "DELETE FROM local_sequences")
             try db.execute(sql: "DELETE FROM local_sample_features")
         }
     }
@@ -686,57 +717,6 @@ final class LocalSampleStore {
             updatedAt: r.clientUpdatedAt ?? now
         )
     }
-
-    /// Pulls the sequence number out of a code like `"260513/03"`.
-    /// Returns nil for malformed codes — never blows up the upsert
-    /// loop because of an unfamiliar shape.
-    private func sequenceNumber(in code: String) -> Int? {
-        guard let slash = code.firstIndex(of: "/") else { return nil }
-        let tail = code[code.index(after: slash)...]
-        return Int(tail)
-    }
-
-    private static func bumpSequence(_ db: GRDB.Database, userId: String, dayKey: String, atLeast n: Int) throws {
-        if let row = try SequenceRow.fetchOne(
-            db,
-            sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
-            arguments: [userId, dayKey]
-        ) {
-            if row.lastSeq < n {
-                try db.execute(
-                    sql: "UPDATE local_sequences SET last_seq = ? WHERE user_id = ? AND collecting_day = ?",
-                    arguments: [n, userId, dayKey]
-                )
-            }
-        } else {
-            try db.execute(
-                sql: "INSERT INTO local_sequences (user_id, collecting_day, last_seq) VALUES (?, ?, ?)",
-                arguments: [userId, dayKey, n]
-            )
-        }
-    }
-
-    /// Atomically increments and returns the per-(user, day) counter.
-    private static func nextSequence(_ db: GRDB.Database, userId: String, dayKey: String) throws -> Int {
-        if let row = try SequenceRow.fetchOne(
-            db,
-            sql: "SELECT last_seq FROM local_sequences WHERE user_id = ? AND collecting_day = ?",
-            arguments: [userId, dayKey]
-        ) {
-            let next = row.lastSeq + 1
-            try db.execute(
-                sql: "UPDATE local_sequences SET last_seq = ? WHERE user_id = ? AND collecting_day = ?",
-                arguments: [next, userId, dayKey]
-            )
-            return next
-        } else {
-            try db.execute(
-                sql: "INSERT INTO local_sequences (user_id, collecting_day, last_seq) VALUES (?, ?, 1)",
-                arguments: [userId, dayKey]
-            )
-            return 1
-        }
-    }
 }
 
 extension LocalSample {
@@ -825,11 +805,6 @@ extension ElevationSource {
         case .manual: 2
         }
     }
-}
-
-private struct SequenceRow: FetchableRecord, Decodable {
-    let lastSeq: Int
-    enum CodingKeys: String, CodingKey { case lastSeq = "last_seq" }
 }
 
 /// Thin AsyncSequence facade over GRDB's ValueObservation. Makes it

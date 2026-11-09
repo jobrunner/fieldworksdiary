@@ -154,7 +154,7 @@ struct SampleCreateInput: Equatable {
     var code: String?
     var clientUuid: String?
     var clientUpdatedAt: Date?
-    var timezone: String = "Europe/Berlin"
+    var timezone: String
     var timezoneSource: TimezoneSource?
     var collectingDay: String?
 }
@@ -172,7 +172,7 @@ struct SampleUpdateInput: Codable, Equatable {
     var clientUpdatedAt: Date
     var version: Int
     var location: SampleLocationFields
-    var timezone: String = "Europe/Berlin"
+    var timezone: String
     var timezoneSource: TimezoneSource?
     var collectingDay: String?
 }

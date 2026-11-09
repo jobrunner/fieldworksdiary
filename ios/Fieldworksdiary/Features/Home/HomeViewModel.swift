@@ -1,4 +1,5 @@
 import Combine
+import FieldworksGeo
 import Foundation
 
 /// Aggregates the data the home dashboard renders: the active
@@ -39,11 +40,9 @@ final class HomeViewModel: ObservableObject {
     private let photos: LocalPhotoStore
     private let placemarks: LocalPlacemarkStore?
 
-    /// Cutoff hour drives "what is today's collecting day". 5h matches
-    /// the backend default (and the per-user override that will land
-    /// with Phase 14b's settings UI).
-    private let cutoffHour: Int = 5
-    private let timeZone: TimeZone = .init(identifier: "Europe/Berlin") ?? .current
+    /// The rollover hour comes from the user's settings (read fresh);
+    /// "today" is the day in the device zone.
+    private let timeZone: TimeZone = .current
 
     init(
         auth: AuthSession,
@@ -83,8 +82,9 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func loadActiveFieldtrip() -> ActiveFieldtrip? {
-        let today = Codes.collectingDay(Date(), cutoffHour: cutoffHour, timeZone: timeZone)
-        let key = Codes.collectingDayKey(today, timeZone: timeZone)
+        let key = SampleTime.collectingDay(
+            Date(), cutoffHour: SampleIDSettings.current().cutoffHour, in: timeZone
+        )
         guard let ft = try? fieldtrips.fetchByCollectingDay(key) else { return nil }
         let title = ft.title.isEmpty
             ? "Sammeltag \(formattedShort(ft.collectingDay))"

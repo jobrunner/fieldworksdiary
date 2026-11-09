@@ -67,7 +67,7 @@ final class AppConfig: ObservableObject {
                 sampleIDFormat = oldValue
                 return
             }
-            UserDefaults.standard.set(sampleIDFormat, forKey: SampleCodeTemplate.userDefaultsKey)
+            UserDefaults.standard.set(sampleIDFormat, forKey: Keys.sampleIDFormat)
         }
     }
 
@@ -150,7 +150,7 @@ final class AppConfig: ObservableObject {
             ?? Self.defaultOrtusEndpointURL
 
         let defaults = UserDefaults.standard
-        let storedTemplate = defaults.string(forKey: SampleCodeTemplate.userDefaultsKey) ?? ""
+        let storedTemplate = defaults.string(forKey: Keys.sampleIDFormat) ?? ""
         sampleIDFormat = Self.isValidFormat(storedTemplate) ? storedTemplate : SampleIDTemplate.default.raw
         sampleIDPrefix = defaults.string(forKey: Keys.sampleIDPrefix) ?? ""
         sampleIDOffset = max(defaults.integer(forKey: Keys.sampleIDOffset), 0)
@@ -160,9 +160,10 @@ final class AppConfig: ObservableObject {
     fileprivate enum Keys {
         static let endpointURL = "AppConfig.endpointURL"
         static let ortusEndpointURL = "ortusEndpointURL"
-        static let sampleIDPrefix = "AppConfig.sampleIDPrefix"
-        static let sampleIDOffset = "AppConfig.sampleIDOffset"
-        static let dayCutoffHour = "AppConfig.dayCutoffHour"
-        static let lastRunningNumber = "AppConfig.lastRunningNumber"
+        static let sampleIDFormat = SampleIDSettings.Keys.format
+        static let sampleIDPrefix = SampleIDSettings.Keys.prefix
+        static let sampleIDOffset = SampleIDSettings.Keys.offset
+        static let dayCutoffHour = SampleIDSettings.Keys.cutoffHour
+        static let lastRunningNumber = SampleIDSettings.Keys.lastRunning
     }
 }

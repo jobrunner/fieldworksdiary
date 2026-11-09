@@ -18,7 +18,7 @@ final class LocalSampleStoreSaveEditsTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         database = try Database(inMemory: ())
-        store = LocalSampleStore(database: database, userId: "u1", cutoffHour: 5, timeZone: berlin)
+        store = LocalSampleStore(database: database, userId: "u1", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
         mutations = PendingMutationsStore(database: database)
     }
 

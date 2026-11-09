@@ -161,7 +161,7 @@ final class SampleEditorViewModel: ObservableObject {
 
     var canSave: Bool {
         if isSaving { return false }
-        if code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        // An empty sample id is valid (stored as "").
         if codeValidationError != nil { return false }
         if isExistingSample {
             return hasUnsavedEdits
@@ -281,21 +281,15 @@ final class SampleEditorViewModel: ObservableObject {
     // MARK: - code validation
 
     /// Recomputes `codeValidationError`. Called from the view on
-    /// every keystroke (cheap — regex + an indexed `sample_id`
-    /// lookup). Empty input is treated as "still typing" → nil so
-    /// the field doesn't shout at the user while they edit.
+    /// every keystroke (cheap — one indexed `sample_id` lookup). Any
+    /// format is allowed and the empty id is valid; only a duplicate
+    /// of another local sample is rejected.
     func recheckCode() {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            codeValidationError = nil
-            return
-        }
-        if trimmed.range(of: #"^\d{6}/\d+$"#, options: .regularExpression) == nil {
-            codeValidationError = "Format: YYMMDD/Nr (z. B. 260605/3)."
-            return
-        }
-        if (try? store.findByCode(trimmed, excludingId: savedSample?.id)) != nil {
-            codeValidationError = "Code ist bereits an einer anderen Probe vergeben."
+        if !trimmed.isEmpty,
+           (try? store.findByCode(trimmed, excludingId: savedSample?.id)) != nil
+        {
+            codeValidationError = "Diese Sample-ID ist bereits vergeben."
             return
         }
         codeValidationError = nil
@@ -351,6 +345,8 @@ final class SampleEditorViewModel: ObservableObject {
                 verticalAccuracy: verticalAccuracyM,
                 elevation: altitudeM,
                 notes: trimmedNotes,
+                // Unchanged suggestion → store takes it (and advances the
+                // running counter); anything else, incl. "", is verbatim.
                 overrideCode: userCode == store.peekNextCode() ? nil : userCode,
                 locationSource: mode == .field ? .locationService : .user
             )

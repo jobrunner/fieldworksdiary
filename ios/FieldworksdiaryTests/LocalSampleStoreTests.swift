@@ -12,7 +12,7 @@ final class LocalSampleStoreTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         database = try Database(inMemory: ())
-        store = LocalSampleStore(database: database, userId: "user-a", cutoffHour: 5, timeZone: berlin)
+        store = LocalSampleStore(database: database, userId: "user-a", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
     }
 
     override func tearDownWithError() throws {
