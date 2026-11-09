@@ -387,6 +387,51 @@ func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	}
 }
 
+func TestUpdate_KeepsLocationServiceTimezoneAgainstDevice(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "tz@example.com")
+	x := createSample(t, app, owner.Id, map[string]any{
+		"sample_id": "T1", "timezone": "Atlantic/Canary", "timezone_source": "location_service",
+	})
+	reload := func() *models.Record {
+		r, err := app.Dao().FindRecordById("samples", x.Id)
+		if err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+		return r
+	}
+
+	// Device zone from a stale client is refused.
+	r := reload()
+	r.Set("timezone", "Europe/Berlin")
+	r.Set("timezone_source", "device")
+	keepStrongerTimezone(r)
+	if r.GetString("timezone") != "Atlantic/Canary" || r.GetString("timezone_source") != "location_service" {
+		t.Errorf("downgrade not refused: %q / %q", r.GetString("timezone"), r.GetString("timezone_source"))
+	}
+
+	// A manual choice is accepted.
+	r = reload()
+	r.Set("timezone", "Asia/Tokyo")
+	r.Set("timezone_source", "manual")
+	keepStrongerTimezone(r)
+	if r.GetString("timezone") != "Asia/Tokyo" || r.GetString("timezone_source") != "manual" {
+		t.Errorf("manual refused: %q / %q", r.GetString("timezone"), r.GetString("timezone_source"))
+	}
+
+	// A device row may still be changed to anything.
+	d := createSample(t, app, owner.Id, map[string]any{
+		"sample_id": "T2", "timezone": "Europe/Berlin", "timezone_source": "device",
+	})
+	d, _ = app.Dao().FindRecordById("samples", d.Id)
+	d.Set("timezone", "Asia/Tokyo")
+	d.Set("timezone_source", "device")
+	keepStrongerTimezone(d)
+	if d.GetString("timezone") != "Asia/Tokyo" {
+		t.Errorf("device row changed back: %q", d.GetString("timezone"))
+	}
+}
+
 // ────────────────────────────────────────────────────────────────────
 // authOwnerID — defensive Auth-Extraktion
 // ────────────────────────────────────────────────────────────────────

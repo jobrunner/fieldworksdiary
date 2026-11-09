@@ -236,8 +236,28 @@ func uniqueSampleID(dao *daos.Dao, ownerID, wanted, excludeID string) (string, e
 // the " (n)" suffix and the sent ID lands in original_code.
 func RegisterSampleIDUpdate(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeUpdateRequest("samples").Add(func(e *core.RecordUpdateEvent) error {
+		keepStrongerTimezone(e.Record)
 		return resolveSampleIDOnUpdate(app.Dao(), e.Record)
 	})
+}
+
+// keepStrongerTimezone refuses to downgrade timezone_source from
+// location_service/manual to device: a stale client (409 retry, second
+// device) must not push its device zone over the Ortus or user zone.
+// The stored timezone + source stay in that case.
+func keepStrongerTimezone(rec *models.Record) {
+	orig := rec.OriginalCopy()
+	if orig == nil {
+		return
+	}
+	was := orig.GetString("timezone_source")
+	if was != "location_service" && was != "manual" {
+		return
+	}
+	if rec.GetString("timezone_source") == "device" {
+		rec.Set("timezone", orig.GetString("timezone"))
+		rec.Set("timezone_source", was)
+	}
 }
 
 func resolveSampleIDOnUpdate(dao *daos.Dao, rec *models.Record) error {
@@ -329,8 +349,11 @@ func writeFieldtrip(rec *models.Record, e *grouping.Fieldtrip) {
 	rec.Set("begin_date", e.StartedAt)
 	rec.Set("end_date", e.EndedAt)
 	rec.Set("night_fieldtrip", e.Night)
-	// A new fieldtrip takes the timezone of its first sample (carried
-	// by the window's location); legacy rows without one get Berlin.
+	// Only written while empty: a new fieldtrip takes the location of
+	// its window start, i.e. the zone of its first sample. A legacy row
+	// without a zone is backfilled with whatever location StartedAt
+	// carries then — Berlin (via loadLocation) unless ExpandWindow
+	// replaced the start with the sample's own, differently zoned time.
 	if strings.TrimSpace(rec.GetString("timezone")) == "" {
 		rec.Set("timezone", e.StartedAt.Location().String())
 	}
