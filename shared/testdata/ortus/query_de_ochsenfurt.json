@@ -1,0 +1,51 @@
+{
+  "coordinate": {"x": 10.039652, "y": 49.681616, "srid": 4326},
+  "wgs84": {"lon": 10.039652, "lat": 49.681616},
+  "results": [
+    {
+      "source_id": "tk25-blattschnitt-de",
+      "source_name": "tk25-blattschnitt-de.gpkg",
+      "features": [
+        {"id": 6326, "layer": "sheets", "properties": {"id": "6326", "dtknummer": "6326", "blattname": "Ochsenfurt"}}
+      ],
+      "feature_count": 1,
+      "query_time_ms": 2,
+      "license": {"name": "dl-de/by-2-0", "url": "https://www.govdata.de/dl-de/by-2-0", "attribution": "© GeoBasis-DE / BKG"}
+    },
+    {
+      "source_id": "natura2000-de",
+      "source_name": "natura2000-de.gpkg",
+      "features": [
+        {"id": "DE6326371", "layer": "sites", "properties": {"sitecode": "DE6326371", "sitename": "Maintalhänge bei Ochsenfurt", "sitetype": "B"}}
+      ],
+      "feature_count": 1,
+      "query_time_ms": 4,
+      "license": {"name": "EEA standard re-use policy", "url": "https://www.eea.europa.eu/legal/copyright", "attribution": "© European Environment Agency"}
+    }
+  ],
+  "total_features": 2,
+  "processing_time_ms": 14,
+  "gazetteer": {
+    "wgs84": {"lon": 10.039652, "lat": 49.681616},
+    "admin": {
+      "country_iso": "DE",
+      "hierarchy": [
+        {"level": 8, "name": "Ochsenfurt", "name_native": "", "name_source": "latin-osm", "equivalent": "municipality", "local_term": "Stadt / Gemeinde", "equivalent_description": "Local municipal authority (city/town/commune)."},
+        {"level": 6, "name": "Landkreis Würzburg", "name_native": "", "name_source": "latin-osm", "equivalent": "county", "local_term": "Landkreis / Kreis / kreisfreie Stadt", "equivalent_description": "County-level authority."},
+        {"level": 5, "name": "Unterfranken", "name_native": "", "name_source": "latin-osm", "equivalent": "region", "local_term": "Regierungsbezirk", "equivalent_description": "Region grouping several counties."},
+        {"level": 4, "name": "Bayern", "name_native": "", "name_source": "latin-osm", "equivalent": "state", "local_term": "Bundesland", "equivalent_description": "First-level subdivision of the country."},
+        {"level": 2, "name": "Deutschland", "name_native": "", "name_source": "latin-osm", "equivalent": "country", "local_term": "Deutschland", "equivalent_description": "Sovereign state."}
+      ]
+    },
+    "islands": null,
+    "mountains": null,
+    "bearing": {"reference": "Ochsenfurt", "name_native": "", "name_source": "latin-osm", "class": "town", "distance_km": 2.3, "azimuth": 300.0, "compass": "WNW", "label": "2 km WNW Ochsenfurt", "inside": false},
+    "exposure": {"slope_deg": 8.4, "slope_percent": 14.8, "aspect_deg": 202.5, "aspect_compass": "SSW", "flat": false, "sample_spacing_m": 30.0, "source": {"name": "Copernicus DEM GLO-30", "url": "https://dataspace.copernicus.eu/", "attribution": "© DLR/Airbus/ESA"}},
+    "elevation": {"meters": 236.0, "accuracy_m": 4.0, "accuracy_basis": "GLO-30 LE90 (absolute)", "horizontal_accuracy_m": 6.0, "vertical_datum": "EGM2008", "sea_level": false, "surface_model": "DSM", "source": {"name": "Copernicus DEM GLO-30", "url": "https://dataspace.copernicus.eu/", "attribution": "© DLR/Airbus/ESA"}},
+    "available": {"islands": true, "mountains": true, "exposure": true, "elevation": true},
+    "sources": [
+      {"code": "latin-osm", "short": "OSM name (already Latin)", "long": "Taken verbatim from the OpenStreetMap name tag; already Latin script, no transliteration applied.", "standard": ""}
+    ],
+    "license": {"name": "ODbL-1.0", "url": "https://opendatacommons.org/licenses/odbl/1-0/", "attribution": "© OpenStreetMap contributors (ODbL 1.0); Natural Earth (public domain); GeoNames (CC BY 4.0); NGA GNS (public domain)"}
+  }
+}

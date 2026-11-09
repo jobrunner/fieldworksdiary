@@ -1,0 +1,32 @@
+{
+  "coordinate": {"x": -17.7642, "y": 28.6835, "srid": 4326},
+  "wgs84": {"lon": -17.7642, "lat": 28.6835},
+  "results": [],
+  "total_features": 0,
+  "processing_time_ms": 9,
+  "gazetteer": {
+    "wgs84": {"lon": -17.7642, "lat": 28.6835},
+    "admin": {
+      "country_iso": "ES",
+      "hierarchy": [
+        {"level": 8, "name": "El Paso", "name_native": "", "name_source": "latin-osm", "equivalent": "municipality", "local_term": "Municipio", "equivalent_description": "Local municipal authority (city/town/commune)."},
+        {"level": 6, "name": "Santa Cruz de Tenerife", "name_native": "", "name_source": "latin-osm", "equivalent": "province", "local_term": "Provincia", "equivalent_description": "Province-level authority."},
+        {"level": 4, "name": "Canarias", "name_native": "", "name_source": "latin-osm", "equivalent": "state", "local_term": "Comunidad autónoma", "equivalent_description": "First-level subdivision of the country."},
+        {"level": 2, "name": "España", "name_native": "", "name_source": "latin-osm", "equivalent": "country", "local_term": "España", "equivalent_description": "Sovereign state."}
+      ]
+    },
+    "islands": [{"name": "La Palma", "name_native": "", "name_source": "latin-osm"}],
+    "mountains": {
+      "mountain": {"name": "Pico Bejenado", "name_native": "", "name_source": "latin-osm", "elevation": 1844},
+      "range": null
+    },
+    "bearing": {"reference": "El Paso", "name_native": "", "name_source": "latin-osm", "class": "town", "distance_km": 3.1, "azimuth": 225.0, "compass": "SW", "label": "3 km SW El Paso", "inside": false},
+    "exposure": {"slope_deg": 21.7, "slope_percent": 39.8, "aspect_deg": 90.0, "aspect_compass": "E", "flat": false, "sample_spacing_m": 30.0, "source": {"name": "Copernicus DEM GLO-30", "url": "https://dataspace.copernicus.eu/", "attribution": "© DLR/Airbus/ESA"}},
+    "elevation": {"meters": 1120.0, "accuracy_m": 4.0, "accuracy_basis": "GLO-30 LE90 (absolute)", "horizontal_accuracy_m": 6.0, "vertical_datum": "EGM2008", "sea_level": false, "surface_model": "DSM", "source": {"name": "Copernicus DEM GLO-30", "url": "https://dataspace.copernicus.eu/", "attribution": "© DLR/Airbus/ESA"}},
+    "available": {"islands": true, "mountains": true, "exposure": true, "elevation": true},
+    "sources": [
+      {"code": "latin-osm", "short": "OSM name (already Latin)", "long": "Taken verbatim from the OpenStreetMap name tag; already Latin script, no transliteration applied.", "standard": ""}
+    ],
+    "license": {"name": "ODbL-1.0", "url": "https://opendatacommons.org/licenses/odbl/1-0/", "attribution": "© OpenStreetMap contributors (ODbL 1.0); Natural Earth (public domain); GeoNames (CC BY 4.0); NGA GNS (public domain)"}
+  }
+}
