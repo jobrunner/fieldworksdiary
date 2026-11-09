@@ -69,6 +69,25 @@ final class DatabaseMigrationV13Tests: XCTestCase {
         }
     }
 
+    /// M-1: every pre-v13 placemark row came from the server, so its
+    /// `id` is the backend id — v13 backfills `backend_id` with it.
+    func testMigration_BackfillsBackendIDForLegacyPlacemarks() throws {
+        let queue = try migratedToV12()
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO local_placemarks (id, country, geocoding_source, dedup_hash, backend_updated_at)
+                VALUES ('pbLegacy', 'DE', 'backend-service', 'h1', '2026-05-19 12:00:00.000')
+            """)
+        }
+
+        try Database.makeMigrator().migrate(queue)
+
+        try queue.read { db in
+            let row = try XCTUnwrap(LocalPlacemark.fetchOne(db, key: "pbLegacy"))
+            XCTAssertEqual(row.backendId, "pbLegacy")
+        }
+    }
+
     func testMigration_DedupHashIsNoLongerUnique() throws {
         let queue = try migratedToV12()
         try Database.makeMigrator().migrate(queue)

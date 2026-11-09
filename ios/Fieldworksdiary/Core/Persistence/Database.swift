@@ -397,6 +397,10 @@ final class Database {
             UPDATE local_placemarks SET geocoding_source = 'backend_service'
             WHERE geocoding_source = 'backend-service'
         """)
+        // Every pre-v13 row was pulled from the server, so its id is
+        // the backend id. Without this, `backendPlacemark` would treat
+        // such a row as unresolvable and downgrade the sample's status.
+        try db.execute(sql: "UPDATE local_placemarks SET backend_id = id WHERE backend_id IS NULL")
         try db.drop(indexOn: "local_placemarks", columns: ["dedup_hash"])
         try db.create(indexOn: "local_placemarks", columns: ["dedup_hash", "geocoding_source"])
 
