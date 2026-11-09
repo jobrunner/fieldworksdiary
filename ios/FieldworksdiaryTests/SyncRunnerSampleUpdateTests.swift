@@ -87,28 +87,56 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         XCTAssertEqual(stored.originalCode, "260605/9")
     }
 
-    func testUpdate_409Conflict_SurfacesAsFailedWithError() async throws {
+    func testUpdate_409_AdoptsServerVersionAndRetriesWithUserEdit() async throws {
+        // The backend's enrichment bumped the version behind our back.
         let local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 1)
         var edited = local
         edited.notes = "user edit"
         try store.saveEdits(edited, mutationsStore: mutations)
 
         let mock = MockUpdateClient()
-        mock.updateError = SampleClientError.conflict(currentVersion: 7, body: "{}")
+        mock.updateErrors = [SampleClientError.conflict(currentVersion: 7, body: "{}")]
+        mock.fetchResponse = remoteSample(id: "backend-1", code: "260605/1", notes: "server", version: 7)
+        mock.updateResponse = remoteSample(id: "backend-1", code: "260605/1", notes: "user edit", version: 8)
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
 
-        XCTAssertEqual(
-            try mutations.fetch(entityType: .sample).filter { $0.op == .update }.count, 0,
-            "stale outbox row is dropped on 409"
-        )
+        XCTAssertEqual(mock.updateInputs.map(\.version), [2, 8], "retry sends server version + 1")
+        XCTAssertEqual(mock.updateInputs.last?.notes, "user edit", "the user's edit wins")
+        XCTAssertEqual(try mutations.count(), 0)
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.syncStatus, .failed, "user must see something on lost-race")
-        XCTAssertNotNil(stored.syncError)
-        // The user's local edit is preserved on conflict — they
-        // review, retry or discard. Listings flag this row via
-        // syncStatus so the divergence is visible.
+        XCTAssertEqual(stored.syncStatus, .synced)
         XCTAssertEqual(stored.notes, "user edit")
+        XCTAssertEqual(stored.version, 8)
+    }
+
+    func testUpdate_Repeated409_IsBoundedAndKeepsEdit() async throws {
+        let local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 1)
+        var edited = local
+        edited.notes = "user edit"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.alwaysConflict = true
+        mock.fetchResponse = remoteSample(id: "backend-1", code: "260605/1", version: 7)
+        let runner = makeRunner(mock: mock)
+        for _ in 0 ..< 20 {
+            await runUntilQuiescent(runner)
+            try? await Task.sleep(for: .milliseconds(20))
+            if try mutations.count() == 0 { break }
+        }
+        // Further passes must not pick the row up again.
+        await runUntilQuiescent(runner)
+        try? await Task.sleep(for: .milliseconds(20))
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(mock.updateInputs.count, SyncRunner.maxConflictAttempts * 2,
+                       "two tries per pass, then it stops")
+        XCTAssertEqual(try mutations.count(), 0, "no endless retry, no create re-adoption")
+        let stored = try XCTUnwrap(store.fetchById(local.id))
+        XCTAssertEqual(stored.syncStatus, .failed)
+        XCTAssertNotNil(stored.syncError)
+        XCTAssertEqual(stored.notes, "user edit", "edit kept locally")
     }
 
     func testUpdate_MissingLocalRow_DequeuesSilently() async throws {
@@ -175,6 +203,9 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         sample.backendId = backendID
         sample.syncStatus = .synced
         sample.version = version
+        // Resolved place data: plain edits go straight to the PATCH
+        // (weak states fetch the server row first, see SyncRunnerOrtusTests).
+        sample.locationStatus = .backendService
         try store.update(sample)
         // swiftlint:disable:next force_unwrapping
         return try store.fetchById(sample.id)!
@@ -244,26 +275,33 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
 private final class MockUpdateClient: SamplePushClient, @unchecked Sendable {
     var updateResponse: Sample?
     var updateError: Error?
+    /// Errors for the first calls, in order; afterwards `updateResponse`.
+    var updateErrors: [Error] = []
+    var alwaysConflict = false
     var fetchResponse: Sample?
     var createResponse: Sample?
-    /// Captures the most recent input the SyncRunner sent. Tests use
-    /// this to assert the OCC version bump.
-    var lastUpdateInput: SampleUpdateInput?
+    /// Every input the SyncRunner sent, in order.
+    var updateInputs: [SampleUpdateInput] = []
+    var lastUpdateInput: SampleUpdateInput? { updateInputs.last }
 
     func createSample(_: SampleCreateInput) async throws -> Sample {
-        // swiftlint:disable:next force_unwrapping
-        return createResponse!
+        guard let createResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
+        return createResponse
     }
 
     func updateSample(id _: String, input: SampleUpdateInput) async throws -> Sample {
-        lastUpdateInput = input
+        updateInputs.append(input)
+        if alwaysConflict { throw SampleClientError.conflict(currentVersion: 7, body: "{}") }
+        if !updateErrors.isEmpty { throw updateErrors.removeFirst() }
         if let updateError { throw updateError }
-        // swiftlint:disable:next force_unwrapping
-        return updateResponse!
+        guard let updateResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
+        return updateResponse
     }
 
     func fetchSample(id _: String) async throws -> Sample {
-        // swiftlint:disable:next force_unwrapping
-        return fetchResponse ?? updateResponse!
+        guard let response = fetchResponse ?? updateResponse else {
+            throw SampleClientError.http(status: 404, body: "")
+        }
+        return response
     }
 }

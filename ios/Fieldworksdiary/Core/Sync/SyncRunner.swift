@@ -33,6 +33,12 @@ struct SampleLocationFields: Codable, Equatable {
     var bearingDistanceKm: Double?
     var bearingCompass: String?
     var bearingInside: Bool = false
+    /// Set for a push right after a coordinate change: columns derived
+    /// from the old point that are nil locally are sent as explicit
+    /// clears ("" / 0 / false), so the server can't keep — and later
+    /// hand back — values of the old point. Not set otherwise: a nil
+    /// usually only means "not known yet".
+    var clearsDerived = false
 
     /// Wire keys of the PocketBase `samples` record (migration
     /// 1700000024). `elevation_source` always accompanies an
@@ -77,7 +83,30 @@ struct SampleLocationFields: Codable, Equatable {
         if bearingLabel != nil || bearingInside {
             body["bearing_inside"] = bearingInside
         }
+        if clearsDerived {
+            addClears(to: &body)
+        }
         return body
+    }
+
+    private func addClears(to body: inout [String: Any]) {
+        let text = ["placemark", "placemark_suggestion", "mtb_sheet_number", "mtb_sheet_name",
+                    "aspect_compass", "bearing_label", "bearing_reference", "bearing_compass"]
+        let numbers = ["mtb_quadrant", "elevation_dem", "elevation_dem_accuracy", "slope_deg",
+                       "aspect_deg", "bearing_distance_km"]
+        for key in text where body[key] == nil {
+            body[key] = ""
+        }
+        for key in numbers where body[key] == nil {
+            body[key] = 0
+        }
+        if body["terrain_flat"] == nil { body["terrain_flat"] = false }
+        if body["bearing_inside"] == nil { body["bearing_inside"] = false }
+        if elevation == nil {
+            // DEM height of the old point was cleared locally.
+            body["elevation"] = 0
+            body["elevation_source"] = ""
+        }
     }
 }
 
@@ -148,6 +177,21 @@ struct SampleUpdatePayload: Codable, Equatable {
     /// The local feature set changed (on-device resolver) or a previous
     /// features PUT failed: replace the server's set after the PATCH.
     var pushFeatures = false
+    /// Queued by `LocalSampleStore.updateCoordinate`: the push carries
+    /// a moved coordinate (explicit clears, `pending` allowed, poll for
+    /// the backend's re-enrichment afterwards).
+    var coordinateChanged = false
+
+    init(pushFeatures: Bool = false, coordinateChanged: Bool = false) {
+        self.pushFeatures = pushFeatures
+        self.coordinateChanged = coordinateChanged
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pushFeatures = (try? c.decode(Bool.self, forKey: .pushFeatures)) ?? false
+        coordinateChanged = (try? c.decode(Bool.self, forKey: .coordinateChanged)) ?? false
+    }
 
     static func decode(_ data: Data) -> SampleUpdatePayload {
         (try? JSONDecoder().decode(SampleUpdatePayload.self, from: data)) ?? SampleUpdatePayload()
@@ -398,6 +442,9 @@ final class SyncRunner: ObservableObject {
                 try? mutationsStore.dequeue(mutation.id)
                 return
             }
+            // Compared before merging, so server echo differences don't
+            // count as local edits.
+            let editedDuringPost = Self.createInput(fresh, location: syncLocation(fresh)) != input
             fresh.backendId = created.id
             fresh.fieldtrip = created.fieldtrip
             // An empty server locality must not wipe a local one.
@@ -416,7 +463,7 @@ final class SyncRunner: ObservableObject {
             // the on-device resolver — it couldn't queue an update yet
             // because the row had no backend id) are not on the
             // server: push them as an update.
-            if Self.createInput(fresh, location: syncLocation(fresh)) != input {
+            if editedDuringPost {
                 _ = try? mutationsStore.enqueue(
                     entityType: .sample, entityId: localId, op: .update,
                     payload: SampleUpdatePayload(pushFeatures: true).encoded
@@ -466,14 +513,18 @@ final class SyncRunner: ObservableObject {
     /// re-read the row again to avoid clobbering edits that landed
     /// during the network hop.
     ///
-    /// Order: placemark resolve → PATCH → features PUT (when the
-    /// payload asks for it).
+    /// Order: (server snapshot for weak local place data) → placemark
+    /// resolve → PATCH → features PUT (when the payload asks for it) →
+    /// enrichment poll after a coordinate change.
     ///
-    /// OCC: the backend's `enforceVersion` hook (versionedCollections
-    /// in version_conflict.go) rejects `incoming <= current` with 409.
-    /// We send `current + 1`; on 409 we surface the conflict as a
-    /// `.failed` status with a localised error rather than silently
-    /// dropping the user's edit.
+    /// OCC: the backend's `enforceVersion` hook rejects
+    /// `incoming <= current` with 409. The backend's own enrichment
+    /// bumps the version too, so a 409 is usually not a real conflict:
+    /// we fetch the server row, adopt its version (and its place data
+    /// where ours is weaker, see `adoptServer`) and retry once with the
+    /// user's edit. A second 409 keeps the mutation queued for the next
+    /// pass; after `maxConflictAttempts` passes the row is flagged
+    /// `.failed` (edit kept locally, not overwritten by hydration).
     private func executeSampleUpdate(_ mutation: PendingMutation, via client: SamplePushClient) async {
         guard let localID = mutation.entityId, !localID.isEmpty else {
             try? mutationsStore.dequeue(mutation.id)
@@ -511,34 +562,20 @@ final class SyncRunner: ObservableObject {
             inFlight += 1
             defer { inFlight -= 1 }
 
-            guard let pushed = try await pushLocation(forLocalID: localID) else {
+            let outcome: PatchOutcome?
+            do {
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload, via: client)
+            } catch let SampleClientError.conflict(serverVersion, _) {
+                Log.sync.notice(
+                    "sample update 409 (server version \(serverVersion, privacy: .public)), adopting and retrying"
+                )
+                try await adoptAfterConflict(localID: localID, backendID: backendID, via: client)
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload, via: client)
+            }
+            guard let outcome else {
                 try? mutationsStore.dequeue(mutation.id)
                 return
             }
-            let (current, location) = pushed
-            let input = SampleUpdateInput(
-                code: current.sampleID,
-                notes: current.notes,
-                clientUuid: current.id,
-                clientUpdatedAt: current.updatedAt,
-                version: current.version + 1,
-                location: location
-            )
-
-            let updated = try await client.updateSample(id: backendID, input: input)
-
-            // Re-read after the network hop: the user may have saved
-            // further edits during the await. Preserve user-owned
-            // fields (notes, sampleID) and merge only the server-
-            // derived ones in.
-            var fresh = (try? store.fetchById(localID)) ?? current
-            fresh.version = updated.version
-            fresh.locality = updated.locality ?? fresh.locality
-            Self.applyCodes(updated, sentCode: input.code, to: &fresh)
-            fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
-            fresh.syncStatus = .synced
-            fresh.syncError = nil
-            try store.update(fresh)
 
             if payload.pushFeatures, featureStore != nil,
                !(await pushFeatures(localID: localID, backendID: backendID))
@@ -554,28 +591,134 @@ final class SyncRunner: ObservableObject {
             // Pick up any photos that the edit added on top of an
             // already-synced sample (same best-effort semantics as
             // the create path).
-            await pushPhotos(for: fresh, backendSampleID: backendID, endpoint: endpointProvider())
-        } catch let SampleClientError.conflict(serverVersion, _) {
-            // Another writer beat us to the row. We intentionally do
-            // NOT overwrite local with the server's values — the
-            // user's typed code/notes stay put so they can review,
-            // retry, or discard. Just flip the row to .failed with
-            // a localised error so listing/badge UI surfaces the
-            // conflict instead of silently swallowing it.
-            Log.sync.warning(
-                "sample update 409 (server version \(serverVersion, privacy: .public))"
-            )
-            try? store.setSyncState(
-                id: localID, status: .failed,
-                error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Bitte neu laden."
-            )
-            try? mutationsStore.dequeue(mutation.id)
+            await pushPhotos(for: outcome.fresh, backendSampleID: backendID, endpoint: endpointProvider())
+
+            if let snapshot = outcome.serverSnapshot {
+                await makeLocationHydration()?.hydrate([snapshot])
+            }
+            if payload.coordinateChanged {
+                // The backend re-enriches a moved sample and bumps the
+                // version; follow it so the next edit doesn't 409.
+                await pollEnrichment(backendID: backendID, localID: localID,
+                                     baseVersion: outcome.fresh.version, via: client)
+            }
+        } catch SampleClientError.conflict {
+            // Still 409 right after adopting the server version: a
+            // writer is racing us. Keep the edit queued; give up after
+            // a few passes so it can't loop forever.
+            if mutation.attempts + 1 >= Self.maxConflictAttempts {
+                Log.sync.warning("sample update gave up after repeated 409")
+                try? store.setSyncState(
+                    id: localID, status: .failed,
+                    error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Deine Änderung ist nur lokal gespeichert – erneut speichern, um sie zu übertragen."
+                )
+                try? mutationsStore.dequeue(mutation.id)
+            } else {
+                try? store.setSyncState(id: localID, status: .failed,
+                                        error: "Versionskonflikt – wird erneut versucht.")
+                try? mutationsStore.recordFailure(mutation.id, error: "409 conflict")
+            }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             try? store.setSyncState(id: localID, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample update push failed: \(message)")
         }
+    }
+
+    /// Passes a 409-ing update gets before the row is flagged failed.
+    static let maxConflictAttempts = 3
+
+    private struct PatchOutcome {
+        /// The row after merging the PATCH response.
+        let fresh: LocalSample
+        /// Server row fetched before the PATCH (weak local place data),
+        /// used afterwards to hydrate its placemark and features.
+        let serverSnapshot: Sample?
+    }
+
+    /// One PATCH of the current row. Nil when the row vanished.
+    private func patchOnce(
+        localID: String,
+        backendID: String,
+        payload: SampleUpdatePayload,
+        via client: SamplePushClient
+    ) async throws -> PatchOutcome? {
+        guard let row = try store.fetchById(localID) else { return nil }
+        var snapshot: Sample?
+        if !payload.coordinateChanged, row.locationStatus == .pending || row.locationStatus == .inherited {
+            // The backend may have enriched this sample meanwhile;
+            // never push weaker place data (pending/inherited) over a
+            // backend_service result — take the server's first.
+            let server = try await client.fetchSample(id: backendID)
+            guard var fresh = try store.fetchById(localID) else { return nil }
+            adoptServer(server, into: &fresh)
+            try store.update(fresh)
+            snapshot = server
+        }
+
+        guard let pushed = try await pushLocation(forLocalID: localID) else { return nil }
+        let (current, pushedLocation) = pushed
+        var location = pushedLocation
+        location.clearsDerived = payload.coordinateChanged
+        let input = SampleUpdateInput(
+            code: current.sampleID,
+            notes: current.notes,
+            clientUuid: current.id,
+            clientUpdatedAt: current.updatedAt,
+            version: current.version + 1,
+            location: location
+        )
+
+        let updated = try await client.updateSample(id: backendID, input: input)
+
+        // Re-read after the network hop: the user may have saved
+        // further edits during the await. Preserve user-owned fields
+        // (notes, sampleID) and merge only the server-derived ones in.
+        guard var fresh = try store.fetchById(localID) else { return nil }
+        fresh.version = max(fresh.version, updated.version)
+        fresh.locality = updated.locality ?? fresh.locality
+        Self.applyCodes(updated, sentCode: input.code, to: &fresh)
+        fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
+        fresh.syncStatus = .synced
+        fresh.syncError = nil
+        try store.update(fresh)
+        return PatchOutcome(fresh: fresh, serverSnapshot: snapshot)
+    }
+
+    /// After a 409: take the server's version (and its place data where
+    /// ours is weaker); the user's own fields stay.
+    private func adoptAfterConflict(localID: String, backendID: String, via client: SamplePushClient) async throws {
+        let server = try await client.fetchSample(id: backendID)
+        guard var fresh = try store.fetchById(localID) else { return }
+        adoptServer(server, into: &fresh)
+        try store.update(fresh)
+    }
+
+    /// Adopts a server snapshot onto a fresh local row. The version
+    /// always moves forward. Place data is merged when it describes the
+    /// same coordinate and the local place state is not better: local
+    /// `pending`/`inherited`, or nothing local queued. A stronger local
+    /// state (resolved, manual) with a queued update wins on purpose,
+    /// as does a moved coordinate (its push re-triggers enrichment).
+    private func adoptServer(_ s: Sample, into fresh: inout LocalSample) {
+        fresh.version = max(fresh.version, s.version)
+        guard Self.sameCoordinate(fresh, s) else { return }
+        let weak = fresh.locationStatus == .pending || fresh.locationStatus == .inherited
+        if weak || !hasQueuedMutation(fresh.id) {
+            fresh.mergeServerLocation(s, localPlacemarkID: localPlacemarkID)
+        }
+    }
+
+    private static func sameCoordinate(_ l: LocalSample, _ r: Sample) -> Bool {
+        func same(_ a: Double?, _ b: Double?) -> Bool {
+            switch (a, b) {
+            case (nil, nil): true
+            case let (x?, y?): abs(x - y) < 1e-7
+            default: false
+            }
+        }
+        return same(l.latitude, r.latitude) && same(l.longitude, r.longitude)
     }
 
     // MARK: - Phase O2 place data
@@ -837,7 +980,9 @@ final class SyncRunner: ObservableObject {
             Log.sync.error("outbox scan failed: \(error.localizedDescription)")
             return
         }
-        for sample in pending where !outboxed.contains(sample.id) {
+        // Rows with a backend id are on the server; their changes travel
+        // as updates (a failed update keeps its own outbox row).
+        for sample in pending where !outboxed.contains(sample.id) && (sample.backendId ?? "").isEmpty {
             do {
                 _ = try mutationsStore.enqueue(
                     entityType: .sample,
@@ -905,12 +1050,12 @@ final class SyncRunner: ObservableObject {
     }
 
     /// Waits for the backend enrichment of a sample pushed without
-    /// final place data (status ≠ backend_service). Done when the
-    /// server reports `backend_service` or a newer version (the
-    /// enricher bumps it). Merges onto a fresh row: the version always
-    /// (so a queued local edit doesn't 409 against our own
-    /// enrichment), place data only when no local edit is queued —
-    /// then pulls placemark and features.
+    /// final place data (status ≠ backend_service), or after a
+    /// coordinate change. Done when the server reports
+    /// `backend_service` or a newer version (the enricher bumps it).
+    /// Adopts the snapshot via `adoptServer` (version plus place data
+    /// unless the local state is better), then pulls placemark and
+    /// features.
     private func pollEnrichment(backendID: String, localID: String, baseVersion: Int,
                                 via client: SamplePushClient) async
     {
@@ -919,10 +1064,7 @@ final class SyncRunner: ObservableObject {
             guard let s = try? await client.fetchSample(id: backendID) else { continue }
             guard s.locationStatus == .backendService || s.version > baseVersion else { continue }
             guard var fresh = try? store.fetchById(localID), fresh.backendId == backendID else { return }
-            fresh.version = max(fresh.version, s.version)
-            if !hasQueuedMutation(localID) {
-                fresh.mergeServerLocation(s, localPlacemarkID: localPlacemarkID)
-            }
+            adoptServer(s, into: &fresh)
             try? store.update(fresh)
             await makeLocationHydration()?.hydrate([s])
             return

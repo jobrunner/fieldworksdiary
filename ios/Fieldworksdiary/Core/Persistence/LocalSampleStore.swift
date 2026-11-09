@@ -211,12 +211,22 @@ final class LocalSampleStore {
         }
     }
 
+    /// Writes the whole row. `version` only ever moves forward: a copy
+    /// carrying an older counter than the stored one keeps the stored
+    /// one, so a stale snapshot can't make the next PATCH 409.
     func update(_ sample: LocalSample) throws {
         var copy = sample
         copy.updatedAt = Date()
         try database.writer.write { db in
+            if let stored = try Self.storedVersion(db, id: copy.id), stored > copy.version {
+                copy.version = stored
+            }
             try copy.update(db)
         }
+    }
+
+    private static func storedVersion(_ db: GRDB.Database, id: String) throws -> Int? {
+        try Int.fetchOne(db, sql: "SELECT version FROM local_samples WHERE id = ?", arguments: [id])
     }
 
     /// Sets only the sync bookkeeping columns. Used by the SyncRunner
@@ -243,13 +253,20 @@ final class LocalSampleStore {
         }
     }
 
-    /// Corrects the coordinate of an existing sample (Phase O2). The
-    /// place data no longer fits the new point, so the status goes
-    /// back to `pending` — unless the user curated the place
-    /// (`manual`), which is kept. A synced row gets a `.sample/.update`
-    /// outbox entry; the push carries coordinate and status, so the
-    /// backend re-enriches (see `hooks/sample_location.go`). Callers
-    /// re-run `SampleLocationResolver.resolveOnline` afterwards.
+    /// Corrects the coordinate of an existing sample (Phase O2).
+    ///
+    /// Everything derived from the old point is cleared: MTB, DEM,
+    /// terrain, bearing, the features, a DEM-derived elevation, and the
+    /// placemark unless the user curated it (`manual`, whose stale
+    /// suggestion is dropped instead). The status goes back to
+    /// `pending` (except `manual`). The online resolver or the backend
+    /// refills the values for the new point.
+    ///
+    /// A synced row gets a `.sample/.update` with
+    /// `coordinateChanged`, so the push sends the coordinate, the
+    /// status and explicit clears for the derived columns, and then
+    /// waits for the backend's re-enrichment. Callers re-run
+    /// `SampleLocationResolver.resolveOnline` afterwards.
     func updateCoordinate(
         id: String,
         latitude: Double,
@@ -258,20 +275,36 @@ final class LocalSampleStore {
         locationSource: LocationSource = .user,
         mutationsStore: PendingMutationsStore
     ) throws {
-        guard var sample = try fetchById(id) else { return }
-        sample.latitude = latitude
-        sample.longitude = longitude
-        sample.horizontalAccuracy = horizontalAccuracy
-        sample.locationSource = locationSource.rawValue
-        if sample.locationStatus != .manual {
-            sample.locationStatus = .pending
+        let backendID: String? = try database.writer.write { db in
+            guard var sample = try LocalSample.fetchOne(db, key: id) else { return nil }
+            sample.latitude = latitude
+            sample.longitude = longitude
+            sample.horizontalAccuracy = horizontalAccuracy
+            sample.locationSource = locationSource.rawValue
+            sample.clearDerivedLocation()
+            sample.updatedAt = Date()
+            try sample.update(db)
+            _ = try LocalSampleFeature.filter(Column("sample_id") == id).deleteAll(db)
+            return sample.backendId
         }
-        try saveEdits(sample, mutationsStore: mutationsStore)
+        guard let backendID, !backendID.isEmpty else { return }
+        _ = try mutationsStore.enqueue(
+            entityType: .sample,
+            entityId: id,
+            op: .update,
+            payload: SampleUpdatePayload(coordinateChanged: true).encoded
+        )
     }
 
-    /// Persists user-editable fields on an existing sample and — if
-    /// the row has a backend id — enqueues a `.sample/.update`
-    /// outbox row whose payload is built fresh at execute time.
+    /// Persists the user-editable fields (code, notes, star) of
+    /// `sample` and — if the row has a backend id — enqueues a
+    /// `.sample/.update` outbox row whose payload is built fresh at
+    /// execute time.
+    ///
+    /// Only those columns are taken from `sample`; everything else
+    /// (version, place data, sync state) stays as stored. An editor
+    /// holding an older snapshot therefore can't roll back a version
+    /// bump or place data the SyncRunner merged meanwhile.
     ///
     /// The mutation carries the *local* sample id as `entityId`
     /// (same shape as `.sample/.create`) and an empty payload; the
@@ -286,18 +319,21 @@ final class LocalSampleStore {
     /// freshly-edited values when the SyncRunner reads from the row
     /// (see `executeSampleCreate`).
     func saveEdits(_ sample: LocalSample, mutationsStore: PendingMutationsStore) throws {
-        var working = sample
-        working.updatedAt = Date()
-        try database.writer.write { db in
-            try working.update(db)
+        let backendID: String? = try database.writer.write { db in
+            guard var stored = try LocalSample.fetchOne(db, key: sample.id) else { return nil }
+            stored.sampleID = sample.sampleID
+            stored.notes = sample.notes
+            stored.marked = sample.marked
+            stored.updatedAt = Date()
+            try stored.update(db)
+            return stored.backendId
         }
 
-        guard let backendID = working.backendId, !backendID.isEmpty else { return }
-        _ = backendID
+        guard let backendID, !backendID.isEmpty else { return }
 
         _ = try mutationsStore.enqueue(
             entityType: .sample,
-            entityId: working.id,
+            entityId: sample.id,
             op: .update,
             payload: Data()
         )
@@ -367,6 +403,16 @@ final class LocalSampleStore {
                     if local.syncStatus == .pending || local.syncStatus == .syncing {
                         // The push is still in flight; the SyncRunner
                         // will reconcile the round-trip itself.
+                        continue
+                    }
+                    if local.syncStatus == .failed, !(local.backendId ?? "").isEmpty {
+                        // A rejected update (conflict) — keep the
+                        // user's edit visible; their next save retries.
+                        continue
+                    }
+                    if r.version < local.version {
+                        // Snapshot older than what a push already
+                        // brought in (list fetched before the PATCH).
                         continue
                     }
                     if try Self.hasQueuedMutation(db, sampleID: local.id) {
@@ -454,7 +500,11 @@ final class LocalSampleStore {
         if let n = r.notes { local.notes = n }
         local.marked = r.marked
         local.fieldtrip = r.fieldtrip
-        local.locality = r.locality
+        // A client-created locality (UUID) whose push is pending stays;
+        // the locality push re-points it and queues the sample update.
+        if local.locality.map(PlacemarkClient.isRecordID) ?? true {
+            local.locality = r.locality
+        }
         local.locationSource = r.locationSource.rawValue
         local.version = r.version
         // Elevation, status, placemark, MTB and geo: never replaced by
@@ -600,6 +650,40 @@ extension LocalSample {
         bearingDistanceKm = g.bearingDistanceKm ?? bearingDistanceKm
         bearingCompass = g.bearingCompass ?? bearingCompass
         bearingInside = g.bearingInside || bearingInside
+    }
+}
+
+extension LocalSample {
+    /// Clears everything derived from the coordinate (see
+    /// `LocalSampleStore.updateCoordinate`).
+    mutating func clearDerivedLocation() {
+        mtbSheetNumber = nil
+        mtbSheetName = nil
+        mtbQuadrant = nil
+        elevationDEM = nil
+        elevationDEMAccuracy = nil
+        slopeDeg = nil
+        aspectDeg = nil
+        aspectCompass = nil
+        terrainFlat = false
+        bearingLabel = nil
+        bearingReference = nil
+        bearingDistanceKm = nil
+        bearingCompass = nil
+        bearingInside = false
+        if elevationSource == .backendService {
+            elevation = nil
+            elevationSource = nil
+            verticalAccuracy = nil
+        }
+        switch locationStatus {
+        case .manual:
+            placemarkSuggestion = nil
+        case .pending, .inherited, .backendService:
+            placemark = nil
+            placemarkSuggestion = nil
+            locationStatus = .pending
+        }
     }
 }
 

@@ -239,7 +239,12 @@ final class SyncRunnerOrtusTests: XCTestCase {
                                    mutationsStore: mutations)
 
         let push = MockPush(log: log)
-        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "pending", version: 3)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "pending", version: 3,
+                                     lat: 49.70, lon: 10.10)
+        // The backend re-enriches the moved sample and bumps the version.
+        push.fetchResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                    placemark: "pmbackend00002", version: 4, mtb: "6327",
+                                    lat: 49.70, lon: 10.10)
         await runUntilQuiescent(makeRunner(push: push))
 
         let sent = try XCTUnwrap(push.lastUpdate)
@@ -247,8 +252,167 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(sent.location.longitude, 10.10)
         XCTAssertEqual(sent.location.locationStatus, .pending)
         XCTAssertEqual(sent.location.locationSource, .user)
-        XCTAssertEqual(sent.location.wireBody["location_status"] as? String, "pending")
-        XCTAssertEqual(try store.fetchById(sample.id)?.version, 3)
+        let body = sent.location.wireBody
+        XCTAssertEqual(body["location_status"] as? String, "pending")
+        XCTAssertEqual(body["mtb_sheet_number"] as? String, "", "old point's MTB is cleared, not re-sent")
+        XCTAssertEqual(body["placemark"] as? String, "")
+        XCTAssertEqual(body["bearing_inside"] as? Bool, false)
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.version, 4, "follows the enrichment bump, next edit won't 409")
+        XCTAssertEqual(stored.placemark, "pmbackend00002")
+        XCTAssertEqual(stored.mtbSheetNumber, "6327")
+        XCTAssertEqual(stored.locationStatus, .backendService)
+    }
+
+    func testUpdateCoordinate_ClearsDerivedValuesButKeepsGPSHeight() throws {
+        let sample = try seedResolvedSample()
+        try store.updateCoordinate(id: sample.id, latitude: 47.0, longitude: 11.0, mutationsStore: mutations)
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertNil(stored.mtbSheetNumber)
+        XCTAssertNil(stored.mtbSheetName)
+        XCTAssertNil(stored.mtbQuadrant)
+        XCTAssertNil(stored.bearingLabel)
+        XCTAssertFalse(stored.bearingInside)
+        XCTAssertNil(stored.placemark)
+        XCTAssertEqual(stored.locationStatus, .pending)
+        XCTAssertEqual(stored.elevation, 250, "GPS height is the device's own, not derived")
+        XCTAssertEqual(try features.count(sampleID: sample.id), 0)
+        XCTAssertEqual(try mutations.count(), 0, "unpushed row: the pending create carries it")
+    }
+
+    func testUpdateCoordinate_ManualKeepsPlacemarkAndClearsDEMHeight() throws {
+        var sample = try seedResolvedSample()
+        sample.locationStatus = .manual
+        sample.placemarkSuggestion = "pmsuggestion01"
+        sample.elevationSource = .backendService
+        sample.elevationDEM = 250
+        try store.update(sample)
+
+        try store.updateCoordinate(id: sample.id, latitude: 47.0, longitude: 11.0, mutationsStore: mutations)
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.locationStatus, .manual)
+        XCTAssertEqual(stored.placemark, sample.placemark)
+        XCTAssertNil(stored.placemarkSuggestion)
+        XCTAssertNil(stored.elevation)
+        XCTAssertNil(stored.elevationSource)
+        XCTAssertNil(stored.elevationDEM)
+    }
+
+    func testUpdate_WeakLocalStatus_TakesServerEnrichmentInsteadOfReverting() async throws {
+        var sample = try seedSyncedSample(status: .pending)
+        sample.notes = "edit"
+        try store.saveEdits(sample, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.fetchResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                    placemark: "pmbackend00001", version: 3, mtb: "6326")
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                     placemark: "pmbackend00001", version: 4, mtb: "6326")
+        let pm = MockPlacemarks(log: log)
+        pm.fetchResponse = [remotePlacemark(id: "pmbackend00001")]
+        let fx = MockFeatures(log: log)
+        fx.fetchResponse = [
+            RemoteSampleFeature(id: "f1", sample: "backend-1", sourceID: "wdpa", sourceName: "WDPA",
+                                layer: "areas", featureID: "1", propertiesJSON: "{}", licenseJSON: nil)
+        ]
+        await runUntilQuiescent(makeRunner(push: push, placemarks: pm, features: fx))
+
+        let sent = try XCTUnwrap(push.lastUpdate)
+        XCTAssertEqual(sent.location.locationStatus, .backendService, "never push pending over the enrichment")
+        XCTAssertEqual(sent.location.placemark, "pmbackend00001")
+        XCTAssertEqual(sent.version, 4, "server version 3 + 1")
+        XCTAssertEqual(sent.notes, "edit")
+        XCTAssertEqual(try features.count(sampleID: sample.id), 1, "features hydrated after enrichment")
+        XCTAssertNotNil(try placemarks.fetchById("pmbackend00001"))
+    }
+
+    func testPoll_WithQueuedEdit_MergesPlaceDataSoTheEditDoesNotRevertIt() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-1", code: sample.sampleID, status: "pending")
+        push.fetchResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                    placemark: "pmbackend00001", version: 2, mtb: "6326")
+        // The user edits the notes while the poll waits.
+        push.duringFetch = { [store, mutations] in
+            guard var row = try? store?.fetchById(sample.id), let mutations else { return }
+            row.notes = "edit"
+            try? store?.saveEdits(row, mutationsStore: mutations)
+        }
+        let runner = makeRunner(push: push)
+        await runUntilQuiescent(runner)
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.locationStatus, .backendService)
+        XCTAssertEqual(stored.placemark, "pmbackend00001")
+        XCTAssertEqual(stored.version, 2)
+        XCTAssertEqual(stored.notes, "edit")
+
+        push.duringFetch = nil
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                     placemark: "pmbackend00001", version: 3)
+        try? await Task.sleep(for: .milliseconds(20))
+        await runUntilQuiescent(runner)
+        XCTAssertEqual(push.lastUpdate?.location.locationStatus, .backendService)
+        XCTAssertEqual(push.lastUpdate?.location.placemark, "pmbackend00001")
+        XCTAssertEqual(push.lastUpdate?.version, 3)
+    }
+
+    func testSaveEdits_StaleEditorSnapshotKeepsVersionAndPlaceData() throws {
+        let stale = try seedSyncedSample(status: .pending)
+        var merged = stale
+        merged.version = 5
+        merged.placemark = "pmbackend00001"
+        merged.locationStatus = .backendService
+        try store.update(merged)
+
+        var edited = stale
+        edited.notes = "from the editor"
+        try store.saveEdits(edited, mutationsStore: mutations)
+        try store.update(stale) // a whole-row write with the old counter
+
+        let row = try XCTUnwrap(store.fetchById(stale.id))
+        XCTAssertEqual(row.version, 5, "versions only move forward")
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(stale.id)).version, 5)
+        var afterEdit = row
+        afterEdit.notes = "again"
+        try store.saveEdits(afterEdit, mutationsStore: mutations)
+        let final = try XCTUnwrap(store.fetchById(stale.id))
+        XCTAssertEqual(final.notes, "again")
+        XCTAssertEqual(final.version, 5)
+    }
+
+    func testSaveEdits_WritesOnlyUserFields() throws {
+        let stale = try seedSyncedSample(status: .pending)
+        var merged = stale
+        merged.placemark = "pmbackend00001"
+        merged.locationStatus = .backendService
+        merged.mtbSheetNumber = "6326"
+        try store.update(merged)
+
+        var edited = stale
+        edited.notes = "from the editor"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let row = try XCTUnwrap(store.fetchById(stale.id))
+        XCTAssertEqual(row.notes, "from the editor")
+        XCTAssertEqual(row.placemark, "pmbackend00001")
+        XCTAssertEqual(row.locationStatus, .backendService)
+        XCTAssertEqual(row.mtbSheetNumber, "6326")
+    }
+
+    func testReconcile_FailedPushedRowIsNotReadoptedAsCreate() async throws {
+        var sample = try seedSyncedSample(status: .backendService)
+        sample.syncStatus = .failed
+        try store.update(sample)
+
+        let push = MockPush(log: log)
+        await runUntilQuiescent(makeRunner(push: push))
+
+        XCTAssertTrue(log.calls.isEmpty)
+        XCTAssertEqual(try mutations.count(), 0)
     }
 
     func testUpdate_NewCoordinateOnManualSample_KeepsManual() async throws {
@@ -289,7 +453,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
     }
 
     func testUpdate_PlainEdit_DoesNotPutFeatures() async throws {
-        var sample = try seedSyncedSample(status: .pending)
+        var sample = try seedSyncedSample(status: .backendService)
         try features.replace(sampleID: sample.id, features: [feature("a")])
         sample.notes = "edit"
         try store.saveEdits(sample, mutationsStore: mutations)
@@ -386,6 +550,40 @@ final class SyncRunnerOrtusTests: XCTestCase {
         let stored = try XCTUnwrap(store.fetchById(sample.id))
         XCTAssertEqual(stored.notes, "local edit")
         XCTAssertEqual(stored.locationStatus, .pending)
+    }
+
+    func testHydration_KeepsClientLocalityWhoseLocalityPushIsPending() async throws {
+        var sample = try seedSyncedSample(status: .backendService)
+        let clientLocality = UUID().uuidString
+        sample.locality = clientLocality
+        try store.update(sample)
+
+        let list = MockList()
+        list.items = [remote(id: "backend-1", code: sample.sampleID, clientUuid: sample.id,
+                             status: "backend_service", version: 2)]
+        let hydrator = SamplesHydrator(store: store, endpointProvider: { "http://test.invalid" },
+                                       clientFactory: { _, _ in list })
+        await hydrator.pull()
+
+        XCTAssertEqual(try store.fetchById(sample.id)?.locality, clientLocality)
+    }
+
+    func testHydration_OlderSnapshotThanLocalIsIgnored() async throws {
+        var sample = try seedSyncedSample(status: .backendService)
+        sample.version = 5
+        sample.notes = "pushed edit"
+        try store.update(sample)
+
+        let list = MockList()
+        list.items = [remote(id: "backend-1", code: sample.sampleID, clientUuid: sample.id,
+                             status: "backend_service", version: 3)]
+        let hydrator = SamplesHydrator(store: store, endpointProvider: { "http://test.invalid" },
+                                       clientFactory: { _, _ in list })
+        await hydrator.pull()
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.version, 5)
+        XCTAssertEqual(stored.notes, "pushed edit")
     }
 
     func testUpsertPlacemark_ServerRowWithoutOrtusColumns_DoesNotBlankLocal() throws {
@@ -532,15 +730,17 @@ final class SyncRunnerOrtusTests: XCTestCase {
         elevation: Double = 0,
         elevationSource: String = "",
         version: Int = 1,
-        mtb: String? = nil
+        mtb: String? = nil,
+        lat: Double = 49.68,
+        lon: Double = 10.04
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
             "sample_id": code,
             "fieldtrip": "ft-1",
             "locality": "",
-            "latitude": 49.68,
-            "longitude": 10.04,
+            "latitude": lat,
+            "longitude": lon,
             "begin_date": "2026-05-19T12:00:00.000Z",
             "client_updated_at": "2026-05-19T12:00:00.000Z",
             "location_source": "location_service",
@@ -616,6 +816,7 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
     var lastCreate: SampleCreateInput?
     var lastUpdate: SampleUpdateInput?
     var duringCreate: (@MainActor () -> Void)?
+    var duringFetch: (@MainActor () -> Void)?
 
     init(log: CallLog) { self.log = log }
 
@@ -635,6 +836,7 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
     }
 
     func fetchSample(id _: String) async throws -> Sample {
+        if let duringFetch { await duringFetch() }
         guard let response = fetchResponse ?? createResponse else {
             throw SampleClientError.http(status: 404, body: "")
         }
