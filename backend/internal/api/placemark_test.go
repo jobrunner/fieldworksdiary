@@ -138,7 +138,7 @@ func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 			"Content-Type":  "application/json",
 		},
 		ExpectedStatus:  http.StatusBadRequest,
-		ExpectedContent: []string{"country_iso) is required"},
+		ExpectedContent: []string{"country_iso) must be exactly 2 letters"},
 		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
 		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
 			mountPlacemarkRoutes(app, e)
@@ -279,6 +279,11 @@ func resolveRequest(app *tests.TestApp, token string, body map[string]any, expSt
 
 func TestResolveEndpoint_ManualSetsOwner(t *testing.T) {
 	app, token, _, _ := newPlacemarkScenario(t)
+	ownerUser, err := app.Dao().FindAuthRecordByEmail("users", "pmuser@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ownerUser.Id
 	sc := resolveRequest(app, token, map[string]any{
 		"geocoding_source":  "manual",
 		"country_iso":       "ES",
@@ -290,8 +295,8 @@ func TestResolveEndpoint_ManualSetsOwner(t *testing.T) {
 		if err != nil || len(recs) != 1 {
 			t.Fatalf("manual placemarks = %d, err %v", len(recs), err)
 		}
-		if recs[0].GetString("owner") == "" {
-			t.Error("owner not set")
+		if recs[0].GetString("owner") != owner {
+			t.Errorf("owner = %q, want %q", recs[0].GetString("owner"), owner)
 		}
 	})
 	sc.Test(t)
@@ -318,6 +323,13 @@ func TestResolveEndpoint_BadSource400(t *testing.T) {
 func TestResolveEndpoint_MissingCountry400(t *testing.T) {
 	app, token, _, _ := newPlacemarkScenario(t)
 	s2 := resolveRequest(app, token, map[string]any{"geocoding_source": "manual"},
-		http.StatusBadRequest, []string{"country_iso) is required"}, nil)
+		http.StatusBadRequest, []string{"country_iso) must be exactly 2 letters"}, nil)
 	s2.Test(t)
+}
+
+func TestResolveEndpoint_InvalidCountryLength400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	sc := resolveRequest(app, token, map[string]any{"geocoding_source": "manual", "country_iso": "DEU"},
+		http.StatusBadRequest, []string{"exactly 2 letters"}, nil)
+	sc.Test(t)
 }

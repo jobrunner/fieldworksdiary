@@ -3,6 +3,7 @@ package geoplace
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"strconv"
 	"strings"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
@@ -10,20 +11,24 @@ import (
 )
 
 // DedupHash identifies a place for deduplication: SHA-256 (hex) over the
-// "|"-joined values CountryISO, the Name of every tier in adminlabels.Tiers
-// order, Island, MountainRange, Mountain. Each value is trimmed, NFC
-// normalized and lowercased; empty values stay as empty fields so positions
-// are stable.
+// "|"-joined values CountryISO, then for every tier in adminlabels.Tiers
+// order Name, Native and Level (decimal string, 0 as "0"), then Island,
+// MountainRange, Mountain. Text values are trimmed, NFC normalized and
+// lowercased; empty values stay as empty fields so positions are stable.
+// Native and Level are part of the hash so a client cannot poison a shared
+// row by sending the same names with invented native names or levels.
 func (p Place) DedupHash() string {
-	parts := make([]string, 0, 4+len(adminlabels.Tiers))
-	parts = append(parts, p.CountryISO)
+	parts := make([]string, 0, 4+3*len(adminlabels.Tiers))
+	parts = append(parts, normHashPart(p.CountryISO))
 	for _, t := range adminlabels.Tiers {
-		parts = append(parts, p.Admin[t].Name)
+		v := p.Admin[t]
+		parts = append(parts, normHashPart(v.Name), normHashPart(v.Native), strconv.Itoa(v.Level))
 	}
-	parts = append(parts, p.Island, p.MountainRange, p.Mountain)
-	for i, v := range parts {
-		parts[i] = strings.ToLower(norm.NFC.String(strings.TrimSpace(v)))
-	}
+	parts = append(parts, normHashPart(p.Island), normHashPart(p.MountainRange), normHashPart(p.Mountain))
 	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
 	return hex.EncodeToString(sum[:])
+}
+
+func normHashPart(s string) string {
+	return strings.ToLower(norm.NFC.String(strings.TrimSpace(s)))
 }

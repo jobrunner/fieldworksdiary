@@ -111,11 +111,11 @@ func TestApplyGeo_ClearsNil(t *testing.T) {
 	rec := models.NewRecord(coll)
 	v := 12.5
 	ApplyGeo(rec, SampleGeo{ElevationDEM: &v, MTBSheetNumber: "6026", MTBQuadrant: 3, TerrainFlat: true})
-	if rec.GetFloat("elevation_dem") != 12.5 || rec.GetString("mtb_quadrant") != "3" || !rec.GetBool("terrain_flat") {
+	if rec.GetFloat("elevation_dem") != 12.5 || rec.GetInt("mtb_quadrant") != 3 || !rec.GetBool("terrain_flat") {
 		t.Errorf("geo not applied: %v", rec.PublicExport())
 	}
 	ApplyGeo(rec, SampleGeo{})
-	if rec.GetFloat("elevation_dem") != 0 || rec.GetString("mtb_quadrant") != "" || rec.GetString("mtb_sheet_number") != "" {
+	if rec.GetFloat("elevation_dem") != 0 || rec.GetInt("mtb_quadrant") != 0 || rec.GetString("mtb_sheet_number") != "" {
 		t.Error("geo not cleared")
 	}
 }

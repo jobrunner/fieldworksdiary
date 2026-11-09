@@ -61,7 +61,8 @@ func samplesOrtusUp(db dbx.Builder) error {
 	add(sel("location_status", "backend_service", "inherited", "manual", "pending"))
 	add(rel("placemark"))
 	add(rel("placemark_suggestion"))
-	for _, n := range []string{"mtb_sheet_number", "mtb_sheet_name", "mtb_quadrant"} {
+	add(&schema.SchemaField{Name: "mtb_quadrant", Type: schema.FieldTypeNumber})
+	for _, n := range []string{"mtb_sheet_number", "mtb_sheet_name"} {
 		t := schema.FieldTypeText
 		add(&schema.SchemaField{Name: n, Type: t})
 	}

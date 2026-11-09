@@ -1,7 +1,8 @@
 package geoplace
 
 import (
-	"strconv"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -62,9 +63,13 @@ func LookupOrCreatePlacemark(dao *daos.Dao, p Place, source, ownerID string) (*m
 		filter = "dedup_hash = {:h} && geocoding_source = {:s} && owner = {:o}"
 		params["o"] = ownerID
 	}
-	existing, err := dao.FindFirstRecordByFilter("placemarks", filter, params)
-	if err == nil && existing != nil {
-		return existing, nil
+	// Oldest first, so concurrent duplicates converge on one row.
+	recs, err := dao.FindRecordsByFilter("placemarks", filter, "created", 1, 0, params)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if len(recs) > 0 {
+		return recs[0], nil
 	}
 	coll, err := dao.FindCollectionByNameOrId("placemarks")
 	if err != nil {
@@ -108,11 +113,7 @@ func ApplyGeo(rec *models.Record, g SampleGeo) {
 	rec.Set("bearing_inside", g.BearingInside)
 	rec.Set("mtb_sheet_number", g.MTBSheetNumber)
 	rec.Set("mtb_sheet_name", g.MTBSheetName)
-	quadrant := ""
-	if g.MTBQuadrant > 0 {
-		quadrant = strconv.Itoa(g.MTBQuadrant)
-	}
-	rec.Set("mtb_quadrant", quadrant)
+	rec.Set("mtb_quadrant", g.MTBQuadrant)
 }
 
 // ReplaceFeatures replaces the complete feature set of a sample in one

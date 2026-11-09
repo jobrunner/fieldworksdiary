@@ -94,3 +94,15 @@ func newScenarioApp(t *testing.T) *tests.TestApp {
 	}
 	return app
 }
+
+func TestFeaturesEndpoint_MissingFeaturesKey400(t *testing.T) {
+	app := newScenarioApp(t)
+	owner := makeUser(t, app, "fowner@example.com")
+	ft := makeFieldtrip(t, app, owner.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ft.Id)
+	token := authTokenFor(t, app, owner)
+	app.ResetEventCalls()
+	sc := featuresScenario(app, token, sample.Id, map[string]any{},
+		http.StatusBadRequest, []string{"features array is required"}, nil)
+	sc.Test(t)
+}

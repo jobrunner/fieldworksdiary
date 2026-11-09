@@ -39,18 +39,21 @@ func handleReplaceSampleFeatures(app core.App, c echo.Context) error {
 		return err
 	}
 	var body struct {
-		Features []featureBody `json:"features"`
+		Features *[]featureBody `json:"features"`
 	}
 	if err := c.Bind(&body); err != nil {
 		return apis.NewBadRequestError("Invalid request body.", err)
+	}
+	if body.Features == nil {
+		return apis.NewBadRequestError("The features array is required.", nil)
 	}
 	dao := app.Dao()
 	sample, err := dao.FindRecordById("samples", c.PathParam("id"))
 	if err != nil || sample.GetString("owner") != ownerID {
 		return apis.NewNotFoundError("sample not found", err)
 	}
-	fs := make([]geoplace.Feature, 0, len(body.Features))
-	for _, f := range body.Features {
+	fs := make([]geoplace.Feature, 0, len(*body.Features))
+	for _, f := range *body.Features {
 		fs = append(fs, geoplace.Feature{
 			SourceID: f.SourceID, SourceName: f.SourceName, Layer: f.Layer,
 			FeatureID: f.FeatureID, Properties: f.Properties, License: f.License,

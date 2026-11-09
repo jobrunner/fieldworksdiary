@@ -59,8 +59,8 @@ func placeFromBody(body map[string]any) (geoplace.Place, error) {
 		return strings.TrimSpace(v)
 	}
 	iso := strings.ToUpper(str("country_iso"))
-	if iso == "" {
-		return geoplace.Place{}, apis.NewBadRequestError("Country code (country_iso) is required.", nil)
+	if len(iso) != 2 || !isASCIILetters(iso) {
+		return geoplace.Place{}, apis.NewBadRequestError("Country code (country_iso) must be exactly 2 letters.", nil)
 	}
 	p := geoplace.Place{
 		CountryISO:    iso,
@@ -155,6 +155,15 @@ func handleClearManualPlacemark(app core.App, c echo.Context) error {
 		return apis.NewApiError(http.StatusInternalServerError, "could not clear placemark", err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"status": "cleared"})
+}
+
+func isASCIILetters(s string) bool {
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 // decodeJSONMap reads the request body as a JSON object. c.Bind is not

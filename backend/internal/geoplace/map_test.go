@@ -255,3 +255,14 @@ func TestDedupHash_StableAndCaseInsensitive(t *testing.T) {
 		t.Error("island vs mountain must differ")
 	}
 }
+
+func TestDedupHash_NativeAndLevelMatter(t *testing.T) {
+	tier := adminlabels.Tiers[1]
+	mk := func(native string, level int) Place {
+		return Place{CountryISO: "ES", Admin: map[adminlabels.Tier]AdminValue{tier: {Name: "Canarias", Native: native, Level: level}}}
+	}
+	base := mk("Canarias", 4).DedupHash()
+	if base == mk("Fake", 4).DedupHash() || base == mk("Canarias", 5).DedupHash() {
+		t.Error("native/level must change the hash")
+	}
+}
