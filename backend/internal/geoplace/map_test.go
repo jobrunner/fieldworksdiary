@@ -129,7 +129,7 @@ func TestFromOrtus_FeatureFields(t *testing.T) {
 	q := loadQuery(t, "query_de_ochsenfurt.json")
 	res := FromOrtus(q, q.WGS84.Lat, q.WGS84.Lon, adminlabels.Default())
 	f0, f1 := res.Features[0], res.Features[1]
-	if f0.FeatureID != "6326" || f0.SourceID != "tk25-blattschnitt-de" || f0.Layer != "sheets" ||
+	if f0.FeatureID != "0" || f0.SourceID != "tk25-blattschnitt-de" || f0.Layer != "sheets" ||
 		f0.SourceName != "tk25-blattschnitt-de.gpkg" || f0.Properties["blattname"] != "Ochsenfurt" {
 		t.Errorf("f0 = %+v", f0)
 	}
@@ -264,5 +264,24 @@ func TestDedupHash_NativeAndLevelMatter(t *testing.T) {
 	base := mk("Canarias", 4).DedupHash()
 	if base == mk("Fake", 4).DedupHash() || base == mk("Canarias", 5).DedupHash() {
 		t.Error("native/level must change the hash")
+	}
+}
+
+func TestSheetNumber(t *testing.T) {
+	cases := []struct {
+		name  string
+		props map[string]any
+		want  string
+	}{
+		{"string id", map[string]any{"id": "6326", "dtknummer": "9999"}, "6326"},
+		{"fallback dtknummer", map[string]any{"dtknummer": "6326"}, "6326"},
+		{"empty id falls back", map[string]any{"id": " ", "dtknummer": "6326"}, "6326"},
+		{"numeric id", map[string]any{"id": float64(6326)}, "6326"},
+		{"none", map[string]any{"blattname": "x"}, ""},
+	}
+	for _, c := range cases {
+		if got := sheetNumber(c.props); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }

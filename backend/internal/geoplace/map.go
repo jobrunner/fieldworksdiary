@@ -3,6 +3,7 @@ package geoplace
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
@@ -125,13 +126,33 @@ func rawIDString(raw json.RawMessage) string {
 	return string(raw)
 }
 
+// sheetNumber liest die Blattnummer aus den Feature-Properties (id, sonst
+// dtknummer). Die Feature-ID von Ortus ist nur ein Zeilenindex.
+func sheetNumber(props map[string]any) string {
+	for _, key := range []string{"id", "dtknummer"} {
+		switch v := props[key].(type) {
+		case string:
+			if s := strings.TrimSpace(v); s != "" {
+				return s
+			}
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		case json.Number:
+			if s := v.String(); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 func mapMTB(results []services.OrtusSourceResult, lat, lon float64, out *SampleGeo) {
 	for _, sr := range results {
 		if sr.SourceID != tk25Source || len(sr.Features) == 0 {
 			continue
 		}
 		f := sr.Features[0]
-		out.MTBSheetNumber = rawIDString(f.ID)
+		out.MTBSheetNumber = sheetNumber(f.Properties)
 		if name, ok := f.Properties["blattname"].(string); ok {
 			out.MTBSheetName = strings.TrimSpace(name)
 		}

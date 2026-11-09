@@ -6,7 +6,7 @@
       "source_id": "tk25-blattschnitt-de",
       "source_name": "tk25-blattschnitt-de.gpkg",
       "features": [
-        {"id": 6326, "layer": "sheets", "properties": {"id": "6326", "dtknummer": "6326", "blattname": "Ochsenfurt"}}
+        {"id": 0, "layer": "sheets", "properties": {"id": "6326", "dtknummer": "6326", "blattname": "Ochsenfurt", "pk_uid": 2218}}
       ],
       "feature_count": 1,
       "query_time_ms": 2,

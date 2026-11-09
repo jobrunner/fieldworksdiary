@@ -72,7 +72,7 @@ func TestOrtusQuery_DecodesDE(t *testing.T) {
 			continue
 		}
 		for _, f := range r.Features {
-			if f.Properties["dtknummer"] == "6326" && string(f.ID) == "6326" {
+			if f.Properties["dtknummer"] == "6326" && f.Properties["id"] == "6326" {
 				found = true
 			}
 		}
