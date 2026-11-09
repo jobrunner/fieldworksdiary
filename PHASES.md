@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`) — O1 (Backend) done 2026-11-09, O2 (iOS) in progress, O3 (Backfill/Aufräumen) offen; parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`) — O1 (Backend) done 2026-11-09, O2 (iOS) implementiert – wartet auf Test durch Jo, O3 (Backfill/Aufräumen) offen; parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1084,14 +1084,14 @@ Demo O1 (lokaler Ortus-Lauf, 2026-11-09):
 - Label-Tabelle ist ein ungeprüfter Entwurf — Jo reviewt sie pro Land
   vor der O2-UI.
 
-Phase O2 – iOS — **in progress** (gestartet 2026-11-09)
-- [ ] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
-- [ ] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
-- [ ] Task 14: GRDB-Migration v13 und Stores
-- [ ] Task 15: Ortus-Client und Ortsauflösung beim Anlegen
-- [ ] Task 16: Sync – Placemark, Sample, Features
-- [ ] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
-- [ ] Task 18: Phase O2 abschließen
+Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026-11-09; App-Unit-Tests auf Tahoe nur via Xcode-IDE lauffähig, daher noch ungelaufen)
+- [x] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
+- [x] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
+- [x] Task 14: GRDB-Migration v13 und Stores
+- [x] Task 15: Ortus-Client und Ortsauflösung beim Anlegen
+- [x] Task 16: Sync – Placemark, Sample, Features
+- [x] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
+- [ ] Task 18: Phase O2 abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach O2 done
 
 Phase O3 – Backfill und Aufräumen
 - [ ] Task 19: Backfill-Kommando
