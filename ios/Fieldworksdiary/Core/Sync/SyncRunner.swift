@@ -206,6 +206,16 @@ struct SampleUpdatePayload: Codable, Equatable {
         clearsSuggestion = (try? c.decode(Bool.self, forKey: .clearsSuggestion)) ?? false
     }
 
+    /// Union of the flags (a parked mutation's flags ride along with
+    /// the next update of the same sample).
+    func merged(with other: SampleUpdatePayload) -> SampleUpdatePayload {
+        SampleUpdatePayload(
+            pushFeatures: pushFeatures || other.pushFeatures,
+            coordinateChanged: coordinateChanged || other.coordinateChanged,
+            clearsSuggestion: clearsSuggestion || other.clearsSuggestion
+        )
+    }
+
     static func decode(_ data: Data) -> SampleUpdatePayload {
         (try? JSONDecoder().decode(SampleUpdatePayload.self, from: data)) ?? SampleUpdatePayload()
     }
@@ -356,7 +366,7 @@ final class SyncRunner: ObservableObject {
                 guard let self else { return }
                 try? await Task.sleep(for: self.retryInterval)
                 if Task.isCancelled { return }
-                if let count = try? self.mutationsStore.count(), count > 0 {
+                if let count = try? self.mutationsStore.activeCount(), count > 0 {
                     self.kick()
                 }
             }
@@ -458,13 +468,19 @@ final class SyncRunner: ObservableObject {
             // Compared before merging, so server echo differences don't
             // count as local edits.
             let editedDuringPost = Self.createInput(fresh, location: syncLocation(fresh)) != input
+            // Place data the user (or the resolver) wrote during the
+            // POST wins over the response; the queued update pushes it.
+            let keepLocalPlace = fresh.updatedAt != current.updatedAt
+                || hasActiveQueuedMutation(localId, excluding: [mutation.id])
             fresh.backendId = created.id
             fresh.fieldtrip = created.fieldtrip
             // An empty server locality must not wipe a local one.
             fresh.locality = created.locality ?? fresh.locality
             fresh.version = created.version
             Self.applyCodes(created, sentCode: input.code ?? fresh.sampleID, to: &fresh)
-            fresh.mergeServerLocation(created, localPlacemarkID: localPlacemarkID)
+            if !keepLocalPlace {
+                fresh.mergeServerLocation(created, localPlacemarkID: localPlacemarkID)
+            }
             fresh.syncStatus = .synced
             fresh.syncError = nil
             try store.update(fresh)
@@ -568,7 +584,13 @@ final class SyncRunner: ObservableObject {
             return
         }
 
-        let payload = SampleUpdatePayload.decode(mutation.payloadJson)
+        // Mutations parked after an earlier 409 give-up ride along:
+        // their flags join this PATCH and they are done when it lands.
+        let parked = (try? mutationsStore.parked(entityType: .sample, entityId: localID)) ?? []
+        let payload = parked.reduce(SampleUpdatePayload.decode(mutation.payloadJson)) {
+            $0.merged(with: SampleUpdatePayload.decode($1.payloadJson))
+        }
+        let absorbed = Set(parked.map(\.id))
         try? store.setSyncState(id: localID, status: .syncing, error: nil)
 
         do {
@@ -577,16 +599,19 @@ final class SyncRunner: ObservableObject {
 
             let outcome: PatchOutcome?
             do {
-                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload, via: client)
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
+                                              mutationID: mutation.id, absorbed: absorbed, via: client)
             } catch let SampleClientError.conflict(serverVersion, _) {
                 Log.sync.notice(
                     "sample update 409 (server version \(serverVersion, privacy: .public)), adopting and retrying"
                 )
                 try await adoptAfterConflict(localID: localID, backendID: backendID, via: client)
-                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload, via: client)
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
+                                              mutationID: mutation.id, absorbed: absorbed, via: client)
             }
             guard let outcome else {
                 try? mutationsStore.dequeue(mutation.id)
+                absorbed.forEach { try? mutationsStore.dequeue($0) }
                 return
             }
 
@@ -600,6 +625,7 @@ final class SyncRunner: ObservableObject {
                 return
             }
             try? mutationsStore.dequeue(mutation.id)
+            absorbed.forEach { try? mutationsStore.dequeue($0) }
 
             // Pick up any photos that the edit added on top of an
             // already-synced sample (same best-effort semantics as
@@ -620,12 +646,16 @@ final class SyncRunner: ObservableObject {
             // writer is racing us. Keep the edit queued; give up after
             // a few passes so it can't loop forever.
             if mutation.attempts + 1 >= Self.maxConflictAttempts {
-                Log.sync.warning("sample update gave up after repeated 409")
+                Log.sync.warning("sample update gave up after repeated 409, parked")
                 try? store.setSyncState(
                     id: localID, status: .failed,
-                    error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Deine Änderung ist nur lokal gespeichert – erneut speichern, um sie zu übertragen."
+                    error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Deine Änderung ist nur lokal gespeichert – tippe auf „Erneut senden“, um sie zu übertragen."
                 )
-                try? mutationsStore.dequeue(mutation.id)
+                // Park (not drop) with the union of all flags, so
+                // „Erneut senden“ replays exactly this push.
+                try? mutationsStore.updatePayload(mutation.id, payload: payload.encoded, entityId: localID)
+                absorbed.forEach { try? mutationsStore.dequeue($0) }
+                try? mutationsStore.park(mutation.id, error: "409 conflict")
             } else {
                 try? store.setSyncState(id: localID, status: .failed,
                                         error: "Versionskonflikt – wird erneut versucht.")
@@ -655,6 +685,8 @@ final class SyncRunner: ObservableObject {
         localID: String,
         backendID: String,
         payload: SampleUpdatePayload,
+        mutationID: String,
+        absorbed: Set<String>,
         via client: SamplePushClient
     ) async throws -> PatchOutcome? {
         guard let row = try store.fetchById(localID) else { return nil }
@@ -693,7 +725,15 @@ final class SyncRunner: ObservableObject {
         fresh.version = max(fresh.version, updated.version)
         fresh.locality = updated.locality ?? fresh.locality
         Self.applyCodes(updated, sentCode: input.code, to: &fresh)
-        fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
+        // Place data (placemark, suggestion, status, geo) written while
+        // the PATCH was in flight — a manual place, accept/dismiss of a
+        // suggestion, a coordinate correction — is user-owned and wins;
+        // its own queued update carries it. Same rule as `adoptServer`.
+        let changedMeanwhile = fresh.updatedAt != current.updatedAt
+            || hasActiveQueuedMutation(localID, excluding: absorbed.union([mutationID]))
+        if !changedMeanwhile {
+            fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
+        }
         fresh.syncStatus = .synced
         fresh.syncError = nil
         try store.update(fresh)
@@ -879,6 +919,14 @@ final class SyncRunner: ObservableObject {
             placemarkClient: placemarkClientFactory(endpoint, auth),
             featuresClient: featuresClientFactory(endpoint, auth)
         )
+    }
+
+    /// Another active (not parked) sample mutation for `localID`,
+    /// ignoring the ids in `excluding`.
+    private func hasActiveQueuedMutation(_ localID: String, excluding: Set<String>) -> Bool {
+        ((try? mutationsStore.fetch(entityType: .sample)) ?? []).contains {
+            $0.entityId == localID && !$0.isParked && !excluding.contains($0.id)
+        }
     }
 
     private func hasQueuedMutation(_ localID: String) -> Bool {

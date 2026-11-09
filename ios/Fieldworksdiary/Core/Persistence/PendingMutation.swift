@@ -49,4 +49,14 @@ struct PendingMutation: Codable, FetchableRecord, MutablePersistableRecord, Iden
     }
 
     static let databaseTableName = "pending_mutations"
+
+    /// `attempts` value of a parked mutation: the SyncRunner gave up
+    /// on it (repeated 409) but keeps it — with its payload flags —
+    /// until the user taps „Erneut senden“ or a later update of the
+    /// same sample succeeds. Parked rows are never picked up by a pass.
+    static let parkedAttempts = -1
+
+    var isParked: Bool {
+        attempts < 0
+    }
 }

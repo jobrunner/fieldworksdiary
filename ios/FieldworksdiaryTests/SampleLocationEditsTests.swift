@@ -120,6 +120,31 @@ final class SampleLocationEditsTests: XCTestCase {
         XCTAssertEqual(queued.count, 1)
         XCTAssertEqual(queued.first?.op, .update)
         XCTAssertEqual(queued.first?.entityId, sample.id)
+        let payload = SampleUpdatePayload.decode(queued.first?.payloadJson ?? Data())
+        XCTAssertTrue(payload.clearsSuggestion, "no suggestion locally ⇒ make sure the server has none either")
+        XCTAssertFalse(payload.pushFeatures, "no local features ⇒ never PUT an empty set over the server's")
+    }
+
+    func testResendFailed_RevivesParkedMutationWithItsPayload() throws {
+        let sample = try seedPushed(status: .backendService)
+        let flags = SampleUpdatePayload(pushFeatures: true, coordinateChanged: true)
+        let queued = try mutations.enqueue(entityType: .sample, entityId: sample.id, op: .update,
+                                           payload: flags.encoded)
+        try mutations.park(queued.id, error: "409 conflict")
+        try store.setSyncState(id: sample.id, status: .failed, error: "Konflikt")
+        XCTAssertTrue(try mutations.fetchAllOrdered().isEmpty, "parked rows are not picked up by a pass")
+        XCTAssertEqual(try mutations.activeCount(), 0)
+
+        try store.resendFailed(id: sample.id, mutationsStore: mutations)
+
+        let all = try mutations.fetch(entityType: .sample)
+        XCTAssertEqual(all.count, 1, "the parked mutation is revived, not duplicated")
+        XCTAssertEqual(all.first?.id, queued.id)
+        XCTAssertFalse(all.first?.isParked ?? true)
+        XCTAssertEqual(all.first?.attempts, 0)
+        XCTAssertEqual(SampleUpdatePayload.decode(all.first?.payloadJson ?? Data()), flags)
+        XCTAssertEqual(try mutations.fetchAllOrdered().map(\.id), [queued.id])
+        XCTAssertEqual(try store.fetchById(sample.id)?.syncStatus, .pending)
     }
 
     func testResendFailed_WithQueuedMutation_DoesNotDuplicate() throws {

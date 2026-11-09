@@ -123,7 +123,7 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         for _ in 0 ..< 20 {
             await runUntilQuiescent(runner)
             try? await Task.sleep(for: .milliseconds(20))
-            if try mutations.count() == 0 { break }
+            if try mutations.activeCount() == 0 { break }
         }
         // Further passes must not pick the row up again.
         await runUntilQuiescent(runner)
@@ -132,7 +132,11 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
 
         XCTAssertEqual(mock.updateInputs.count, SyncRunner.maxConflictAttempts * 2,
                        "two tries per pass, then it stops")
-        XCTAssertEqual(try mutations.count(), 0, "no endless retry, no create re-adoption")
+        XCTAssertEqual(try mutations.activeCount(), 0, "no endless retry, no create re-adoption")
+        let parked = try mutations.fetch(entityType: .sample)
+        XCTAssertEqual(parked.count, 1, "the edit's mutation is parked for „Erneut senden“, not dropped")
+        XCTAssertTrue(parked.first?.isParked ?? false)
+        XCTAssertEqual(parked.first?.op, .update)
         let stored = try XCTUnwrap(store.fetchById(local.id))
         XCTAssertEqual(stored.syncStatus, .failed)
         XCTAssertNotNil(stored.syncError)

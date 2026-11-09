@@ -555,6 +555,166 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(try mutations.count(), 0)
     }
 
+    // MARK: - Task 17 fix round 1: edits during the round trip (I1)
+
+    func testUpdate_DismissDuringPatch_ResponseDoesNotRestoreSuggestion() async throws {
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        sample.placemarkSuggestion = "pmsuggestion01"
+        try store.update(sample)
+        sample.notes = "edit"
+        try store.saveEdits(sample, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        // The first PATCH (notes) echoes the server's suggestion.
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000001", suggestion: "pmsuggestion01", version: 3)
+        push.duringUpdate = { [store, mutations] in
+            guard let store, let mutations else { return }
+            // The user taps „Verwerfen“ while the PATCH is in flight.
+            try? store.dismissPlacemarkSuggestion(id: sample.id, mutationsStore: mutations)
+            push.duringUpdate = nil
+            push.updateResponse = self.remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                              placemark: "pmmanual000001", version: 4)
+        }
+        await runUntilOutboxEmpty(makeRunner(push: push))
+
+        XCTAssertEqual(push.updateCount, 2, "notes PATCH, then the queued dismiss")
+        XCTAssertEqual(push.lastUpdate?.location.wireBody["placemark_suggestion"] as? String, "",
+                       "the dismiss still sends the clear")
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertNil(stored.placemarkSuggestion, "the in-flight response must not bring it back")
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
+    func testUpdate_ManualPlaceDuringPatch_IsNotReverted() async throws {
+        var sample = try seedSyncedSample(status: .backendService)
+        sample.placemark = "pmbackend00001"
+        try store.update(sample)
+        sample.notes = "edit"
+        try store.saveEdits(sample, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                     placemark: "pmbackend00001", version: 3)
+        let pm = MockPlacemarks(log: log)
+        pm.resolveResponse = remotePlacemark(id: "pmmanual000009", source: "manual", owner: "u1")
+        var manualID = ""
+        push.duringUpdate = { [store, placemarks, mutations, place] in
+            guard let store, let placemarks, let mutations else { return }
+            manualID = (try? store.setManualPlace(id: sample.id, place: place, placemarks: placemarks,
+                                                  mutationsStore: mutations))?.id ?? ""
+            push.duringUpdate = nil
+            push.updateResponse = self.remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                              placemark: "pmmanual000009", version: 4)
+        }
+        await runUntilOutboxEmpty(makeRunner(push: push, placemarks: pm))
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.locationStatus, .manual, "the response of the older PATCH must not revert it")
+        XCTAssertEqual(stored.placemark, manualID)
+        XCTAssertEqual(push.lastUpdate?.location.locationStatus, .manual)
+        XCTAssertEqual(push.lastUpdate?.location.wireBody["placemark"] as? String, "pmmanual000009")
+    }
+
+    func testCreate_ManualPlaceDuringPost_IsNotReverted() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service",
+                                     placemark: "pmbackend00001")
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000009", version: 2)
+        let pm = MockPlacemarks(log: log)
+        pm.resolveResponse = remotePlacemark(id: "pmmanual000009", source: "manual", owner: "u1")
+        var manualID = ""
+        push.duringCreate = { [store, placemarks, mutations, place] in
+            guard let store, let placemarks, let mutations else { return }
+            manualID = (try? store.setManualPlace(id: sample.id, place: place, placemarks: placemarks,
+                                                  mutationsStore: mutations))?.id ?? ""
+        }
+        await runUntilOutboxEmpty(makeRunner(push: push, placemarks: pm))
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.backendId, "backend-1")
+        XCTAssertEqual(stored.locationStatus, .manual)
+        XCTAssertEqual(stored.placemark, manualID)
+        XCTAssertEqual(push.lastUpdate?.location.locationStatus, .manual, "missed edit pushed as update")
+    }
+
+    // MARK: - Task 17 fix round 1: parked mutations after the 409 give-up (I2)
+
+    func testGiveUp_ParksMutationWithFlags_AndResendSendsTheClear() async throws {
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        sample.placemarkSuggestion = "pmsuggestion01"
+        try store.update(sample)
+        try store.dismissPlacemarkSuggestion(id: sample.id, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateError = SampleClientError.conflict(currentVersion: 9, body: "")
+        push.fetchResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                    placemark: "pmmanual000001", suggestion: "pmsuggestion01", version: 9)
+        let runner = makeRunner(push: push)
+        await runUntilOutboxEmpty(runner)
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(push.updateCount, SyncRunner.maxConflictAttempts * 2, "no automatic retry once parked")
+        let parked = try XCTUnwrap(mutations.fetch(entityType: .sample).first)
+        XCTAssertTrue(parked.isParked)
+        XCTAssertTrue(SampleUpdatePayload.decode(parked.payloadJson).clearsSuggestion, "flags survive")
+        XCTAssertEqual(try store.fetchById(sample.id)?.syncStatus, .failed)
+
+        // „Erneut senden“ revives exactly that mutation.
+        push.updateError = nil
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000001", version: 10)
+        try store.resendFailed(id: sample.id, mutationsStore: mutations)
+        await runUntilOutboxEmpty(runner)
+
+        XCTAssertEqual(push.lastUpdate?.location.wireBody["placemark_suggestion"] as? String, "")
+        XCTAssertEqual(try mutations.count(), 0)
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.syncStatus, .synced)
+        XCTAssertNil(stored.placemarkSuggestion)
+    }
+
+    func testLaterUpdate_AbsorbsParkedFlags() async throws {
+        var sample = try seedSyncedSample(status: .manual)
+        sample.placemark = "pmmanual000001"
+        try store.update(sample)
+        let parked = try mutations.enqueue(entityType: .sample, entityId: sample.id, op: .update,
+                                           payload: SampleUpdatePayload(clearsSuggestion: true).encoded)
+        try mutations.park(parked.id, error: "409 conflict")
+        sample.notes = "next edit"
+        try store.saveEdits(sample, mutationsStore: mutations)
+
+        let push = MockPush(log: log)
+        push.updateResponse = remote(id: "backend-1", code: sample.sampleID, status: "manual",
+                                     placemark: "pmmanual000001", version: 3)
+        await runUntilOutboxEmpty(makeRunner(push: push))
+
+        XCTAssertEqual(push.updateCount, 1)
+        XCTAssertEqual(push.lastUpdate?.location.wireBody["placemark_suggestion"] as? String, "",
+                       "the parked dismiss rides along with the next successful PATCH")
+        XCTAssertEqual(try mutations.count(), 0, "parked row is done too")
+    }
+
+    func testParkedMutation_DoesNotBlockOtherSamples() async throws {
+        let blocked = try seedSyncedSample(status: .backendService)
+        let parked = try mutations.enqueue(entityType: .sample, entityId: blocked.id, op: .update, payload: Data())
+        try mutations.park(parked.id, error: "409 conflict")
+        let other = try store.createLocal(lat: 49.7, lon: 10.1, collectedFrom: date(2026, 5, 19, 15))
+
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-2", code: other.sampleID, status: "backend_service")
+        await runUntilOutboxEmpty(makeRunner(push: push))
+
+        XCTAssertEqual(push.updateCount, 0, "parked update is not retried")
+        XCTAssertEqual(try store.fetchById(other.id)?.backendId, "backend-2")
+        XCTAssertEqual(try mutations.count(), 1)
+        XCTAssertEqual(try mutations.activeCount(), 0)
+    }
+
     // MARK: - hydration / enrichment
 
     func testHydration_OfflineSampleEnrichedByBackend_GetsPlacemarkAndFeatures() async throws {
@@ -790,6 +950,16 @@ final class SyncRunnerOrtusTests: XCTestCase {
         )
     }
 
+    /// Passes until no active mutation is left (a mutation queued
+    /// during a pass only runs in the next one).
+    private func runUntilOutboxEmpty(_ runner: SyncRunner) async {
+        for _ in 0 ..< 10 {
+            await runUntilQuiescent(runner)
+            try? await Task.sleep(for: .milliseconds(20))
+            if (try? mutations.activeCount()) == 0 { return }
+        }
+    }
+
     private func runUntilQuiescent(_ runner: SyncRunner) async {
         runner.kick()
         for _ in 0 ..< 300 {
@@ -817,6 +987,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
         clientUuid: String? = nil,
         status: String = "",
         placemark: String = "",
+        suggestion: String = "",
         elevation: Double = 0,
         elevationSource: String = "",
         version: Int = 1,
@@ -840,7 +1011,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
             "elevation_source": elevationSource,
             "location_status": status,
             "placemark": placemark,
-            "placemark_suggestion": "",
+            "placemark_suggestion": suggestion,
             "mtb_sheet_number": mtb ?? "",
             "mtb_sheet_name": mtb == nil ? "" : "Ochsenfurt",
             "mtb_quadrant": mtb == nil ? 0 : 1,
@@ -907,6 +1078,11 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
     var lastUpdate: SampleUpdateInput?
     var duringCreate: (@MainActor () -> Void)?
     var duringFetch: (@MainActor () -> Void)?
+    /// Runs while the PATCH is "in flight" (once per call).
+    var duringUpdate: (@MainActor () -> Void)?
+    /// Thrown by `updateSample` while set (e.g. a 409).
+    var updateError: Error?
+    var updateCount = 0
 
     init(log: CallLog) { self.log = log }
 
@@ -921,6 +1097,9 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
     func updateSample(id _: String, input: SampleUpdateInput) async throws -> Sample {
         log.calls.append("update")
         lastUpdate = input
+        updateCount += 1
+        if let duringUpdate { await duringUpdate() }
+        if let updateError { throw updateError }
         guard let updateResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
         return updateResponse
     }

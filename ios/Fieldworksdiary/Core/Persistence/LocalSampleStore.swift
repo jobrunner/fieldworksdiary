@@ -410,19 +410,39 @@ final class LocalSampleStore {
         }
     }
 
-    /// „Erneut senden“ for a `.failed` sample. A pushed row whose
-    /// update the SyncRunner gave up on (repeated 409) gets a fresh
-    /// `.sample/.update`; an unpushed row without a queued create gets
-    /// its `.create` back. If a mutation is still queued, only the
-    /// state is reset (the caller kicks the sync). No-op for rows that
-    /// are not failed.
+    /// „Erneut senden“ for a `.failed` sample.
+    ///
+    /// - The update the SyncRunner parked after repeated 409s is
+    ///   revived with its payload flags (suggestion clear, coordinate
+    ///   change, features).
+    /// - Without a parked one and nothing queued, a pushed row gets a
+    ///   fresh `.sample/.update` carrying the flags that are safe to
+    ///   derive from the row (`clearsSuggestion` when it has no
+    ///   suggestion, `pushFeatures` when it has local features); an
+    ///   unpushed row gets its `.create` back.
+    /// - If an active mutation is still queued, only the state is reset
+    ///   (the caller kicks the sync).
+    ///
+    /// No-op for rows that are not failed.
     func resendFailed(id: String, mutationsStore: PendingMutationsStore) throws {
         guard let sample = try fetchById(id), sample.syncStatus == .failed else { return }
         let queued = try mutationsStore.fetch(entityType: .sample).filter { $0.entityId == id }
         try setSyncState(id: id, status: .pending, error: nil)
+        if queued.contains(where: \.isParked) {
+            try mutationsStore.revive(entityType: .sample, entityId: id)
+            return
+        }
         guard queued.isEmpty else { return }
         if let backendID = sample.backendId, !backendID.isEmpty {
-            _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .update, payload: Data())
+            let featureCount = try database.reader.read { db in
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM local_sample_features WHERE sample_id = ?",
+                                 arguments: [id]) ?? 0
+            }
+            let payload = SampleUpdatePayload(
+                pushFeatures: featureCount > 0,
+                clearsSuggestion: sample.placemarkSuggestion == nil
+            )
+            _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .update, payload: payload.encoded)
         } else {
             _ = try mutationsStore.enqueue(entityType: .sample, entityId: id, op: .create, payload: Data())
         }
