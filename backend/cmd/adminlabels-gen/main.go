@@ -1,12 +1,20 @@
 // Command adminlabels-gen converts the OSM admin-level YAML reference into
-// the canonical admin_labels.json (see shared/admin-labels/).
+// a draft of the canonical admin_labels.json (see shared/admin-labels/).
+//
+// WARNING: the committed admin_labels.json is hand-curated (per-country
+// column mapping reviewed and corrected after generation). Regenerating
+// it discards those corrections. The tool therefore refuses to overwrite
+// an existing output file unless -force is given; diff and re-apply the
+// curation by hand afterwards.
 package main
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 
@@ -54,12 +62,29 @@ func convert(doc yamlDoc) *adminlabels.Table {
 	return t
 }
 
+const curatedWarning = "warning: the committed admin_labels.json is hand-curated; " +
+	"generated output is only a draft — review and re-apply the curation before committing"
+
+// writeOutput writes data to path. An existing file is only replaced
+// when force is set, so the hand-curated table is never clobbered by
+// accident. The curation warning always goes to stderr.
+func writeOutput(path string, data []byte, force bool, stderr io.Writer) error {
+	fmt.Fprintln(stderr, curatedWarning)
+	if _, err := os.Stat(path); err == nil && !force {
+		return fmt.Errorf("%s exists; refusing to overwrite without -force", path)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
 func main() {
 	in := flag.String("in", "", "input YAML")
 	out := flag.String("out", "", "output JSON")
+	force := flag.Bool("force", false, "overwrite an existing output file (discards hand curation)")
 	flag.Parse()
 	if *in == "" || *out == "" {
-		fmt.Fprintln(os.Stderr, "usage: adminlabels-gen -in <yaml> -out <json>")
+		fmt.Fprintln(os.Stderr, "usage: adminlabels-gen -in <yaml> -out <json> [-force]")
 		os.Exit(2)
 	}
 	raw, err := os.ReadFile(*in)
@@ -80,7 +105,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(*out, buf.Bytes(), 0o644); err != nil {
+	if err := writeOutput(*out, buf.Bytes(), *force, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
