@@ -1,14 +1,19 @@
 package services
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 	_ "go.mett.io/fwd-backend/migrations"
 )
@@ -178,5 +183,110 @@ func TestOrtusQuery_CachesSecondCall(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&hits); n != 1 {
 		t.Errorf("server hits = %d, want 1", n)
+	}
+}
+
+// bufLogger returns a JSON slog logger writing into the returned buffer.
+func bufLogger() (*slog.Logger, *bytes.Buffer) {
+	var buf bytes.Buffer
+	return slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})), &buf
+}
+
+func assertNoCoordinates(t *testing.T, what, s string) {
+	t.Helper()
+	for _, leak := range []string{"lat=", "lon=", "49.681616", "10.039652", "49.68", "10.03"} {
+		if strings.Contains(s, leak) {
+			t.Errorf("%s leaks %q: %s", what, leak, s)
+		}
+	}
+}
+
+func TestOrtusQuery_UnreachableErrorHasNoCoordinates(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	base := srv.URL
+	srv.Close() // connection refused from now on
+
+	logger, logs := bufLogger()
+	o := &Ortus{BaseURL: base, MaxRetries: 1, Logger: logger}
+	_, err := o.Query(context.Background(), 49.681616, 10.039652)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	assertNoCoordinates(t, "error", err.Error())
+	assertNoCoordinates(t, "log", logs.String())
+	if !strings.Contains(err.Error(), "/api/v1/query") {
+		t.Errorf("error should still name the path: %v", err)
+	}
+}
+
+func TestOrtusQuery_4xxErrorOmitsBodyAndLogsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A service that echoes the query in its error body.
+		http.Error(w, "bad point lat=49.681616 lon=10.039652", http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	logger, logs := bufLogger()
+	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
+	_, err := o.Query(context.Background(), 49.681616, 10.039652)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	assertNoCoordinates(t, "error", err.Error())
+	assertNoCoordinates(t, "log", logs.String())
+	var se *HTTPStatusError
+	if !errors.As(err, &se) || se.StatusCode != http.StatusBadRequest {
+		t.Errorf("err = %v, want HTTPStatusError 400", err)
+	}
+	if !strings.Contains(logs.String(), `"status":400`) {
+		t.Errorf("log lacks status code: %s", logs.String())
+	}
+}
+
+func TestOrtusQuery_5xxLogsStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	logger, logs := bufLogger()
+	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
+	if _, err := o.Query(context.Background(), 49.681616, 10.039652); err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(logs.String(), `"status":502`) {
+		t.Errorf("log lacks status code: %s", logs.String())
+	}
+}
+
+func TestOrtusQuery_CacheWriteErrorStillReturnsResponse(t *testing.T) {
+	body := ortusFixture(t, "query_de_ochsenfurt.json")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatalf("test-app: %v", err)
+	}
+	t.Cleanup(app.Cleanup)
+	app.OnModelBeforeCreate("geocache").Add(func(*core.ModelEvent) error {
+		return errors.New("disk full")
+	})
+
+	logger, logs := bufLogger()
+	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: &Geocache{Dao: app.Dao()}, Logger: logger}
+	got, err := o.Query(context.Background(), 49.681616, 10.039652)
+	if err != nil {
+		t.Fatalf("Query: %v, want response despite cache write error", err)
+	}
+	if got.Gazetteer == nil || got.Gazetteer.Admin == nil || got.Gazetteer.Admin.CountryISO != "DE" {
+		t.Fatalf("bad decode: %+v", got.Gazetteer)
+	}
+	if !strings.Contains(logs.String(), `"level":"WARN"`) ||
+		!strings.Contains(logs.String(), `"service":"ortus"`) ||
+		!strings.Contains(logs.String(), "cache write") {
+		t.Errorf("missing cache-write warning: %s", logs.String())
 	}
 }
