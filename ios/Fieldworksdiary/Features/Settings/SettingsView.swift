@@ -206,6 +206,7 @@ struct SettingsScreen: View {
     /// Best-effort sync to the users record. Skipped when the record
     /// already holds these values (e.g. after taking them from it).
     private func pushUserSettings() {
+        pushTask?.cancel()
         let format = config.sampleIDFormat
         let prefix = config.sampleIDPrefix
         let offset = config.sampleIDOffset
@@ -217,7 +218,6 @@ struct SettingsScreen: View {
            user.dayCutoffHour == cutoff
         { return }
         // Debounced: typing a prefix must not send one PATCH per key.
-        pushTask?.cancel()
         pushTask = Task {
             try? await Task.sleep(for: .milliseconds(800))
             guard !Task.isCancelled else { return }
