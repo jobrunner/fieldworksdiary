@@ -37,6 +37,7 @@ final class HomeViewModel: ObservableObject {
     private let fieldtrips: LocalFieldtripStore
     private let localities: LocalLocalityStore
     private let photos: LocalPhotoStore
+    private let placemarks: LocalPlacemarkStore?
 
     /// Cutoff hour drives "what is today's collecting day". 5h matches
     /// the backend default (and the per-user override that will land
@@ -49,13 +50,15 @@ final class HomeViewModel: ObservableObject {
         samples: LocalSampleStore,
         fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
-        photos: LocalPhotoStore
+        photos: LocalPhotoStore,
+        placemarks: LocalPlacemarkStore? = nil
     ) {
         self.auth = auth
         self.samples = samples
         self.fieldtrips = fieldtrips
         self.localities = localities
         self.photos = photos
+        self.placemarks = placemarks
     }
 
     func refresh() {
@@ -95,8 +98,14 @@ final class HomeViewModel: ObservableObject {
         return RecentSample(
             id: sample.id,
             code: sample.backendCode ?? sample.sampleID,
-            locality: sample.adminUnitsLocality
+            locality: placeName(for: sample)
         )
+    }
+
+    /// Municipality (or next higher filled level) of the sample's place.
+    private func placeName(for sample: LocalSample) -> String? {
+        guard let placemarks, let id = sample.placemark, !id.isEmpty else { return nil }
+        return PlaceDisplay.shortName((try? placemarks.fetchById(id))?.place)
     }
 
     private func localityName(for id: String?) -> String? {

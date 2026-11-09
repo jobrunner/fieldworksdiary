@@ -55,6 +55,28 @@
                             }
                         }
                     }
+                    NavigationLink("PlaceFieldRow") {
+                        CatalogPage {
+                            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                                PlaceFieldRow(term: "Bundesland", genericLabel: "Gliedstaat (1. Ebene)", value: "Bayern")
+                                PlaceFieldRow(term: "Landkreis", genericLabel: "Kreis", value: "Landkreis Würzburg")
+                                PlaceFieldRow(term: "Provincia", genericLabel: "Provinz",
+                                              value: "Santa Cruz de Tenerife")
+                                PlaceFieldRow(term: nil, genericLabel: "Insel", value: "La Palma")
+                            }
+                        }
+                    }
+                    NavigationLink("SampleListRow") {
+                        CatalogPage {
+                            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                                SampleListRow(code: "260519/1", placeName: "Ochsenfurt",
+                                              notes: "Käfer an Brennnessel", syncStatus: .synced)
+                                SampleListRow(code: "260519/2", placeName: nil,
+                                              pendingPlaceText: "Ortsangaben ausstehend", syncStatus: .pending)
+                                SampleListRow(code: "260519/3", placeName: "Garafía", isMarked: true)
+                            }
+                        }
+                    }
                     NavigationLink("SyncStatusBadge") {
                         CatalogPage {
                             VStack(alignment: .leading, spacing: AppSpacing.md) {

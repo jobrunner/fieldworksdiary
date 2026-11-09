@@ -1,4 +1,5 @@
 import CoreLocation
+import FieldworksGeo
 import Foundation
 import UIKit
 
@@ -72,6 +73,22 @@ final class SampleEditorViewModel: ObservableObject {
     /// fine" — display nothing.
     @Published private(set) var codeValidationError: String?
 
+    // MARK: Phase O2 place data (Task 17)
+
+    /// Placemark the sample points at (local cache row), nil while
+    /// pending or when the store isn't wired (tests).
+    @Published private(set) var currentPlacemark: LocalPlacemark?
+    /// Backend suggestion for a manual sample („Neue Ortsangaben
+    /// verfügbar“).
+    @Published private(set) var suggestedPlacemark: LocalPlacemark?
+    /// Set while the „Ortsangaben neu übernehmen?“ dialog is open (a
+    /// coordinate correction on a sample with a manual place).
+    @Published var askRetakePlace = false
+    /// Error of a place action (correction, suggestion, resend).
+    @Published private(set) var placeActionError: String?
+    /// The corrected coordinate waiting for the dialog's answer.
+    private var pendingCorrection: CLLocationCoordinate2D?
+
     /// Snapshot of the persisted values at the moment we adopted an
     /// existing row. Drives dirty-detection so the save button only
     /// lights up after the user actually changes something.
@@ -88,6 +105,8 @@ final class SampleEditorViewModel: ObservableObject {
     /// On-device place resolution after save (Phase O2). nil skips it
     /// (tests that don't care about place data).
     private let locationResolver: SampleLocationResolver?
+    /// Local placemark cache for the place section. nil hides it.
+    private let placemarkStore: LocalPlacemarkStore?
 
     private var observerTask: Task<Void, Never>?
 
@@ -99,7 +118,8 @@ final class SampleEditorViewModel: ObservableObject {
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
-        locationResolver: SampleLocationResolver? = nil
+        locationResolver: SampleLocationResolver? = nil,
+        placemarkStore: LocalPlacemarkStore? = nil
     ) {
         self.store = store
         self.photoStore = photoStore
@@ -108,6 +128,7 @@ final class SampleEditorViewModel: ObservableObject {
         self.mutationsStore = mutationsStore
         self.sync = sync
         self.locationResolver = locationResolver
+        self.placemarkStore = placemarkStore
         location = LocationProvider()
 
         if let sampleID, let existing = try? store.fetchById(sampleID) {
@@ -420,6 +441,158 @@ final class SampleEditorViewModel: ObservableObject {
         try store.update(working)
     }
 
+    // MARK: - place data (Phase O2, Task 17)
+
+    /// Visible place fields of the current placemark, in level order.
+    var placeItems: [PlaceFieldItem] {
+        currentPlacemark.map { PlaceDisplay.fields($0.place) } ?? []
+    }
+
+    /// „MTB 6326/1 Ochsenfurt“ (DE only), nil otherwise.
+    var mtbText: String? {
+        guard let sample = savedSample else { return nil }
+        return PlaceDisplay.mtbText(number: sample.mtbSheetNumber, name: sample.mtbSheetName,
+                                    quadrant: sample.mtbQuadrant, countryISO: currentPlacemark?.countryISO)
+    }
+
+    var hasSuggestion: Bool {
+        guard let id = savedSample?.placemarkSuggestion else { return false }
+        return !id.isEmpty
+    }
+
+    /// Short name of the suggested place for the hint, if cached.
+    var suggestionName: String? {
+        PlaceDisplay.shortName(suggestedPlacemark?.place)
+    }
+
+    /// The sample's push failed and isn't retried on its own.
+    var canResend: Bool {
+        savedSample?.syncStatus == .failed
+    }
+
+    /// Place editor for the saved sample; nil without a placemark
+    /// store or sample.
+    func makePlaceEditor() -> PlaceEditorViewModel? {
+        guard let placemarkStore, let id = savedSample?.id else { return nil }
+        return PlaceEditorViewModel(sampleID: id, store: store, placemarks: placemarkStore,
+                                    mutationsStore: mutationsStore)
+    }
+
+    /// After the place editor saved: show the new values and push.
+    func placeEdited() {
+        refreshDerivedFields()
+        sync.kick()
+        if let id = savedSample?.id { startObservingSync(sampleID: id) }
+    }
+
+    /// The user picked a corrected coordinate (or the first one for a
+    /// sample without coordinate) on the map. A manual place asks
+    /// first („Ortsangaben neu übernehmen?“); otherwise the place is
+    /// fetched again right away.
+    func requestCoordinateCorrection(latitude: Double, longitude: Double) {
+        guard let sample = savedSample else { return }
+        pendingCorrection = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        if sample.locationStatus == .manual {
+            askRetakePlace = true
+        } else {
+            applyCoordinateCorrection(keepManualPlace: true)
+        }
+    }
+
+    /// Writes the pending corrected coordinate (`location_source =
+    /// user`) through `LocalSampleStore.updateCoordinate`, which clears
+    /// the old point's derived values and queues the update. Then the
+    /// place is resolved online; offline it stays `pending` and the
+    /// backend enriches it after the sync.
+    func applyCoordinateCorrection(keepManualPlace: Bool) {
+        askRetakePlace = false
+        guard let coordinate = pendingCorrection, let id = savedSample?.id else { return }
+        pendingCorrection = nil
+        placeActionError = nil
+        do {
+            try store.updateCoordinate(
+                id: id,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                locationSource: .user,
+                keepManualPlace: keepManualPlace,
+                mutationsStore: mutationsStore
+            )
+        } catch {
+            Log.persistence.error("coordinate correction failed: \(error.localizedDescription)")
+            placeActionError = "Koordinate konnte nicht gespeichert werden."
+            return
+        }
+        refreshDerivedFields()
+        startObservingSync(sampleID: id)
+        resolveAfterCorrection(sampleID: id)
+    }
+
+    /// „Meine Angaben behalten“ / dialog dismissed without answer.
+    func cancelCoordinateCorrection() {
+        askRetakePlace = false
+        pendingCorrection = nil
+    }
+
+    func acceptSuggestion() {
+        runPlaceAction("suggestion accept") { id in
+            try store.acceptPlacemarkSuggestion(id: id, mutationsStore: mutationsStore)
+        }
+    }
+
+    func dismissSuggestion() {
+        runPlaceAction("suggestion dismiss") { id in
+            try store.dismissPlacemarkSuggestion(id: id, mutationsStore: mutationsStore)
+        }
+    }
+
+    /// „Erneut senden“ for a failed sample: re-queues its push.
+    func resendFailed() {
+        runPlaceAction("resend") { id in
+            try store.resendFailed(id: id, mutationsStore: mutationsStore)
+        }
+    }
+
+    private func runPlaceAction(_ name: String, _ action: (String) throws -> Void) {
+        guard let id = savedSample?.id else { return }
+        placeActionError = nil
+        do {
+            try action(id)
+        } catch {
+            Log.persistence.error("\(name, privacy: .public) failed: \(error.localizedDescription)")
+            placeActionError = "Aktion fehlgeschlagen. Bitte erneut versuchen."
+            return
+        }
+        refreshDerivedFields()
+        sync.kick()
+        startObservingSync(sampleID: id)
+    }
+
+    /// Online resolution for a corrected coordinate. No offline
+    /// inheritance here: the previous sample's place of the day says
+    /// nothing about a moved point — it stays `pending` instead.
+    private func resolveAfterCorrection(sampleID: String) {
+        guard let resolver = locationResolver else {
+            sync.kick()
+            return
+        }
+        let sync = self.sync
+        Task { [weak self] in
+            let resolved = await resolver.resolveOnline(sampleID: sampleID)
+            if !resolved {
+                Log.location.info("corrected sample \(sampleID, privacy: .public) stays pending until sync")
+            }
+            sync.kick()
+            self?.refreshDerivedFields()
+        }
+    }
+
+    private func loadPlacemarks(for sample: LocalSample) {
+        guard let placemarkStore else { return }
+        currentPlacemark = sample.placemark.flatMap { try? placemarkStore.fetchById($0) }
+        suggestedPlacemark = sample.placemarkSuggestion.flatMap { try? placemarkStore.fetchById($0) }
+    }
+
     // MARK: - private
 
     /// Writes the captured JPEGs to disk + inserts photo rows. Same
@@ -473,6 +646,7 @@ final class SampleEditorViewModel: ObservableObject {
         }
         accuracyM = fresh.horizontalAccuracy
         altitudeM = fresh.elevation
+        loadPlacemarks(for: fresh)
     }
 
     private func adoptExisting(_ sample: LocalSample) {
@@ -500,6 +674,7 @@ final class SampleEditorViewModel: ObservableObject {
         }
         pendingPhotos = []
         codeValidationError = nil
+        loadPlacemarks(for: sample)
     }
 
     /// Polls the store for the just-created sample so the bottom
@@ -522,9 +697,10 @@ final class SampleEditorViewModel: ObservableObject {
                     if let ftID = fresh.fieldtrip, !ftID.isEmpty {
                         self.savedFieldtrip = try? self.fieldtripStore.fetchById(ftID)
                     }
-                    if fresh.syncStatus == .synced,
-                       fresh.adminUnitsLocality != nil || fresh.mtbSheetNumber != nil
-                    {
+                    self.loadPlacemarks(for: fresh)
+                    // Done once the push landed and the place data is
+                    // known (resolved, inherited or set by hand).
+                    if fresh.syncStatus == .synced, fresh.locationStatus != .pending {
                         return
                     }
                 }

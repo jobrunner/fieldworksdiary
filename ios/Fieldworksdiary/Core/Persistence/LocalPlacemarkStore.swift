@@ -130,6 +130,16 @@ final class LocalPlacemarkStore {
         }
     }
 
+    /// Every cached placemark keyed by its local row id. Backs list
+    /// rows and the fieldtrip place filter (one read instead of one
+    /// per row; the table holds one user's places only).
+    func fetchAllByID() throws -> [String: LocalPlacemark] {
+        try database.reader.read { db in
+            let rows = try LocalPlacemark.fetchAll(db)
+            return Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
     func count() throws -> Int {
         try database.reader.read { db in
             try LocalPlacemark.fetchCount(db)

@@ -107,7 +107,7 @@ struct SampleDetailView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 Text(sample.sampleID)
-                    .font(.system(size: 40, weight: .bold, design: .monospaced))
+                    .font(AppFont.codeLarge)
                 if let backendCode = sample.backendCode, backendCode != sample.sampleID {
                     Text("Server: \(backendCode) — Original \(sample.sampleID)")
                         .font(.footnote)
@@ -133,12 +133,14 @@ struct SampleDetailView: View {
                 }
                 Label(formatDateTime(sample.beginDate), systemImage: "calendar")
                     .font(.footnote)
-                if let locality = sample.adminUnitsLocality {
-                    Label(locality, systemImage: "globe.europe.africa")
-                        .font(.footnote)
+                let placemark = sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }
+                ForEach(placemark.map { PlaceDisplay.fields($0.place) } ?? []) { item in
+                    PlaceFieldRow(item)
                 }
-                if let mtb = sample.mtbSheetNumber, !mtb.isEmpty {
-                    Label("MTB \(mtb)", systemImage: "square.grid.2x2")
+                if let mtb = PlaceDisplay.mtbText(number: sample.mtbSheetNumber, name: sample.mtbSheetName,
+                                                  quadrant: sample.mtbQuadrant, countryISO: placemark?.countryISO)
+                {
+                    Label(mtb, systemImage: "square.grid.2x2")
                         .font(.footnote)
                 }
             }

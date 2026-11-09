@@ -1,0 +1,471 @@
+{
+  "sourceLanguage": "de",
+  "strings": {
+    "Bitte wählen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitte wählen"
+          }
+        }
+      }
+    },
+    "Eine Exkursion passt, wenn eine ihrer Proben passt.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Exkursion passt, wenn eine ihrer Proben passt."
+          }
+        }
+      }
+    },
+    "Erneut senden": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut senden"
+          }
+        }
+      }
+    },
+    "Höhe": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Höhe"
+          }
+        }
+      }
+    },
+    "Höhe in Metern": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Höhe in Metern"
+          }
+        }
+      }
+    },
+    "Kartenpunkt setzen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kartenpunkt setzen"
+          }
+        }
+      }
+    },
+    "Keine Länder in den Ortsangaben der Proben.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Länder in den Ortsangaben der Proben."
+          }
+        }
+      }
+    },
+    "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer).": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer)."
+          }
+        }
+      }
+    },
+    "Koordinate korrigieren": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koordinate korrigieren"
+          }
+        }
+      }
+    },
+    "Land": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Land"
+          }
+        }
+      }
+    },
+    "Landschaft": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Landschaft"
+          }
+        }
+      }
+    },
+    "Manuelle Ortsangaben zurücksetzen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manuelle Ortsangaben zurücksetzen"
+          }
+        }
+      }
+    },
+    "Meine Angaben behalten": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meine Angaben behalten"
+          }
+        }
+      }
+    },
+    "Neue Ortsangaben verfügbar": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Ortsangaben verfügbar"
+          }
+        }
+      }
+    },
+    "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden."
+          }
+        }
+      }
+    },
+    "Ort": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ort"
+          }
+        }
+      }
+    },
+    "Ort enthält …": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ort enthält …"
+          }
+        }
+      }
+    },
+    "Ortsangaben ausstehend": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben ausstehend"
+          }
+        }
+      }
+    },
+    "Ortsangaben bearbeiten": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben bearbeiten"
+          }
+        }
+      }
+    },
+    "Ortsangaben neu übernehmen?": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben neu übernehmen?"
+          }
+        }
+      }
+    },
+    "Ortsangaben von Hand gesetzt": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben von Hand gesetzt"
+          }
+        }
+      }
+    },
+    "Ortsangaben von der vorigen Probe des Tages übernommen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben von der vorigen Probe des Tages übernommen"
+          }
+        }
+      }
+    },
+    "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync."
+          }
+        }
+      }
+    },
+    "Sync fehlgeschlagen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "Verwaltung": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwaltung"
+          }
+        }
+      }
+    },
+    "Verwerfen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwerfen"
+          }
+        }
+      }
+    },
+    "admin.borough": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stadtbezirk"
+          }
+        }
+      }
+    },
+    "admin.country": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staat"
+          }
+        }
+      }
+    },
+    "admin.county": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kreis"
+          }
+        }
+      }
+    },
+    "admin.district": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bezirk"
+          }
+        }
+      }
+    },
+    "admin.municipality": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemeinde"
+          }
+        }
+      }
+    },
+    "admin.other": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sonstige Einheit"
+          }
+        }
+      }
+    },
+    "admin.parish": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kirchspiel"
+          }
+        }
+      }
+    },
+    "admin.province": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provinz"
+          }
+        }
+      }
+    },
+    "admin.region": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Region"
+          }
+        }
+      }
+    },
+    "admin.state": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gliedstaat (1. Ebene)"
+          }
+        }
+      }
+    },
+    "admin.submunicipality": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ortsteil"
+          }
+        }
+      }
+    },
+    "place.island": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insel"
+          }
+        }
+      }
+    },
+    "place.mountain": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berg"
+          }
+        }
+      }
+    },
+    "place.mountain_range": {
+      "comment": "Generic place field type (fallback when the country has no own term).",
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gebirge"
+          }
+        }
+      }
+    },
+    "Übernehmen": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Übernehmen"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

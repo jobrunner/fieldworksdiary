@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 
 /// The shape of the Fieldtrips-list filter. Two independent
@@ -5,7 +6,11 @@ import Foundation
 ///
 ///   - `date`: how to slice on time (off, absolute calendar range,
 ///     or seasonal cross-year range expressed as month-day pairs)
-///   - `country`: optional flat country match
+///   - place (Phase O2): `country` (ISO code) and `placeQuery` (text
+///     over all place fields) are matched against the places of the
+///     fieldtrip's local samples — a fieldtrip matches when one of its
+///     samples matches both. `LocalFieldtrip.country/adminArea` are no
+///     longer read.
 ///
 /// Filtering happens client-side against the already-hydrated local
 /// store, so the same filter works offline.
@@ -20,7 +25,10 @@ struct FieldtripsFilter: Equatable {
     }
 
     var date: DateMode = .off
-    var country: String? // exact match on Fieldtrip.country
+    /// ISO 3166-1 alpha-2 of a sample place.
+    var country: String?
+    /// Case-/diacritic-insensitive text over all place fields.
+    var placeQuery: String?
     /// When true, keep only fieldtrips that have non-empty notes.
     var requireNotes: Bool = false
     /// When true, keep only fieldtrips that have a centroid coordinate.
@@ -36,19 +44,21 @@ struct FieldtripsFilter: Equatable {
         case .off: break
         default: return true
         }
-        if country != nil { return true }
+        if let country, !country.isEmpty { return true }
+        if let placeQuery, !placeQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
         if requireNotes || requireCoordinate { return true }
         if let id = fieldtripID, !id.isEmpty { return true }
         return false
     }
 
-    /// Filter a list of fieldtrips in-place. Used by the list view
-    /// model.
-    func apply(to items: [LocalFieldtrip]) -> [LocalFieldtrip] {
-        items.filter { matches($0) }
+    /// Filter a list of fieldtrips. `places` maps a fieldtrip id to
+    /// the places of its samples (see `placeIndex`).
+    func apply(to items: [LocalFieldtrip], places: [String: [Place]] = [:]) -> [LocalFieldtrip] {
+        items.filter { matches($0, places: places[$0.id] ?? []) }
     }
 
-    func matches(_ fieldtrip: LocalFieldtrip) -> Bool {
+    /// `places`: the places of the fieldtrip's samples.
+    func matches(_ fieldtrip: LocalFieldtrip, places: [Place] = []) -> Bool {
         switch date {
         case .off:
             break
@@ -65,9 +75,7 @@ struct FieldtripsFilter: Equatable {
                 if !(doy >= fromDOY || doy <= toDOY) { return false }
             }
         }
-        if let country, !country.isEmpty {
-            guard let fieldtripCountry = fieldtrip.country, fieldtripCountry == country else { return false }
-        }
+        if !matchesPlace(places) { return false }
         if requireNotes, fieldtrip.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return false
         }
@@ -80,6 +88,38 @@ struct FieldtripsFilter: Equatable {
             return false
         }
         return true
+    }
+
+    /// True when one sample place satisfies both the country and the
+    /// text criterion (or neither is set).
+    private func matchesPlace(_ places: [Place]) -> Bool {
+        let iso = country?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let query = placeQuery?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if iso.isEmpty, query.isEmpty { return true }
+        return places.contains { place in
+            (iso.isEmpty || place.countryISO == iso) && PlaceDisplay.matches(place, query: query)
+        }
+    }
+
+    /// Places of the local samples grouped by fieldtrip id. Samples
+    /// without fieldtrip or placemark (or with an uncached placemark)
+    /// are skipped.
+    static func placeIndex(
+        samples: [(fieldtrip: String?, placemark: String?)],
+        placemarks: [String: LocalPlacemark]
+    ) -> [String: [Place]] {
+        var index: [String: [Place]] = [:]
+        for sample in samples {
+            guard let fieldtrip = sample.fieldtrip, !fieldtrip.isEmpty,
+                  let id = sample.placemark, let row = placemarks[id] else { continue }
+            index[fieldtrip, default: []].append(row.place)
+        }
+        return index
+    }
+
+    /// Sorted unique ISO codes in a place index.
+    static func countries(in index: [String: [Place]]) -> [String] {
+        Array(Set(index.values.flatMap { $0.map(\.countryISO) }.filter { !$0.isEmpty })).sorted()
     }
 
     private func parseDay(_ raw: String) -> Date? {

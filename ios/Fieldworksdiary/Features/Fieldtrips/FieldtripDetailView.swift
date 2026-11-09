@@ -339,12 +339,19 @@ struct FieldtripDetailView: View {
         HStack {
             Text(sample.sampleID)
                 .font(.system(.body, design: .monospaced).weight(.medium))
+            if let place = PlaceDisplay.shortName(
+                sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }?.place
+            ) {
+                Text(place)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
-            if sample.adminUnitsLocality == nil && sample.syncStatus != .synced {
+            if sample.locationStatus == .pending {
                 Image(systemName: "clock")
                     .foregroundStyle(.secondary)
                     .imageScale(.small)
-                    .accessibilityLabel("Anreicherung läuft")
+                    .accessibilityLabel("Ortsangaben ausstehend")
             }
             Image(systemName: "chevron.right")
                 .font(.caption)

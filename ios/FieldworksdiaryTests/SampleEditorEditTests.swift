@@ -141,6 +141,93 @@ final class SampleEditorEditTests: XCTestCase {
 
     // MARK: - helpers
 
+    // MARK: - Task 17: coordinate correction, suggestion, resend
+
+    func testCoordinateCorrection_ManualSample_AsksBeforeWriting() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        try samples.update(seeded)
+        let vm = makeVM(sampleID: seeded.id)
+
+        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
+
+        XCTAssertTrue(vm.askRetakePlace, "manual place ⇒ „Ortsangaben neu übernehmen?“")
+        XCTAssertEqual(try samples.fetchById(seeded.id)?.latitude, 49.79, "nothing written before the answer")
+        XCTAssertEqual(try mutations.count(), 0)
+
+        vm.applyCoordinateCorrection(keepManualPlace: false)
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .pending, "„Übernehmen“ drops the manual place")
+        XCTAssertNil(stored.placemark)
+        XCTAssertEqual(stored.locationSource, LocationSource.user.rawValue)
+        XCTAssertFalse(vm.askRetakePlace)
+    }
+
+    func testCoordinateCorrection_ManualSample_KeepMyPlace() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        try samples.update(seeded)
+        let vm = makeVM(sampleID: seeded.id)
+
+        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
+        vm.applyCoordinateCorrection(keepManualPlace: true)
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .manual)
+        XCTAssertEqual(stored.placemark, "pmmanual000001")
+    }
+
+    func testCoordinateCorrection_NonManual_AppliesDirectly() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .backendService
+        seeded.placemark = "pmbackend00001"
+        try samples.update(seeded)
+        let vm = makeVM(sampleID: seeded.id)
+
+        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
+
+        XCTAssertFalse(vm.askRetakePlace)
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .pending)
+        XCTAssertNil(stored.placemark)
+        let queued = try XCTUnwrap(mutations.fetch(entityType: .sample).first)
+        XCTAssertTrue(SampleUpdatePayload.decode(queued.payloadJson).coordinateChanged)
+    }
+
+    func testDismissSuggestion_FromEditor() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        seeded.placemarkSuggestion = "pmsuggestion01"
+        try samples.update(seeded)
+        let vm = makeVM(sampleID: seeded.id)
+        XCTAssertTrue(vm.hasSuggestion)
+
+        vm.dismissSuggestion()
+
+        XCTAssertFalse(vm.hasSuggestion)
+        XCTAssertNil(try samples.fetchById(seeded.id)?.placemarkSuggestion)
+    }
+
+    func testResendFailed_FromEditor_RequeuesAndClearsFailedState() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        try samples.setSyncState(id: seeded.id, status: .failed, error: "Konflikt")
+        let vm = makeVM(sampleID: seeded.id)
+        XCTAssertTrue(vm.canResend)
+
+        vm.resendFailed()
+
+        XCTAssertFalse(vm.canResend)
+        XCTAssertEqual(try mutations.count(), 1)
+        XCTAssertEqual(try samples.fetchById(seeded.id)?.syncStatus, .pending)
+    }
+
     private func makeVM(sampleID: String?) -> SampleEditorViewModel {
         SampleEditorViewModel(
             sampleID: sampleID,

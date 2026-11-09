@@ -12,7 +12,7 @@ import UIKit
 ///   ├─────────────────────────────────────────────┤
 ///   │  STANDORT UND ZEIT                          │
 ///   │   GPS icon + coords + accuracy + altitude   │
-///   │   Admin units (Deutschland, Bayern, …)      │
+///   │   Ortsangaben (Landesbegriffe, MTB)         │
 ///   │   Sammeltag / Exkursion                     │
 ///   │   Sonne / Mond                              │
 ///   ├─────────────────────────────────────────────┤
@@ -37,7 +37,8 @@ struct SampleEditorView: View {
             localitiesStore: container.localitiesStore,
             mutationsStore: container.mutations,
             sync: container.sync,
-            locationResolver: container.makeLocationResolver()
+            locationResolver: container.makeLocationResolver(),
+            placemarkStore: container.placemarksStore
         )
     }
 }
@@ -52,7 +53,15 @@ private struct SampleEditorContent: View {
     @FocusState private var codeFocused: Bool
 
     @State private var showingCoordinatePicker = false
+    @State private var showingCorrectionPicker = false
     @State private var showingDiscardConfirm = false
+    @State private var placeEditor: PlaceEditorViewModel?
+
+    /// Width of the leading icon column in the location rows; grows
+    /// with Dynamic Type so the icons keep their proportion.
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth: CGFloat = 40
+    /// Photo thumbnail edge in the editor's strip.
+    @ScaledMetric(relativeTo: .body) private var thumbSize: CGFloat = 72
 
     init(
         sampleID: String?,
@@ -62,7 +71,8 @@ private struct SampleEditorContent: View {
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
-        locationResolver: SampleLocationResolver
+        locationResolver: SampleLocationResolver,
+        placemarkStore: LocalPlacemarkStore
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
@@ -72,7 +82,8 @@ private struct SampleEditorContent: View {
             localitiesStore: localitiesStore,
             mutationsStore: mutationsStore,
             sync: sync,
-            locationResolver: locationResolver
+            locationResolver: locationResolver,
+            placemarkStore: placemarkStore
         ))
     }
 
@@ -143,7 +154,7 @@ private struct SampleEditorContent: View {
                     Button {
                         showingDiscardConfirm = true
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: AppSpacing.xs) {
                             Image(systemName: "chevron.backward")
                             Text("Zurück")
                         }
@@ -215,6 +226,32 @@ private struct SampleEditorContent: View {
             Button("Weiter bearbeiten", role: .cancel) {}
         } message: {
             Text("Die nicht gespeicherten Änderungen gehen verloren.")
+        }
+        .confirmationDialog(
+            "Ortsangaben neu übernehmen?",
+            isPresented: $viewModel.askRetakePlace,
+            titleVisibility: .visible
+        ) {
+            Button("Übernehmen") { viewModel.applyCoordinateCorrection(keepManualPlace: false) }
+            Button("Meine Angaben behalten") { viewModel.applyCoordinateCorrection(keepManualPlace: true) }
+            Button("Abbrechen", role: .cancel) { viewModel.cancelCoordinateCorrection() }
+        } message: {
+            Text("Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?")
+        }
+        .sheet(isPresented: $showingCorrectionPicker) {
+            CoordinatePickerView(selected: Binding(
+                get: { viewModel.coordinate },
+                set: { newValue in
+                    if let c = newValue {
+                        viewModel.requestCoordinateCorrection(latitude: c.latitude, longitude: c.longitude)
+                    }
+                }
+            ))
+        }
+        .sheet(item: $placeEditor) { editor in
+            PlaceEditorView(viewModel: editor) {
+                viewModel.placeEdited()
+            }
         }
     }
 
@@ -329,7 +366,7 @@ private struct SampleEditorContent: View {
 
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: AppSpacing.sm) {
                 ForEach(viewModel.pendingPhotos) { photo in
                     photoThumb(image: photo.image) {
                         viewModel.removePendingPhoto(id: photo.id)
@@ -340,7 +377,7 @@ private struct SampleEditorContent: View {
                     }
                 }
                 ForEach(viewModel.savedPhotos) { photo in
-                    SavedPhotoThumbnail(relativePath: photo.localPath)
+                    SavedPhotoThumbnail(relativePath: photo.localPath, size: thumbSize)
                         .accessibilityLabel("Gespeichertes Foto")
                 }
             }
@@ -351,13 +388,13 @@ private struct SampleEditorContent: View {
         Image(uiImage: image)
             .resizable()
             .aspectRatio(contentMode: .fill)
-            .frame(width: 72, height: 72)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .frame(width: thumbSize, height: thumbSize)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
             .overlay(alignment: .topTrailing) {
                 Button(action: onRemove) {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.white, .black.opacity(0.6))
-                        .padding(2)
+                        .padding(AppSpacing.xxs)
                 }
                 .accessibilityHidden(true)
             }
@@ -375,17 +412,17 @@ private struct SampleEditorContent: View {
 
             locationRow
 
-            if hasAdminInfo {
-                // Leading-inset of `40` aligns the divider with the
-                // right edge of the icon column (40pt) inside each
-                // row; the outer container padding adds the remaining
-                // 16pt to reach the legacy 56pt indent from the
-                // screen edge.
-                Divider().padding(.leading, 40)
-                adminRow
+            if viewModel.isExistingSample {
+                // The leading inset aligns the divider with the right
+                // edge of the icon column inside each row.
+                Divider().padding(.leading, iconColumnWidth)
+                placeSection
+            } else if fieldtripName != nil {
+                Divider().padding(.leading, iconColumnWidth)
+                fieldtripRow
             }
 
-            Divider().padding(.leading, 40)
+            Divider().padding(.leading, iconColumnWidth)
             timeRow
         }
         // Horizontale Margin sitzt auf der ScrollView. Background
@@ -404,7 +441,7 @@ private struct SampleEditorContent: View {
     private var locationRow: some View {
         HStack(alignment: .top, spacing: AppSpacing.lg) {
             GPSStatusIcon(status: locationIconStatus)
-                .frame(width: 40)
+                .frame(width: iconColumnWidth)
                 .padding(.top, AppSpacing.xs)
 
             // Side-by-side at default widths, stacked vertically when
@@ -430,10 +467,10 @@ private struct SampleEditorContent: View {
 
     private var coordinateBlock: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+            // No line limit: `ViewThatFits` in `locationRow` stacks the
+            // blocks when the coordinate doesn't fit on one line.
             Text(coordinateText)
                 .font(.body.monospacedDigit())
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
             if let acc = viewModel.accuracyM {
                 HStack(spacing: AppSpacing.xs) {
                     Text("Genauigkeit").foregroundStyle(.secondary)
@@ -451,46 +488,203 @@ private struct SampleEditorContent: View {
                 .foregroundStyle(.secondary)
             Text(altitudeText)
                 .font(.body.monospacedDigit())
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+            if let source = elevationSourceText {
+                Text(source)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
-    private var adminRow: some View {
+    /// Place data of a saved sample: status hints, the place fields
+    /// with country-specific terms, MTB, the fieldtrip, and actions
+    /// (edit place, correct coordinate, accept/dismiss a suggestion,
+    /// resend a failed push).
+    private var placeSection: some View {
         HStack(alignment: .top, spacing: AppSpacing.lg) {
-            Color.clear.frame(width: 40, height: 1)
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                if let admin = adminLines {
-                    ForEach(admin, id: \.self) { line in
-                        Text(line).font(.body).lineLimit(2)
-                    }
+            Color.clear
+                .frame(width: iconColumnWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                if viewModel.canResend {
+                    resendBanner
                 }
-                // The label "Sammeltag" is rendered exactly once here;
-                // `fieldtripName` (computed) returns nil when no
-                // human-readable title is loaded yet — no "Sammeltag
-                // Sammeltag" stutter.
-                if let fieldtripName {
-                    HStack(spacing: AppSpacing.xs) {
-                        Text("Sammeltag")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Text(fieldtripName)
-                            .font(.footnote)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                    }
+                if viewModel.hasSuggestion {
+                    suggestionBanner
                 }
-                if let mtb = viewModel.savedSample?.mtbSheetName {
-                    Text("MTB \(mtb)")
+                placeStatusLine
+                ForEach(viewModel.placeItems) { item in
+                    PlaceFieldRow(item)
+                }
+                if let mtb = viewModel.mtbText {
+                    Text(mtb)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                }
+                if fieldtripName != nil {
+                    fieldtripLine
+                }
+                placeActions
+                if let error = viewModel.placeActionError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(AppColor.danger)
                 }
             }
-            Spacer(minLength: AppSpacing.sm)
+            Spacer(minLength: 0)
         }
         .padding(.vertical, AppSpacing.sm)
-        .accessibilityElement(children: .combine)
+    }
+
+    /// Fieldtrip line for the create path (no place section yet).
+    private var fieldtripRow: some View {
+        HStack(alignment: .top, spacing: AppSpacing.lg) {
+            Color.clear
+                .frame(width: iconColumnWidth)
+                .accessibilityHidden(true)
+            fieldtripLine
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, AppSpacing.sm)
+    }
+
+    // The label "Sammeltag" is rendered exactly once here;
+    // `fieldtripName` returns nil when no human-readable title is
+    // loaded yet — no "Sammeltag Sammeltag" stutter.
+    @ViewBuilder
+    private var fieldtripLine: some View {
+        if let fieldtripName {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AppSpacing.xs) {
+                    Text("Sammeltag").foregroundStyle(.secondary)
+                    Text(fieldtripName)
+                }
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    Text("Sammeltag").foregroundStyle(.secondary)
+                    Text(fieldtripName)
+                }
+            }
+            .font(.footnote)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    @ViewBuilder
+    private var placeStatusLine: some View {
+        if let sample = viewModel.savedSample {
+            if sample.latitude == nil || sample.longitude == nil {
+                Label("Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden.",
+                      systemImage: "mappin.slash")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if viewModel.placeItems.isEmpty {
+                switch sample.locationStatus {
+                case .pending:
+                    Label("Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync.",
+                          systemImage: "clock")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                case .backendService:
+                    Label("Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer).",
+                          systemImage: "water.waves")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                case .inherited, .manual:
+                    EmptyView()
+                }
+            }
+            if sample.locationStatus == .manual {
+                Label("Ortsangaben von Hand gesetzt", systemImage: "hand.point.up.left")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if sample.locationStatus == .inherited {
+                Label("Ortsangaben von der vorigen Probe des Tages übernommen", systemImage: "arrow.turn.down.right")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var suggestionBanner: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Label("Neue Ortsangaben verfügbar", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+            if let name = viewModel.suggestionName {
+                Text("Vorschlag: \(name)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AppSpacing.md) {
+                    suggestionButtons
+                }
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    suggestionButtons
+                }
+            }
+        }
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColor.surface, in: RoundedRectangle(cornerRadius: AppRadius.md))
+    }
+
+    @ViewBuilder
+    private var suggestionButtons: some View {
+        Button("Übernehmen") { viewModel.acceptSuggestion() }
+            .buttonStyle(.borderedProminent)
+            .tint(AppColor.brandPrimary)
+            .frame(minHeight: 44)
+            .accessibilityHint("Ersetzt deine Ortsangaben durch die neu ermittelten.")
+        Button("Verwerfen") { viewModel.dismissSuggestion() }
+            .buttonStyle(.bordered)
+            .frame(minHeight: 44)
+            .accessibilityHint("Behält deine Ortsangaben und blendet den Vorschlag aus.")
+    }
+
+    private var resendBanner: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            Label("Sync fehlgeschlagen", systemImage: "exclamationmark.triangle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(AppColor.syncFailed)
+            if let error = viewModel.savedSample?.syncError, !error.isEmpty {
+                Text(error)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Button {
+                viewModel.resendFailed()
+            } label: {
+                Label("Erneut senden", systemImage: "arrow.clockwise")
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Überträgt die lokal gespeicherte Probe erneut an den Server.")
+        }
+        .padding(AppSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppColor.surface, in: RoundedRectangle(cornerRadius: AppRadius.md))
+    }
+
+    private var placeActions: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            if viewModel.coordinate != nil {
+                Button {
+                    placeEditor = viewModel.makePlaceEditor()
+                } label: {
+                    Label("Ortsangaben bearbeiten", systemImage: "pencil")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityHint("Ortsangaben und Höhe dieser Probe von Hand korrigieren.")
+            }
+            Button {
+                showingCorrectionPicker = true
+            } label: {
+                Label(viewModel.coordinate == nil ? "Kartenpunkt setzen" : "Koordinate korrigieren",
+                      systemImage: "mappin.and.ellipse")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityHint("Öffnet eine Karte; danach werden die Ortsangaben neu ermittelt.")
+        }
     }
 
     private var timeRow: some View {
@@ -498,7 +692,7 @@ private struct SampleEditorContent: View {
             Image(systemName: moonSymbol)
                 .font(.title3)
                 .foregroundStyle(.secondary)
-                .frame(width: 40)
+                .frame(width: iconColumnWidth)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -584,18 +778,15 @@ private struct SampleEditorContent: View {
         return "—"
     }
 
-    private var hasAdminInfo: Bool {
-        adminLines != nil || (fieldtripName?.isEmpty == false) || viewModel.savedSample?.mtbSheetNumber != nil
-    }
-
-    private var adminLines: [String]? {
-        guard let sample = viewModel.savedSample else { return nil }
-        var lines: [String] = []
-        if let country = sample.adminUnitsCountry { lines.append(country) }
-        if let locality = sample.adminUnitsLocality, lines.last != locality {
-            lines.append(locality)
+    /// Where the height comes from, shown under it.
+    private var elevationSourceText: String? {
+        guard viewModel.altitudeM != nil else { return nil }
+        switch viewModel.savedSample?.elevationSource {
+        case .manual: return "manuell"
+        case .backendService: return "Geländemodell"
+        case .locationService: return "GPS"
+        case nil: return nil
         }
-        return lines.isEmpty ? nil : lines
     }
 
     /// Human-readable fieldtrip title or nil. The previous code
@@ -680,10 +871,11 @@ private struct SampleEditorContent: View {
     }
 }
 
-/// Loads a JPEG file from PhotoStorage and renders it as a 72×72
-/// thumbnail. Used in the saved-photos strip of the editor.
+/// Loads a JPEG file from PhotoStorage and renders it as a square
+/// thumbnail of `size` points. Used in the saved-photos strip of the editor.
 private struct SavedPhotoThumbnail: View {
     let relativePath: String
+    let size: CGFloat
 
     @State private var image: UIImage?
 
@@ -697,8 +889,8 @@ private struct SavedPhotoThumbnail: View {
                 Rectangle().fill(Color(.secondarySystemBackground))
             }
         }
-        .frame(width: 72, height: 72)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
         .task { load() }
     }
 

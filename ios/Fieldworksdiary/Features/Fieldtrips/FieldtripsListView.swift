@@ -7,7 +7,9 @@ struct FieldtripsListView: View {
         NavigationStack {
             FieldtripsListScreen(
                 store: container.fieldtrips,
-                hydrator: container.hydrator
+                hydrator: container.hydrator,
+                samples: container.store,
+                placemarks: container.placemarksStore
             )
         }
     }
@@ -19,9 +21,14 @@ struct FieldtripsListScreen: View {
     @StateObject private var viewModel: FieldtripsListViewModel
     @State private var presentingFilter = false
 
-    init(store: LocalFieldtripStore, hydrator: FieldtripsHydrator) {
+    init(
+        store: LocalFieldtripStore,
+        hydrator: FieldtripsHydrator,
+        samples: LocalSampleStore,
+        placemarks: LocalPlacemarkStore
+    ) {
         _viewModel = StateObject(wrappedValue: FieldtripsListViewModel(
-            store: store, hydrator: hydrator
+            store: store, hydrator: hydrator, samples: samples, placemarks: placemarks
         ))
     }
 
@@ -60,6 +67,7 @@ struct FieldtripsListScreen: View {
                     filter: $viewModel.filter,
                     countries: viewModel.knownCountries
                 )
+                .onAppear { viewModel.reloadPlaces() }
             }
     }
 

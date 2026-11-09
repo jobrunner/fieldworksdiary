@@ -17,6 +17,7 @@ struct HomeView: View {
             fieldtrips: container.fieldtrips,
             localities: container.localitiesStore,
             photos: container.photos,
+            placemarks: container.placemarksStore,
             sync: container.sync
         )
     }
@@ -34,6 +35,7 @@ private struct HomeContent: View {
         fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
         photos: LocalPhotoStore,
+        placemarks: LocalPlacemarkStore,
         sync: SyncRunner
     ) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(
@@ -41,7 +43,8 @@ private struct HomeContent: View {
             samples: samples,
             fieldtrips: fieldtrips,
             localities: localities,
-            photos: photos
+            photos: photos,
+            placemarks: placemarks
         ))
         self.sync = sync
     }
@@ -97,7 +100,9 @@ private struct HomeContent: View {
                 destination: {
                     FieldtripsListScreen(
                         store: container.fieldtrips,
-                        hydrator: container.hydrator
+                        hydrator: container.hydrator,
+                        samples: container.store,
+                        placemarks: container.placemarksStore
                     )
                 })
 
