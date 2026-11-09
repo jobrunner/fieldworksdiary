@@ -20,6 +20,7 @@ struct SettingsScreen: View {
     @State private var confirmSignOut: Bool = false
     @State private var showDeleteSheet: Bool = false
     @State private var exportState: ExportState = .idle
+    @State private var pushTask: Task<Void, Never>?
 
     private enum ExportState: Equatable {
         case idle
@@ -215,7 +216,11 @@ struct SettingsScreen: View {
            (user.sampleIDOffset ?? 0) == offset,
            user.dayCutoffHour == cutoff
         { return }
-        Task {
+        // Debounced: typing a prefix must not send one PATCH per key.
+        pushTask?.cancel()
+        pushTask = Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
             await auth.pushUserSettings(format: format, prefix: prefix, offset: offset, dayCutoffHour: cutoff)
         }
     }

@@ -14,6 +14,12 @@ final class AuthSession: ObservableObject {
     @Published private(set) var currentUser: AuthUser?
     @Published var signInError: String?
 
+    /// Fires for every user record that came from the server by login,
+    /// token refresh or the offline cache restore - not for the response
+    /// of a settings PATCH, so a late response never overwrites newer
+    /// local edits.
+    let userRefreshed = PassthroughSubject<AuthUser, Never>()
+
     private let keychain: KeychainStore
     private let endpointProvider: () -> String
 
@@ -75,6 +81,7 @@ final class AuthSession: ObservableObject {
             return
         }
         currentUser = user
+        userRefreshed.send(user)
     }
 
     func signInWithPassword(email: String, password: String) async throws {
@@ -139,7 +146,7 @@ final class AuthSession: ObservableObject {
                     "day_cutoff_hour": dayCutoffHour
                 ]
             )
-            persist(token: token, user: updated)
+            persist(token: token, user: updated, announce: false)
         } catch {
             Log.auth.warning("user settings push failed for user \(user.id, privacy: .public): \(error.localizedDescription)")
         }
@@ -147,7 +154,7 @@ final class AuthSession: ObservableObject {
 
     // MARK: - private
 
-    private func persist(token: String, user: AuthUser) {
+    private func persist(token: String, user: AuthUser, announce: Bool = true) {
         keychain.setString(token, forKey: KeychainStore.Keys.token)
         keychain.setString(user.id, forKey: KeychainStore.Keys.userId)
         keychain.setString(user.email, forKey: KeychainStore.Keys.email)
@@ -158,6 +165,7 @@ final class AuthSession: ObservableObject {
         }
         currentUser = user
         signInError = nil
+        if announce { userRefreshed.send(user) }
     }
 
     private func clearLocal() {

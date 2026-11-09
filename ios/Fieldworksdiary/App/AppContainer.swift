@@ -166,9 +166,7 @@ final class AppContainer: ObservableObject {
     /// Mirrors the sample-id settings of every login / token refresh
     /// (and of the cached user after an offline start) into `config`.
     private func startObservingUserSettings() {
-        settingsObservation = auth.$currentUser
-            .compactMap { $0 }
-            .removeDuplicates()
+        settingsObservation = auth.userRefreshed
             .sink { [weak self] user in
                 self?.config.apply(user: user)
             }
