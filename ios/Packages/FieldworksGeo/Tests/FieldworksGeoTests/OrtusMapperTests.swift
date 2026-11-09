@@ -88,6 +88,17 @@ final class OrtusMapperTests: XCTestCase {
         XCTAssertEqual(p.admin[.country]?.name, "Zedland")
     }
 
+    func testHierarchyEntryWithoutLevelDoesNotFailDecode() throws {
+        let json = #"""
+        {"gazetteer":{"admin":{"country_iso":"DE","hierarchy":[
+          {"name":"Irgendwas"},
+          {"level":2,"name":"Deutschland","equivalent":"country"}]}}}
+        """#
+        let r = try JSONDecoder().decode(OrtusResponse.self, from: Data(json.utf8))
+        let p = try XCTUnwrap(OrtusMapper.map(r, lat: 0, lon: 0).place)
+        XCTAssertEqual(p.admin[.country]?.name, "Deutschland")
+    }
+
     func testDedupHashNormalization() {
         let a = Place(countryISO: "DE", admin: [.municipality: AdminValue(name: " Würzburg ")])
         let b = Place(countryISO: "de", admin: [.municipality: AdminValue(name: "WÜRZBURG")])

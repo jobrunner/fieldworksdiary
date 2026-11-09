@@ -77,6 +77,17 @@ public struct OrtusResponse: Decodable, Sendable {
         enum CodingKeys: String, CodingKey {
             case level, name, nameNative = "name_native", equivalent, localTerm = "local_term"
         }
+
+        /// A missing `level` decodes as 0 (as in Go) instead of failing the
+        /// whole response; level 0 maps to no column.
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            level = try c.decodeIfPresent(Int.self, forKey: .level) ?? 0
+            name = try c.decodeIfPresent(String.self, forKey: .name)
+            nameNative = try c.decodeIfPresent(String.self, forKey: .nameNative)
+            equivalent = try c.decodeIfPresent(String.self, forKey: .equivalent)
+            localTerm = try c.decodeIfPresent(String.self, forKey: .localTerm)
+        }
     }
 
     public struct Admin: Decodable, Sendable {
