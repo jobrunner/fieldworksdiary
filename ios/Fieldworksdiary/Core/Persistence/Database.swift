@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 import GRDB
 
@@ -46,6 +47,13 @@ final class Database {
     }
 
     private static func runMigrations(_ writer: DatabaseWriter) throws {
+        try makeMigrator().migrate(writer)
+    }
+
+    /// The full migration list. Internal (not private) so tests can
+    /// migrate a raw queue up to an intermediate version, seed legacy
+    /// rows, and then run the rest (`DatabaseMigrationV13Tests`).
+    static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1_local_samples_and_sequences", migrate: migrateV1)
         migrator.registerMigration("v2_local_excursions", migrate: migrateV2)
@@ -59,7 +67,8 @@ final class Database {
         migrator.registerMigration("v10_spec_alignment_r3", migrate: migrateV10)
         migrator.registerMigration("v11_pending_mutations_outbox", migrate: migrateV11)
         migrator.registerMigration("v12_localities_needs_human_review", migrate: migrateV12)
-        try migrator.migrate(writer)
+        migrator.registerMigration("v13_ortus_location", migrate: migrateV13)
+        return migrator
     }
 
     private static func migrateV1(_ db: GRDB.Database) throws {
@@ -326,5 +335,83 @@ final class Database {
             t.add(column: "needs_human_review", .boolean).notNull().defaults(to: false)
         }
         try db.create(indexOn: "local_localities", columns: ["needs_human_review"])
+    }
+
+    /// Phase O2: Ortus location data. Mirrors the PocketBase
+    /// migrations 1700000023–1700000025 so the sync mapping stays 1:1.
+    ///
+    /// 1. `local_samples`: `elevation` (copied from the legacy
+    ///    `altitude`, which stays readable until O3), provenance +
+    ///    status, placemark relations, MTB quadrant, DEM / terrain /
+    ///    bearing columns.
+    /// 2. `local_placemarks`: flat per-tier admin columns, owner,
+    ///    backend id; `geocoding_source` renamed to `backend_service`;
+    ///    the UNIQUE index on `dedup_hash` becomes a non-unique
+    ///    composite (dedup_hash, geocoding_source) — dedup is
+    ///    `LocalPlacemarkStore.lookupOrCreate`'s job, like on the
+    ///    backend.
+    /// 3. `local_sample_features`: Ortus source features per sample.
+    private static func migrateV13(_ db: GRDB.Database) throws {
+        // 1. local_samples
+        try db.alter(table: "local_samples") { t in
+            t.add(column: "elevation", .double)
+            t.add(column: "elevation_source", .text)
+            t.add(column: "location_status", .text).notNull().defaults(to: "pending")
+            t.add(column: "placemark", .text)
+            t.add(column: "placemark_suggestion", .text)
+            t.add(column: "mtb_quadrant", .integer)
+            t.add(column: "elevation_dem", .double)
+            t.add(column: "elevation_dem_accuracy", .double)
+            t.add(column: "slope_deg", .double)
+            t.add(column: "aspect_deg", .double)
+            t.add(column: "aspect_compass", .text)
+            t.add(column: "terrain_flat", .boolean).notNull().defaults(to: false)
+            t.add(column: "bearing_label", .text)
+            t.add(column: "bearing_reference", .text)
+            t.add(column: "bearing_distance_km", .double)
+            t.add(column: "bearing_compass", .text)
+            t.add(column: "bearing_inside", .boolean).notNull().defaults(to: false)
+        }
+        try db.execute(sql: "UPDATE local_samples SET elevation = altitude")
+        try db.execute(sql: """
+            UPDATE local_samples SET elevation_source = 'location_service'
+            WHERE elevation IS NOT NULL AND elevation != 0
+        """)
+        try db.create(indexOn: "local_samples", columns: ["collecting_day", "placemark"])
+
+        // 2. local_placemarks
+        try db.alter(table: "local_placemarks") { t in
+            t.add(column: "country_iso", .text)
+            for tier in AdminTier.allCases {
+                t.add(column: tier.rawValue, .text)
+                t.add(column: "\(tier.rawValue)_level", .integer)
+                t.add(column: "\(tier.rawValue)_native", .text)
+            }
+            t.add(column: "island", .text)
+            t.add(column: "mountain_range", .text)
+            t.add(column: "mountain", .text)
+            t.add(column: "owner", .text)
+            t.add(column: "backend_id", .text)
+        }
+        try db.execute(sql: """
+            UPDATE local_placemarks SET geocoding_source = 'backend_service'
+            WHERE geocoding_source = 'backend-service'
+        """)
+        try db.drop(indexOn: "local_placemarks", columns: ["dedup_hash"])
+        try db.create(indexOn: "local_placemarks", columns: ["dedup_hash", "geocoding_source"])
+
+        // 3. local_sample_features
+        try db.create(table: "local_sample_features") { t in
+            t.column("id", .text).primaryKey()
+            t.column("sample_id", .text).notNull()
+            t.column("source_id", .text).notNull()
+            t.column("source_name", .text).notNull().defaults(to: "")
+            t.column("layer", .text).notNull().defaults(to: "")
+            t.column("feature_id", .text).notNull().defaults(to: "")
+            t.column("properties_json", .text).notNull().defaults(to: "{}")
+            t.column("license_json", .text)
+            t.column("fetched_at", .datetime).notNull()
+        }
+        try db.create(indexOn: "local_sample_features", columns: ["sample_id", "source_id"])
     }
 }

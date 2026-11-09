@@ -37,7 +37,7 @@ final class LocalSampleStore {
         lat: Double,
         lon: Double,
         accuracy: Double? = nil,
-        altitude: Double? = nil,
+        elevation: Double? = nil,
         collectedFrom: Date = Date(),
         notes: String = "",
         overrideCode: String? = nil,
@@ -69,7 +69,7 @@ final class LocalSampleStore {
                 longitude: lon,
                 horizontalAccuracy: accuracy,
                 verticalAccuracy: nil,
-                altitude: altitude,
+                elevation: elevation,
                 beginDate: collectedFrom,
                 endDate: nil,
                 isAllDay: false,
@@ -87,7 +87,8 @@ final class LocalSampleStore {
                 syncStatus: .pending,
                 syncError: nil,
                 createdAt: now,
-                updatedAt: now
+                updatedAt: now,
+                elevationSource: elevation == nil ? nil : .locationService
             )
             try sample.insert(db)
             return sample
@@ -251,6 +252,22 @@ final class LocalSampleStore {
         )
     }
 
+    /// Placemark of the most recently collected sample on
+    /// `collectingDay` (YYYY-MM-DD key) that has one, skipping the
+    /// sample `excluding` (local id). Used to inherit a place offline
+    /// when Ortus is unreachable.
+    func latestPlacemarkID(collectingDay: String, excluding: String) throws -> String? {
+        try database.reader.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT placemark FROM local_samples
+                WHERE collecting_day = ? AND id != ?
+                  AND placemark IS NOT NULL AND placemark != ''
+                ORDER BY begin_date DESC, created_at DESC
+                LIMIT 1
+            """, arguments: [collectingDay, excluding])
+        }
+    }
+
     /// Returns the first local sample whose `sample_id` matches `code`
     /// for the current user, optionally excluding a given row by id.
     /// Used by the editor's pre-save uniqueness check.
@@ -320,6 +337,7 @@ final class LocalSampleStore {
         try database.writer.write { db in
             try db.execute(sql: "DELETE FROM local_samples")
             try db.execute(sql: "DELETE FROM local_sequences")
+            try db.execute(sql: "DELETE FROM local_sample_features")
         }
     }
 
@@ -353,7 +371,9 @@ final class LocalSampleStore {
         local.longitude = r.longitude ?? local.longitude
         local.horizontalAccuracy = r.horizontalAccuracy ?? local.horizontalAccuracy
         local.verticalAccuracy = r.verticalAccuracy ?? local.verticalAccuracy
-        local.altitude = r.altitude ?? local.altitude
+        // Wire key is still `altitude` until Task 16 switches the
+        // Sample model to `elevation`.
+        local.elevation = r.altitude ?? local.elevation
         if let from = r.beginDate { local.beginDate = from }
         local.endDate = r.endDate ?? local.endDate
         local.isAllDay = r.isAllDay
@@ -391,7 +411,7 @@ final class LocalSampleStore {
             longitude: r.longitude,
             horizontalAccuracy: r.horizontalAccuracy,
             verticalAccuracy: r.verticalAccuracy,
-            altitude: r.altitude,
+            elevation: r.altitude,
             beginDate: r.beginDate ?? now,
             endDate: r.endDate,
             isAllDay: r.isAllDay,

@@ -10,7 +10,8 @@ import Foundation
 ///   - `administrative_area`, `sub_administrative_area`
 ///   - `locality`, `sub_locality`
 ///   - `postal_code`, `name`, `thoroughfare`
-///   - `geocoding_source` (`backend-service` | `manual`)
+///   - `geocoding_source` (`backend_service` | `manual`; legacy
+///     `backend-service` is still decoded)
 ///   - `geocoding_service_version`, `geocoding_date`
 ///   - `dedup_hash`
 ///
@@ -34,8 +35,12 @@ struct Placemark: Decodable, Identifiable, Equatable {
 
     /// Where the placemark came from. `manual` placemarks are
     /// sacrosanct — the auto-geocode hook must skip them.
+    ///
+    /// Phase O renamed the wire value `backend-service` →
+    /// `backend_service`. Decoding accepts both spellings (old
+    /// servers, cached rows); encoding always writes the new one.
     enum GeocodingSource: String, Codable, Equatable {
-        case backendService = "backend-service"
+        case backendService = "backend_service"
         case manual
 
         init(wire: String?) {
@@ -43,6 +48,11 @@ struct Placemark: Decodable, Identifiable, Equatable {
             case "manual": self = .manual
             default: self = .backendService
             }
+        }
+
+        init(from decoder: Decoder) throws {
+            let raw = try decoder.singleValueContainer().decode(String.self)
+            self.init(wire: raw)
         }
     }
 

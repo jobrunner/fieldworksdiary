@@ -8,6 +8,24 @@ enum SyncStatus: String, Codable, DatabaseValueConvertible {
     case failed // last attempt errored, will be retried
 }
 
+/// Provenance of `LocalSample.elevation`. Raw values are the
+/// PocketBase select values on `samples.elevation_source`.
+enum ElevationSource: String, Codable, DatabaseValueConvertible {
+    case locationService = "location_service"
+    case backendService = "backend_service"
+    case manual
+}
+
+/// State of a sample's place data (`samples.location_status`).
+/// `pending` until the backend (or the offline inheritance from an
+/// earlier sample of the same day) has filled it in.
+enum LocationStatus: String, Codable, DatabaseValueConvertible {
+    case pending
+    case inherited
+    case manual
+    case backendService = "backend_service"
+}
+
 /// Local mirror of a Sample. R3 renamed the user-facing columns to
 /// match the Spec; the historical names live on in the V1–V9 GRDB
 /// migrations and the V10 rename. SQLite preserves data through
@@ -24,7 +42,9 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var longitude: Double?
     var horizontalAccuracy: Double?
     var verticalAccuracy: Double?
-    var altitude: Double?
+    /// Metres above sea level. Was `altitude` until Phase O2; the
+    /// legacy column stays in SQLite until O3 but is no longer read.
+    var elevation: Double?
     var beginDate: Date
     var endDate: Date?
     var isAllDay: Bool
@@ -45,6 +65,27 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var createdAt: Date
     var updatedAt: Date
 
+    // MARK: Phase O2 — Ortus location data (server-filled)
+
+    var elevationSource: ElevationSource?
+    var locationStatus: LocationStatus = .pending
+    /// Placemark id (backend id once synced, local UUID before).
+    var placemark: String?
+    var placemarkSuggestion: String?
+    /// TK25 quadrant 1–4; nil or 0 means none.
+    var mtbQuadrant: Int?
+    var elevationDEM: Double?
+    var elevationDEMAccuracy: Double?
+    var slopeDeg: Double?
+    var aspectDeg: Double?
+    var aspectCompass: String?
+    var terrainFlat: Bool = false
+    var bearingLabel: String?
+    var bearingReference: String?
+    var bearingDistanceKm: Double?
+    var bearingCompass: String?
+    var bearingInside: Bool = false
+
     enum CodingKeys: String, CodingKey {
         case id
         case backendId = "backend_id"
@@ -53,7 +94,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case originalCode = "original_code"
         case userId = "user_id"
         case collectingDay = "collecting_day"
-        case latitude, longitude, altitude
+        case latitude, longitude, elevation
         case horizontalAccuracy = "horizontal_accuracy"
         case verticalAccuracy = "vertical_accuracy"
         case beginDate = "begin_date"
@@ -70,6 +111,22 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case syncError = "sync_error"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case elevationSource = "elevation_source"
+        case locationStatus = "location_status"
+        case placemark
+        case placemarkSuggestion = "placemark_suggestion"
+        case mtbQuadrant = "mtb_quadrant"
+        case elevationDEM = "elevation_dem"
+        case elevationDEMAccuracy = "elevation_dem_accuracy"
+        case slopeDeg = "slope_deg"
+        case aspectDeg = "aspect_deg"
+        case aspectCompass = "aspect_compass"
+        case terrainFlat = "terrain_flat"
+        case bearingLabel = "bearing_label"
+        case bearingReference = "bearing_reference"
+        case bearingDistanceKm = "bearing_distance_km"
+        case bearingCompass = "bearing_compass"
+        case bearingInside = "bearing_inside"
     }
 
     static let databaseTableName = "local_samples"

@@ -223,7 +223,7 @@ final class SyncRunner: ObservableObject {
                 lat: sample.latitude ?? 0,
                 lon: sample.longitude ?? 0,
                 accuracy: sample.horizontalAccuracy,
-                altitude: sample.altitude,
+                altitude: sample.elevation,
                 collectedFrom: sample.beginDate,
                 notes: sample.notes.isEmpty ? nil : sample.notes,
                 marked: sample.marked,

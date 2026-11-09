@@ -316,7 +316,7 @@ final class SampleEditorViewModel: ObservableObject {
                 lat: coordinate.latitude,
                 lon: coordinate.longitude,
                 accuracy: accuracyM,
-                altitude: altitudeM,
+                elevation: altitudeM,
                 notes: trimmedNotes,
                 overrideCode: userCode == store.peekNextCode() ? nil : userCode,
                 locationSource: mode == .field ? .locationService : .user
@@ -433,7 +433,7 @@ final class SampleEditorViewModel: ObservableObject {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         }
         accuracyM = fresh.horizontalAccuracy
-        altitudeM = fresh.altitude
+        altitudeM = fresh.elevation
     }
 
     private func adoptExisting(_ sample: LocalSample) {
@@ -454,7 +454,7 @@ final class SampleEditorViewModel: ObservableObject {
             coordinate = nil
         }
         accuracyM = sample.horizontalAccuracy
-        altitudeM = sample.altitude
+        altitudeM = sample.elevation
         savedPhotos = (try? photoStore.fetchBySample(sample.id)) ?? []
         if let ftID = sample.fieldtrip, !ftID.isEmpty {
             savedFieldtrip = try? fieldtripStore.fetchById(ftID)
@@ -479,7 +479,7 @@ final class SampleEditorViewModel: ObservableObject {
                         self.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                     }
                     self.accuracyM = fresh.horizontalAccuracy
-                    self.altitudeM = fresh.altitude
+                    self.altitudeM = fresh.elevation
                     if let ftID = fresh.fieldtrip, !ftID.isEmpty {
                         self.savedFieldtrip = try? self.fieldtripStore.fetchById(ftID)
                     }
