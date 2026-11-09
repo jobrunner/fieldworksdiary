@@ -22,10 +22,6 @@ import (
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 )
 
-// labellocBaseURL serves the locality placemark enricher until it moves
-// to Ortus as well.
-const labellocBaseURL = "https://labelloc.example.org"
-
 // defaultAppleAudiences are the iOS bundle ids the native Sign in
 // with Apple flow may legitimately produce identityTokens for. The
 // `APPLE_ALLOWED_AUDIENCES` env var (comma-separated) overrides this
@@ -135,12 +131,6 @@ func main() {
 
 	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
 		cache := &services.Geocache{Dao: app.Dao()}
-		labelloc := &services.Labelloc{
-			BaseURL:    labellocBaseURL,
-			HTTPClient: httpClient,
-			Cache:      cache,
-			MaxRetries: 3,
-		}
 		enr := &enrichment.Enricher{
 			App:     app,
 			Labels:  adminlabels.Default(),
@@ -160,12 +150,15 @@ func main() {
 		}
 		enr.Register()
 
-		// Phase R7.1: reverse-geocode any locality whose coordinate
-		// is set (and re-geocode on a > 100 m shift). Manual-source
-		// placemarks are left alone.
+		// Reverse-geocode any locality whose coordinate is set (and
+		// re-geocode on a > 100 m shift) via the same Ortus client.
+		// Manual-source placemarks are left alone; without an Ortus
+		// client the enricher does nothing.
 		pm := &enrichment.PlacemarkEnricher{
-			Labelloc: labelloc,
-			Timeout:  15 * time.Second,
+			Ortus:   enr.Ortus,
+			Labels:  adminlabels.Default(),
+			Logger:  slog.Default(),
+			Timeout: 15 * time.Second,
 		}
 		enrichment.RegisterPlacemarkEnricher(app, pm)
 		return nil
