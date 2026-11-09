@@ -592,9 +592,6 @@ func TestEnrich_DEMOnlyWhenNoElevationSource(t *testing.T) {
 		if got := s.GetFloat("vertical_accuracy"); got != 7 {
 			t.Errorf("vertical_accuracy = %v, want 7", got)
 		}
-		if got := s.GetFloat("elevation_dem"); got != 236 {
-			t.Errorf("elevation_dem = %v, want 236 (reference value stored)", got)
-		}
 	})
 
 	t.Run("empty source takes DEM", func(t *testing.T) {

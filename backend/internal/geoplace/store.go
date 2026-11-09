@@ -100,8 +100,6 @@ func ApplyGeo(rec *models.Record, g SampleGeo) {
 		}
 		rec.Set(name, *v)
 	}
-	num("elevation_dem", g.ElevationDEM)
-	num("elevation_dem_accuracy", g.ElevationDEMAccuracy)
 	num("slope_deg", g.SlopeDeg)
 	num("aspect_deg", g.AspectDeg)
 	num("bearing_distance_km", g.BearingDistanceKm)

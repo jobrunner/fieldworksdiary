@@ -14,7 +14,7 @@ func TestSamplesOrtusMigration_Schema(t *testing.T) {
 	for _, name := range []string{
 		"elevation", "elevation_source", "location_status", "placemark",
 		"placemark_suggestion", "mtb_sheet_number", "mtb_sheet_name",
-		"mtb_quadrant", "elevation_dem", "elevation_dem_accuracy",
+		"mtb_quadrant",
 		"slope_deg", "aspect_deg", "bearing_distance_km", "aspect_compass",
 		"bearing_label", "bearing_reference", "bearing_compass",
 		"terrain_flat", "bearing_inside",
