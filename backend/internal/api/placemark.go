@@ -101,7 +101,7 @@ func handleSetManualPlacemark(app core.App, c echo.Context) error {
 		return apis.NewApiError(http.StatusInternalServerError, "could not persist placemark", err)
 	}
 
-	// Promote to manual if we matched an existing backend-service row.
+	// Promote to manual if we matched an existing backend_service row.
 	// (Same coords + fields a future labelloc roll-out might produce —
 	// without this flip a re-geocode would overwrite the user's call.)
 	if pm.GetString("geocoding_source") != "manual" {

@@ -328,7 +328,7 @@ func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
 		HasCoords:     true,
 		CollectedFrom: s.GetDateTime("begin_date").Time(),
 	}
-	if alt := s.GetFloat("altitude"); alt != 0 {
+	if alt := s.GetFloat("elevation"); alt != 0 {
 		label.AltitudeM = alt
 		label.HasAltitude = true
 	}

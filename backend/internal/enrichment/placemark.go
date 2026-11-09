@@ -228,7 +228,7 @@ func lookupOrCreatePlacemark(dao *daos.Dao, hash string, f placemarkFields) (*mo
 	rec.Set("administrative_area", f.administrativeArea)
 	rec.Set("sub_administrative_area", f.subAdministrativeArea)
 	rec.Set("locality", f.locality)
-	rec.Set("geocoding_source", "backend-service")
+	rec.Set("geocoding_source", "backend_service")
 	rec.Set("geocoding_date", time.Now())
 	rec.Set("dedup_hash", hash)
 	if err := dao.SaveRecord(rec); err != nil {

@@ -165,8 +165,8 @@ func TestPlacemarkEnricher_LookupOrCreateOnFirstRun(t *testing.T) {
 	if pm.GetString("locality") != "Würzburg" {
 		t.Errorf("locality = %q, want Würzburg", pm.GetString("locality"))
 	}
-	if pm.GetString("geocoding_source") != "backend-service" {
-		t.Errorf("geocoding_source = %q, want backend-service", pm.GetString("geocoding_source"))
+	if pm.GetString("geocoding_source") != "backend_service" {
+		t.Errorf("geocoding_source = %q, want backend_service", pm.GetString("geocoding_source"))
 	}
 }
 
