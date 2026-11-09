@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`); parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1045,3 +1045,44 @@ Aufgaben:
 - [ ] `RootView` → `HomeView` (statt MainTabs), `AppContainer` mit
       `PhotoStore`/`LocalPhotoStore`, Info.plist mit Camera/Photo-Usage
 - [ ] Build + Tests grün, manueller Foto-Capture im Simulator verifiziert
+
+---
+
+## Phase O – Ortus-Ortsdaten am Sample
+
+**Status: in progress** (gestartet 2026-11-09)
+
+Ziel: labelloc/MTB-Reverse-Geocoding durch Ortus ersetzen; Ortsdaten
+(Admin-Ebenen, Features, TK25-Quadrant) am Sample speichern.
+
+- Spec: `docs/superpowers/specs/2026-11-09-ortus-sample-ort-design.md`
+- Plan: `docs/superpowers/plans/2026-11-09-ortus-sample-ort.md`
+
+Aufgaben:
+
+Phase O1 – Backend
+- [x] Task 0: Phasenstatus eintragen
+- [ ] Task 1: Label-Tabelle – Format, Generator, Go-Loader
+- [ ] Task 2: Label-Tabelle – Bereinigungsentwurf aller 77 Länder
+- [ ] Task 3: TK25-Quadrant (Go)
+- [ ] Task 4: Ortus-Wrapper
+- [ ] Task 5: Mapping Ortus → Place / SampleGeo / Features
+- [ ] Task 6: Migrationen – Placemarks, Samples, Sample-Features
+- [ ] Task 7: Placemark- und Feature-Store + Endpoints
+- [ ] Task 8: Sample-Anreicherung über Ortus
+- [ ] Task 9: Locality-Placemark über Ortus
+- [ ] Task 10: labelloc/MTB entfernen, Leser umstellen
+- [ ] Task 11: Phase O1 abschließen
+
+Phase O2 – iOS
+- [ ] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
+- [ ] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
+- [ ] Task 14: GRDB-Migration v13 und Stores
+- [ ] Task 15: Ortus-Client und Ortsauflösung beim Anlegen
+- [ ] Task 16: Sync – Placemark, Sample, Features
+- [ ] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
+- [ ] Task 18: Phase O2 abschließen
+
+Phase O3 – Backfill und Aufräumen
+- [ ] Task 19: Backfill-Kommando
+- [ ] Task 20: Alte Spalten entfernen
