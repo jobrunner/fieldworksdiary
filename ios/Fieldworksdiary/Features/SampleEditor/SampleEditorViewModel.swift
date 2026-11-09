@@ -52,6 +52,12 @@ final class SampleEditorViewModel: ObservableObject {
     @Published var code: String = ""
     @Published var notes: String = ""
     @Published var pendingPhotos: [PendingPhoto] = []
+    /// Editable time window (UTC instants) and zone of an existing
+    /// sample. Changing the zone never moves the instants.
+    @Published private(set) var beginDate = Date()
+    @Published private(set) var endDate = Date()
+    @Published private(set) var timezoneID = "Europe/Berlin"
+    @Published private(set) var timezoneSource: TimezoneSource?
     @Published private(set) var locationStatus: LocationProvider.Status = .idle
     /// Best-known coordinate for the bottom card. Either the live GPS
     /// fix or — once saved — the persisted sample's coord.
@@ -156,7 +162,42 @@ final class SampleEditorViewModel: ObservableObject {
         if trimmedCode != originalCode { return true }
         if trimmedNotes != originalNotes { return true }
         if !pendingPhotos.isEmpty { return true }
+        if timeFieldsEdited { return true }
         return false
+    }
+
+    /// Zone of the sample for display and input.
+    var timeZone: TimeZone {
+        TimeZone(identifier: timezoneID) ?? TimeZone(identifier: "Europe/Berlin") ?? .current
+    }
+
+    private var timeFieldsEdited: Bool {
+        guard let sample = savedSample else { return false }
+        return beginDate != sample.beginDate
+            || endDate != (sample.endDate ?? sample.beginDate)
+            || timezoneID != sample.timezone
+            || timezoneSource != sample.timezoneSource
+    }
+
+    /// Sets the begin; the end follows when it would fall before it.
+    func setBeginDate(_ date: Date) {
+        beginDate = date
+        if endDate < date { endDate = date }
+    }
+
+    /// Sets the end, never before the begin.
+    func setEndDate(_ date: Date) {
+        endDate = max(date, beginDate)
+    }
+
+    /// Manual zone choice: the UTC instants stay, only their reading
+    /// changes. Ortus no longer overrides it (`.manual`).
+    func setTimezone(_ identifier: String) {
+        guard TimeZone(identifier: identifier) != nil else { return }
+        if identifier != timezoneID || timezoneSource != .manual {
+            timezoneID = identifier
+            timezoneSource = .manual
+        }
     }
 
     var canSave: Bool {
@@ -312,6 +353,11 @@ final class SampleEditorViewModel: ObservableObject {
 
         working.sampleID = code.trimmingCharacters(in: .whitespacesAndNewlines)
         working.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        working.beginDate = beginDate
+        // A legacy row without end stays that way until the user moves it.
+        if working.endDate != nil || endDate != beginDate { working.endDate = endDate }
+        working.timezone = timezoneID
+        working.timezoneSource = timezoneSource
         do {
             try store.saveEdits(working, mutationsStore: mutationsStore)
             try persistPhotos(for: working)
@@ -632,6 +678,7 @@ final class SampleEditorViewModel: ObservableObject {
     /// without having to leave the editor.
     func refreshDerivedFields() {
         guard let id = savedSample?.id, let fresh = try? store.fetchById(id) else { return }
+        adoptTimeFieldsUnlessEdited(fresh)
         savedSample = fresh
         savedPhotos = (try? photoStore.fetchBySample(id)) ?? []
         if let ftID = fresh.fieldtrip, !ftID.isEmpty {
@@ -647,6 +694,19 @@ final class SampleEditorViewModel: ObservableObject {
         loadPlacemarks(for: fresh)
     }
 
+    private func adoptTimeFields(_ sample: LocalSample) {
+        beginDate = sample.beginDate
+        endDate = sample.endDate ?? sample.beginDate
+        timezoneID = sample.timezone
+        timezoneSource = sample.timezoneSource
+    }
+
+    /// Takes over background changes (Ortus zone, pulled times) unless
+    /// the user is editing the time fields.
+    private func adoptTimeFieldsUnlessEdited(_ fresh: LocalSample) {
+        if !timeFieldsEdited { adoptTimeFields(fresh) }
+    }
+
     private func adoptExisting(_ sample: LocalSample) {
         savedSample = sample
         // Snapshot the *trimmed* persisted values for dirty-detection —
@@ -659,6 +719,7 @@ final class SampleEditorViewModel: ObservableObject {
         notes = trimmedNotes
         originalCode = trimmedCode
         originalNotes = trimmedNotes
+        adoptTimeFields(sample)
         if let lat = sample.latitude, let lon = sample.longitude {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         } else {
@@ -686,6 +747,7 @@ final class SampleEditorViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 guard let self else { return }
                 if let fresh = try? self.store.fetchById(sampleID), fresh != self.savedSample {
+                    self.adoptTimeFieldsUnlessEdited(fresh)
                     self.savedSample = fresh
                     if let lat = fresh.latitude, let lon = fresh.longitude {
                         self.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)

@@ -366,6 +366,12 @@ final class LocalSampleStore {
             stored.sampleID = sample.sampleID
             stored.notes = sample.notes
             stored.marked = sample.marked
+            // Time window and zone (editor): the instants are UTC, the
+            // zone only changes how they are read.
+            stored.beginDate = sample.beginDate
+            stored.endDate = sample.endDate
+            stored.timezone = sample.timezone
+            stored.timezoneSource = sample.timezoneSource
             stored.updatedAt = Date()
             try stored.update(db)
             return stored.backendId

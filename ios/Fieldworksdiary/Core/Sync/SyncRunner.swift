@@ -157,6 +157,9 @@ struct SampleCreateInput: Equatable {
     var timezone: String
     var timezoneSource: TimezoneSource?
     var collectingDay: String?
+    /// End of the time window (UTC); nil for legacy rows.
+    var collectedTo: Date?
+    var isAllDay = false
 }
 
 /// Payload-Bundle für `SamplePushClient.updateSample`: user-editierbare
@@ -175,6 +178,10 @@ struct SampleUpdateInput: Codable, Equatable {
     var timezone: String
     var timezoneSource: TimezoneSource?
     var collectingDay: String?
+    /// Time window (UTC); nil fields are not sent.
+    var beginDate: Date?
+    var endDate: Date?
+    var isAllDay: Bool?
 }
 
 /// Payload of a `.sample/.update` outbox row. Older rows carry an
@@ -742,7 +749,10 @@ final class SyncRunner: ObservableObject {
             location: location,
             timezone: current.timezone,
             timezoneSource: current.timezoneSource,
-            collectingDay: current.collectingDay
+            collectingDay: current.collectingDay,
+            beginDate: current.beginDate,
+            endDate: current.endDate,
+            isAllDay: current.isAllDay
         )
 
         let updated = try await client.updateSample(id: backendID, input: input)
@@ -973,7 +983,9 @@ final class SyncRunner: ObservableObject {
             clientUpdatedAt: s.updatedAt,
             timezone: s.timezone,
             timezoneSource: s.timezoneSource,
-            collectingDay: s.collectingDay
+            collectingDay: s.collectingDay,
+            collectedTo: s.endDate,
+            isAllDay: s.isAllDay
         )
     }
 

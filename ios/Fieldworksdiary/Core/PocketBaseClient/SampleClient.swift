@@ -120,6 +120,8 @@ struct SampleClient {
     static func createBody(_ input: SampleCreateInput) -> [String: Any] {
         var body = input.location.wireBody
         body["begin_date"] = wireFormatter.string(from: input.collectedFrom)
+        if let end = input.collectedTo { body["end_date"] = wireFormatter.string(from: end) }
+        body["is_all_day"] = input.isAllDay
         body["timezone"] = input.timezone
         if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
         if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }
@@ -141,6 +143,9 @@ struct SampleClient {
         body["timezone"] = input.timezone
         if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
         if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }
+        if let begin = input.beginDate { body["begin_date"] = wireFormatter.string(from: begin) }
+        if let end = input.endDate { body["end_date"] = wireFormatter.string(from: end) }
+        if let allDay = input.isAllDay { body["is_all_day"] = allDay }
         body["version"] = input.version
         body["client_uuid"] = input.clientUuid
         body["client_updated_at"] = wireFormatter.string(from: input.clientUpdatedAt)

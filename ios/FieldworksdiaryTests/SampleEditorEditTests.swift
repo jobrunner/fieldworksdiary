@@ -228,6 +228,73 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(try samples.fetchById(seeded.id)?.syncStatus, .pending)
     }
 
+    // MARK: - time window and zone (Phase Z)
+
+    func testChooseZone_SetsManual_KeepsInstants_AndPersists() async throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let vm = makeVM(sampleID: seeded.id)
+        let begin = vm.beginDate
+        let end = vm.endDate
+
+        vm.setTimezone("Atlantic/Canary")
+
+        XCTAssertEqual(vm.timezoneSource, .manual)
+        XCTAssertEqual(vm.beginDate, begin)
+        XCTAssertEqual(vm.endDate, end)
+        XCTAssertTrue(vm.hasUnsavedEdits)
+
+        await vm.saveEdits()
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.timezone, "Atlantic/Canary")
+        XCTAssertEqual(stored.timezoneSource, .manual)
+        XCTAssertEqual(stored.beginDate, seeded.beginDate)
+    }
+
+    func testEditTimes_EndNeverBeforeBegin_AndPersists() async throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let vm = makeVM(sampleID: seeded.id)
+        let newBegin = vm.beginDate.addingTimeInterval(3600)
+
+        vm.setBeginDate(newBegin)
+        XCTAssertEqual(vm.endDate, newBegin, "end follows a begin moved past it")
+        vm.setEndDate(newBegin.addingTimeInterval(-60))
+        XCTAssertEqual(vm.endDate, newBegin, "end is clamped to begin")
+        vm.setEndDate(newBegin.addingTimeInterval(1800))
+
+        await vm.saveEdits()
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.beginDate, newBegin)
+        XCTAssertEqual(stored.endDate, newBegin.addingTimeInterval(1800))
+        let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
+        XCTAssertEqual(updates.count, 1)
+    }
+
+    func testUpdateBody_CarriesTimeWindow() {
+        let begin = Date(timeIntervalSince1970: 1_779_000_000)
+        let input = SampleUpdateInput(
+            code: "x", notes: nil, clientUuid: "u", clientUpdatedAt: begin, version: 2,
+            location: SampleLocationFields(
+                latitude: 1, longitude: 2, elevation: nil, elevationSource: nil,
+                locationSource: .locationService, locationStatus: .pending
+            ),
+            timezone: "Atlantic/Canary", timezoneSource: .manual, collectingDay: "2026-05-19",
+            beginDate: begin, endDate: begin.addingTimeInterval(900), isAllDay: false
+        )
+        let body = SampleClient.updateBody(input)
+        XCTAssertNotNil(body["begin_date"] as? String)
+        XCTAssertNotNil(body["end_date"] as? String)
+        XCTAssertEqual(body["is_all_day"] as? Bool, false)
+    }
+
+    func testTimeZoneCatalog_RegionsAndZonesSortedByPrefix() {
+        let ids = ["Europe/Berlin", "Atlantic/Canary", "Europe/Athens", "UTC", "America/Argentina/Buenos_Aires"]
+        XCTAssertEqual(TimeZoneCatalog.regions(ids), ["America", "Atlantic", "Europe", "Sonstige"])
+        XCTAssertEqual(TimeZoneCatalog.zones(in: "Europe", ids), ["Europe/Athens", "Europe/Berlin"])
+        XCTAssertEqual(TimeZoneCatalog.displayName("America/Argentina/Buenos_Aires"), "Argentina/Buenos Aires")
+    }
+
     private func makeVM(sampleID: String?) -> SampleEditorViewModel {
         SampleEditorViewModel(
             sampleID: sampleID,

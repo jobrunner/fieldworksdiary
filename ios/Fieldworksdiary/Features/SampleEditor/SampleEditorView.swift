@@ -1,4 +1,5 @@
 import CoreLocation
+import FieldworksGeo
 import SwiftUI
 import UIKit
 
@@ -53,6 +54,7 @@ private struct SampleEditorContent: View {
     @FocusState private var codeFocused: Bool
 
     @State private var showingCoordinatePicker = false
+    @State private var showingTimeZonePicker = false
     @State private var showingCorrectionPicker = false
     /// Coordinate picked on the correction map. Handed to the view
     /// model only after the sheet is gone (`onDismiss`), so the
@@ -707,6 +709,14 @@ private struct SampleEditorContent: View {
                     .font(.body)
                     .lineLimit(2)
                     .minimumScaleFactor(0.9)
+                if let zoneLabel = timezoneLabelText {
+                    Text(zoneLabel)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if viewModel.isExistingSample {
+                    timeWindowEditor
+                }
                 if let sunrise = sunriseText, let sunset = sunsetText {
                     // Wrap sunrise/sunset into a second row when the
                     // first one wouldn't fit horizontally (AX5 +
@@ -728,8 +738,57 @@ private struct SampleEditorContent: View {
             Spacer(minLength: AppSpacing.sm)
         }
         .padding(.vertical, AppSpacing.md)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(timeA11yLabel)
+        .modifier(TimeRowAccessibility(isEditable: viewModel.isExistingSample, label: timeA11yLabel))
+        .sheet(isPresented: $showingTimeZonePicker) {
+            TimeZonePickerView(selected: viewModel.timezoneID, date: viewModel.beginDate) { id in
+                viewModel.setTimezone(id)
+            }
+        }
+    }
+
+    /// Beginn, Ende und Zeitzone eines bestehenden Samples. Die
+    /// DatePicker lesen und schreiben in der Zone des Samples; ein
+    /// Zonenwechsel lässt die UTC-Zeitpunkte unverändert.
+    private var timeWindowEditor: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            DatePicker(
+                "Beginn",
+                selection: Binding(get: { viewModel.beginDate }, set: { viewModel.setBeginDate($0) }),
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .frame(minHeight: 44)
+            DatePicker(
+                "Ende",
+                selection: Binding(get: { viewModel.endDate }, set: { viewModel.setEndDate($0) }),
+                in: viewModel.beginDate...,
+                displayedComponents: [.date, .hourAndMinute]
+            )
+            .frame(minHeight: 44)
+            Button {
+                showingTimeZonePicker = true
+            } label: {
+                HStack {
+                    Text("Zeitzone")
+                    Spacer(minLength: AppSpacing.sm)
+                    Text(viewModel.timezoneID)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Zeitzone")
+            .accessibilityValue(viewModel.timezoneID)
+            .accessibilityHint("Öffnet die Auswahl der Zeitzone. Die Zeitpunkte bleiben gleich.")
+            .accessibilityAddTraits(.isButton)
+        }
+        .environment(\.timeZone, viewModel.timeZone)
     }
 
     // MARK: - save bar
@@ -823,12 +882,13 @@ private struct SampleEditorContent: View {
         }
     }
 
-    private static let dayFormatter: DateFormatter = {
+    private func dayFormatter(in zone: TimeZone) -> DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "de_DE")
+        f.timeZone = zone
         f.dateFormat = "EEEE, dd. MMMM yyyy"
         return f
-    }()
+    }
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -838,8 +898,18 @@ private struct SampleEditorContent: View {
     }()
 
     private var longDateText: String {
-        let date = viewModel.savedSample?.beginDate ?? Date()
-        return Self.dayFormatter.string(from: date)
+        // Existing sample: the sample's zone; a new one reads the
+        // device zone (that is the zone it will be created in).
+        if viewModel.isExistingSample {
+            return dayFormatter(in: viewModel.timeZone).string(from: viewModel.beginDate)
+        }
+        return dayFormatter(in: .current).string(from: Date())
+    }
+
+    /// „Atlantic/Canary (WET)“ — Kürzel gilt zum Beginn-Zeitpunkt.
+    private var timezoneLabelText: String? {
+        guard viewModel.isExistingSample else { return nil }
+        return SampleTime.timezoneLabel(viewModel.timeZone, at: viewModel.beginDate)
     }
 
     private var sunriseText: String? {
@@ -872,6 +942,7 @@ private struct SampleEditorContent: View {
 
     private var timeA11yLabel: String {
         var parts = [longDateText]
+        if let zone = timezoneLabelText { parts.append(zone) }
         if let sunrise = sunriseText { parts.append("Sonnenaufgang " + sunrise) }
         if let sunset = sunsetText { parts.append("Sonnenuntergang " + sunset) }
         return parts.joined(separator: ", ")
@@ -914,4 +985,22 @@ private struct SavedPhotoThumbnail: View {
 #Preview {
     SampleEditorView(sampleID: nil)
         .environmentObject(AppContainer())
+}
+
+/// Der Zeitbereich eines bestehenden Samples enthält bedienbare Felder
+/// (DatePicker, Zeitzonen-Zeile) und darf deshalb nicht zu einem einzigen
+/// Element zusammengezogen werden; bei neuen Samples ist er reiner Text.
+private struct TimeRowAccessibility: ViewModifier {
+    let isEditable: Bool
+    let label: String
+
+    func body(content: Content) -> some View {
+        if isEditable {
+            content.accessibilityElement(children: .contain)
+        } else {
+            content
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(label)
+        }
+    }
 }
