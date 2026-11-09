@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`) — O1 (Backend) done 2026-11-09, O2 (iOS) und O3 (Backfill/Aufräumen) offen; parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`) — O1 (Backend) done 2026-11-09, O2 (iOS) in progress, O3 (Backfill/Aufräumen) offen; parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1084,7 +1084,7 @@ Demo O1 (lokaler Ortus-Lauf, 2026-11-09):
 - Label-Tabelle ist ein ungeprüfter Entwurf — Jo reviewt sie pro Land
   vor der O2-UI.
 
-Phase O2 – iOS
+Phase O2 – iOS — **in progress** (gestartet 2026-11-09)
 - [ ] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
 - [ ] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
 - [ ] Task 14: GRDB-Migration v13 und Stores
