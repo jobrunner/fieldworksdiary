@@ -73,11 +73,10 @@ func newPlacemarkScenario(t *testing.T) (app *tests.TestApp, token, localityID, 
 func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 	app, token, localityID, _ := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"country":             "DE",
-		"administrative_area": "Bayern",
-		"locality":            "Würzburg",
-		"postal_code":         "97070",
-		"name":                "Sanderring",
+		"country_iso":       "DE",
+		"admin_state":       "Bayern",
+		"admin_state_level": 4,
+		"island":            "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark happy",
@@ -90,9 +89,9 @@ func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 		},
 		ExpectedStatus: http.StatusOK,
 		ExpectedContent: []string{
-			`"country":"DE"`,
+			`"country_iso":"DE"`,
 			`"geocoding_source":"manual"`,
-			`"locality":"Würzburg"`,
+			`"island":"Testinsel"`,
 		},
 		ExpectedEvents: map[string]int{
 			// One placemark create + one locality update.
@@ -127,7 +126,7 @@ func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 	app, token, localityID, _ := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"locality": "Würzburg",
+		"island": "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark missing country",
@@ -139,7 +138,7 @@ func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 			"Content-Type":  "application/json",
 		},
 		ExpectedStatus:  http.StatusBadRequest,
-		ExpectedContent: []string{"ISO 3166-1 alpha-2"},
+		ExpectedContent: []string{"country_iso) is required"},
 		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
 		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
 			mountPlacemarkRoutes(app, e)
@@ -151,8 +150,8 @@ func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 func TestSetManualPlacemark_ForeignLocality_Returns403(t *testing.T) {
 	app, token, _, otherLocalityID := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"country":  "DE",
-		"locality": "Würzburg",
+		"country_iso": "DE",
+		"island":      "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark foreign locality",
@@ -175,7 +174,7 @@ func TestSetManualPlacemark_ForeignLocality_Returns403(t *testing.T) {
 
 func TestSetManualPlacemark_NoAuth_Returns401(t *testing.T) {
 	app, _, localityID, _ := newPlacemarkScenario(t)
-	body, _ := json.Marshal(map[string]any{"country": "DE", "locality": "Würzburg"})
+	body, _ := json.Marshal(map[string]any{"country_iso": "DE", "island": "Testinsel"})
 	scenario := tests.ApiScenario{
 		Name:            "manual placemark no auth",
 		Method:          http.MethodPatch,
@@ -249,22 +248,76 @@ func TestClearManualPlacemark_DetachesPlacemark(t *testing.T) {
 	scenario.Test(t)
 }
 
-// TestDedupHash_MatchesEnrichmentImplementation ensures the
-// api-side and enrichment-side hash functions stay in lock-step.
-// If either drifts, this test fails — we'd accidentally fork the
-// placemark space.
-func TestDedupHash_MatchesEnrichmentImplementation(t *testing.T) {
-	// We don't import internal/enrichment from internal/api to
-	// avoid the dependency cycle; instead we cross-check with the
-	// well-known SHA-256 of the canonical input string.
-	//
-	//   normalize("DE") | normalize("Bayern") | normalize("Würzburg") | normalize("97070")
-	//   == "de|bayern|würzburg|97070"
-	//
-	// SHA-256("de|bayern|würzburg|97070") = (precomputed below)
-	const expected = "4b7015e1caea6410c452841f331eb3855010ee52d13d4c4573ca18f461c81fa7"
-	got := manualDedupHash("DE", "Bayern", "Würzburg", "97070")
-	if got != expected {
-		t.Errorf("dedup hash drift!\nwant: %s\ngot:  %s", expected, got)
+func resolveRequest(app *tests.TestApp, token string, body map[string]any, expStatus int, expContent []string, after func(t *testing.T)) tests.ApiScenario {
+	raw, _ := json.Marshal(body)
+	sc := tests.ApiScenario{
+		Name:   "resolve",
+		Method: http.MethodPost,
+		Url:    "/api/placemarks/resolve",
+		Body:   bytes.NewReader(raw),
+		RequestHeaders: map[string]string{
+			"Authorization": token,
+			"Content-Type":  "application/json",
+		},
+		ExpectedStatus:  expStatus,
+		ExpectedContent: expContent,
+		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
+			e.POST("/api/placemarks/resolve", func(c echo.Context) error {
+				return handleResolvePlacemark(app, c)
+			}, apis.RequireRecordAuth("users"))
+		},
 	}
+	if expStatus == http.StatusOK {
+		sc.ExpectedEvents = map[string]int{"OnModelBeforeCreate": 1, "OnModelAfterCreate": 1}
+	}
+	if after != nil {
+		sc.AfterTestFunc = func(t *testing.T, _ *tests.TestApp, _ *http.Response) { after(t) }
+	}
+	return sc
+}
+
+func TestResolveEndpoint_ManualSetsOwner(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	sc := resolveRequest(app, token, map[string]any{
+		"geocoding_source":  "manual",
+		"country_iso":       "ES",
+		"admin_state":       "Canarias",
+		"admin_state_level": 4,
+		"island":            "La Palma",
+	}, http.StatusOK, []string{`"id":"`, `"geocoding_source":"manual"`, `"island":"La Palma"`}, func(t *testing.T) {
+		recs, err := app.Dao().FindRecordsByFilter("placemarks", "geocoding_source = 'manual'", "", 0, 0)
+		if err != nil || len(recs) != 1 {
+			t.Fatalf("manual placemarks = %d, err %v", len(recs), err)
+		}
+		if recs[0].GetString("owner") == "" {
+			t.Error("owner not set")
+		}
+	})
+	sc.Test(t)
+}
+
+func TestResolveEndpoint_BackendServiceHasNoOwner(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	sc := resolveRequest(app, token, map[string]any{
+		"geocoding_source": "backend_service",
+		"country_iso":      "ES",
+		"island":           "La Palma",
+	}, http.StatusOK, []string{`"owner":""`}, nil)
+	sc.Test(t)
+}
+
+// Each ApiScenario tears its app down, so every case gets a fresh one.
+func TestResolveEndpoint_BadSource400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	s1 := resolveRequest(app, token, map[string]any{"geocoding_source": "x", "country_iso": "ES"},
+		http.StatusBadRequest, []string{"geocoding_source"}, nil)
+	s1.Test(t)
+}
+
+func TestResolveEndpoint_MissingCountry400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	s2 := resolveRequest(app, token, map[string]any{"geocoding_source": "manual"},
+		http.StatusBadRequest, []string{"country_iso) is required"}, nil)
+	s2.Test(t)
 }

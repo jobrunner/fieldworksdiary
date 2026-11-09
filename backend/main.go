@@ -113,6 +113,8 @@ func main() {
 	// PATCH sets a `geocoding_source = manual` placemark; DELETE
 	// clears it so the next coord tick re-runs the auto-geocoder.
 	api.RegisterPlacemarkOverrideRoutes(app)
+	api.RegisterPlacemarkResolveRoute(app)
+	api.RegisterSampleFeaturesRoute(app)
 
 	// Phase R8: native Sign in with Apple. Verifies the iOS-issued
 	// identityToken against Apple's JWKS, links the user by the
