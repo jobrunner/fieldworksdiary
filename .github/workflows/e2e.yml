@@ -1,7 +1,7 @@
 name: E2E (Newman)
 
-# Newman braucht ein laufendes Backend und hängt an den externen Docker-
-# Services (Ortus). Deshalb manuell oder geplant, NICHT in jedem PR.
+# Newman braucht ein laufendes Backend und hängt an den externen
+# Dienst Ortus. Deshalb manuell oder geplant, NICHT in jedem PR.
 
 on:
   workflow_dispatch:

@@ -78,8 +78,8 @@ provisorische Exkursionszuordnung.
   Tests (das ist die Kernlogik – ohne Tests nichts mergen, > 80 % Coverage).
 - Code-Sequenz pro `(user, collecting_day)` läuft über Tabelle
   `sample_sequences` mit atomic increment in einer Transaktion.
-- Externe Service-Calls (`labelloc`, `mtb`) bekommen eigene Wrapper mit
-  Retry, 7-Tage-Cache (`geocache`-Collection), Timeout. Niemals direkt
+- Externe Service-Calls (Ortus, `internal/services/ortus.go`) laufen über
+  einen eigenen Wrapper mit Retry, 7-Tage-Cache (`geocache`-Collection), Timeout. Niemals direkt
   aus Hooks heraus aufrufen.
 - Asynchrone Anreicherung läuft in Goroutines mit Recover, damit ein
   fehlgeschlagener Service nie das Sample-Insert killt.

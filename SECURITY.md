@@ -50,18 +50,18 @@ Analyse: `docs/PRIVACY-DATA-FLOW.md` (TODO, Phase ⩾ 12).
 | PB-JWT (Access-Token) | hoch | iOS Keychain, `kSecAttrAccessibleAfterFirstUnlock` |
 | Sample-Records (lat/lon, Determinations) | hoch (PII) | PB-SQLite (`backend/pb_data/data.db`) |
 | Storage (Permit-PDFs, Labels) | mittel | PB-Filesystem (`backend/pb_data/storage/`) |
-| labelloc-/MTB-Cache (lat/lon → Ortsname) | niedrig | PB-`geocache`, 7-Tage-TTL |
+| Ortus-Cache (lat/lon → Ortsname) | niedrig | PB-`geocache`, 7-Tage-TTL |
 
 ### Vertrauensgrenzen
 
 ```
 [iOS-Client] ──HTTPS──> [PocketBase /api/*] ──> [SQLite]
-                                       └──> [labelloc/MTB] (read-only, externe Server)
+                                       └──> [Ortus] (read-only, extern; ORTUS_BASE_URL)
 ```
 
 - **iOS ↔ Backend**: TLS Pflicht in Production (lokales Dev über
   `NSAllowsLocalNetworking` ausgenommen). PB-JWT in jedem Request.
-- **Backend ↔ Self-Hosted-Services**: HTTPS, keine Auth nötig (read-only-
+- **Backend ↔ Ortus**: HTTPS, keine Auth nötig (read-only-
   Lookups), 7-Tage-Cache vor Re-Fetch.
 - **Backend ↔ SQLite**: Single-Process, kein Netz-Zugriff. Admin-UI
   unter `/_/` ist **separat geschützt** und sollte über VPN/Wireguard
@@ -82,7 +82,7 @@ das Backend prüft das auf jedem Read/Write. Details: `docs/adr/0002-auth-and-ow
 - **Kompromittierter Backend-Host**: wer Root auf der Docker-Maschine hat,
   hat alle Daten. Mitigation: regelmäßiges Backup (`scripts/backup-pbdata.sh`),
   Offsite-Kopie.
-- **MITM gegen labelloc/MTB**: Auswirkung wäre falsche Reverse-Geo-
+- **MITM gegen Ortus**: Auswirkung wäre falsche Reverse-Geo-
   Daten, kein Daten-Leak. Akzeptiert.
 
 ## Defense in Depth
