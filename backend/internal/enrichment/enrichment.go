@@ -117,7 +117,8 @@ func (e *Enricher) runSafely(sampleID, ftID string) {
 //
 //   - no coordinate or status backend_service: nothing to do
 //   - Ortus error: sample stays unchanged
-//   - no place in the answer (open sea): status stays, geo + features only
+//   - no place in the answer (open sea): status stays, geo + features
+//     only; a manual sample's stale placemark_suggestion is cleared
 //   - pending/inherited (empty counts as pending): shared backend_service
 //     placemark, status becomes backend_service
 //   - manual: placemark stays; a differing Ortus place is offered as
@@ -194,6 +195,10 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 					rec.Set("placemark_suggestion", "")
 				}
 			}
+		} else if status == statusManual {
+			// No admin coverage at the (new) point: a suggestion from an
+			// earlier coordinate no longer applies.
+			rec.Set("placemark_suggestion", "")
 		}
 
 		geoplace.ApplyGeo(rec, res.Geo)

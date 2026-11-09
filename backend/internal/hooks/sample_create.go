@@ -174,6 +174,11 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 	if strings.TrimSpace(rec.GetString("location_status")) == "" {
 		rec.Set("location_status", "pending")
 	}
+	// A client-supplied height without a source is the device's GPS
+	// height; tagging it keeps the DEM enrichment from replacing it.
+	if rec.GetFloat("elevation") != 0 && strings.TrimSpace(rec.GetString("elevation_source")) == "" {
+		rec.Set("elevation_source", "location_service")
+	}
 	return nil
 }
 

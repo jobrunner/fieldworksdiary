@@ -467,3 +467,34 @@ func TestProcessSample_DefaultsLocationStatusToPending(t *testing.T) {
 		t.Errorf("location_status = %q, want client value inherited", got)
 	}
 }
+
+func TestProcessSample_ClientElevationGetsLocationServiceSource(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "elev@example.com")
+	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
+
+	cases := []struct {
+		name       string
+		elevation  float64
+		source     string
+		wantSource string
+	}{
+		{"client height without source", 312.5, "", "location_service"},
+		{"client height with manual source", 312.5, "manual", "manual"},
+		{"no height", 0, "", ""},
+	}
+	for i, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := newSampleRecord(t, app)
+			rec.Set("begin_date", day.Add(time.Duration(i)*time.Minute))
+			rec.Set("elevation", c.elevation)
+			rec.Set("elevation_source", c.source)
+			if err := processSample(app.Dao(), rec, owner.Id); err != nil {
+				t.Fatalf("processSample: %v", err)
+			}
+			if got := rec.GetString("elevation_source"); got != c.wantSource {
+				t.Errorf("elevation_source = %q, want %q", got, c.wantSource)
+			}
+		})
+	}
+}

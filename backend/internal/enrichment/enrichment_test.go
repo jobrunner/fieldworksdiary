@@ -534,6 +534,40 @@ func TestEnrich_SeaKeepsStatusWritesGeo(t *testing.T) {
 	}
 }
 
+func TestEnrich_ManualAtSeaClearsStaleSuggestion(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 40.0, -25.0)
+	m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		fixturePlace(t, "query_de_ochsenfurt.json", deLat, deLon), "manual", ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status":      "manual",
+		"placemark":            m.Id,
+		"placemark_suggestion": stale.Id,
+	})
+
+	f := newFakeOrtus(t, "query_sea.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	if got := s.GetString("placemark"); got != m.Id {
+		t.Errorf("placemark = %q, want manual %q unchanged", got, m.Id)
+	}
+	if got := s.GetString("location_status"); got != "manual" {
+		t.Errorf("location_status = %q, want manual", got)
+	}
+	if got := s.GetString("placemark_suggestion"); got != "" {
+		t.Errorf("placemark_suggestion = %q, want cleared (no admin coverage)", got)
+	}
+}
+
 func TestEnrich_DEMOnlyWhenNoElevationSource(t *testing.T) {
 	t.Run("GPS height 0 m stays", func(t *testing.T) {
 		app := newAppForRecordsOnly(t)

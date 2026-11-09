@@ -96,6 +96,11 @@ func main() {
 	// caller can see (shared backend rows or own manual rows).
 	hooks.RegisterPlacemarkRefGuards(app)
 
+	// Phase O: a coordinate move on a backend_service sample without a
+	// client-resolved placemark resets location_status to pending, so
+	// the async enrichment re-resolves the place.
+	hooks.RegisterSampleLocationReset(app)
+
 	// Phase R6.1: server-side locality fusion. Every locality
 	// create + every centroid-shift > 100 m triggers ServerFuse;
 	// the hook merges duplicates (with a remap-event emit) or
