@@ -617,3 +617,100 @@ func TestEnrich_NotesUpdateDoesNotRetrigger(t *testing.T) {
 		t.Error("notes-only update must not re-trigger enrichment")
 	}
 }
+
+func TestEnrich_BumpsVersion(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{"location_status": "pending", "version": 3})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	got := loadSample(t, app, sampleID).GetInt("version")
+	if got != 4 {
+		t.Fatalf("version = %d, want 4 (bumped by the enrichment)", got)
+	}
+	// A client still holding version 3 pushes 3+1 = 4. The version
+	// guard (hooks.enforceVersion) rejects incoming <= current with 409.
+	if incoming := 3 + 1; incoming > got {
+		t.Errorf("stale client push with version %d would pass the guard (current %d)", incoming, got)
+	}
+}
+
+func TestEnrich_DEMRefreshesBackendServiceHeight(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	// DEM height from an earlier coordinate.
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status":   "pending",
+		"elevation":         500,
+		"elevation_source":  "backend_service",
+		"vertical_accuracy": 20,
+	})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	if got := s.GetFloat("elevation"); got != 236 {
+		t.Errorf("elevation = %v, want 236 (DEM height refreshed)", got)
+	}
+	if got := s.GetString("elevation_source"); got != "backend_service" {
+		t.Errorf("elevation_source = %q, want backend_service", got)
+	}
+	if got := s.GetFloat("vertical_accuracy"); got != 4 {
+		t.Errorf("vertical_accuracy = %v, want 4", got)
+	}
+}
+
+func TestApplyDEMHeight(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
+	dem := 236.0
+	mk := func(source string) *models.Record {
+		r := models.NewRecord(coll)
+		r.Set("elevation", 100)
+		r.Set("elevation_source", source)
+		r.Set("vertical_accuracy", 9)
+		return r
+	}
+
+	t.Run("nil accuracy clears vertical_accuracy", func(t *testing.T) {
+		r := mk("backend_service")
+		applyDEMHeight(r, geoplace.SampleGeo{ElevationDEM: &dem})
+		if r.GetFloat("elevation") != 236 || r.GetFloat("vertical_accuracy") != 0 {
+			t.Errorf("elevation=%v vertical_accuracy=%v, want 236/0",
+				r.GetFloat("elevation"), r.GetFloat("vertical_accuracy"))
+		}
+	})
+	for _, src := range []string{"location_service", "manual"} {
+		t.Run(src+" protected", func(t *testing.T) {
+			r := mk(src)
+			applyDEMHeight(r, geoplace.SampleGeo{ElevationDEM: &dem})
+			if r.GetFloat("elevation") != 100 || r.GetString("elevation_source") != src ||
+				r.GetFloat("vertical_accuracy") != 9 {
+				t.Errorf("%s height was modified", src)
+			}
+		})
+	}
+	t.Run("no DEM keeps height", func(t *testing.T) {
+		r := mk("")
+		applyDEMHeight(r, geoplace.SampleGeo{})
+		if r.GetFloat("elevation") != 100 || r.GetString("elevation_source") != "" {
+			t.Error("height modified without DEM value")
+		}
+	})
+}
+
+func TestLocationStatus_TrimsAndDefaults(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
+	cases := map[string]string{"": "pending", "  ": "pending", " manual ": "manual", "inherited": "inherited"}
+	for in, want := range cases {
+		r := models.NewRecord(coll)
+		r.Set("location_status", in)
+		if got := locationStatus(r); got != want {
+			t.Errorf("locationStatus(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

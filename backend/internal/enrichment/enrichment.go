@@ -7,9 +7,12 @@ package enrichment
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
@@ -17,6 +20,7 @@ import (
 	"go.mett.io/fwd-backend/internal/services"
 
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 )
 
@@ -120,7 +124,8 @@ func (e *Enricher) runSafely(sampleID, ftID string) {
 //     placemark_suggestion
 //
 // Geo values and features are always replaced; the DEM height is used
-// only when the sample has no elevation source.
+// only when the sample has no height of its own (see applyDEMHeight).
+// Every write bumps the sample's version.
 func (e *Enricher) run(ctx context.Context, sampleID string) {
 	log := e.log().With(slog.String("sample_id", sampleID))
 	dao := e.App.Dao()
@@ -143,86 +148,120 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		return
 	}
 
-	// Re-read: the sample may have changed while we waited on Ortus. A
-	// moved coordinate has its own run queued by the update hook.
-	rec, err = dao.FindRecordById("samples", sampleID)
-	if err != nil {
-		log.Warn("enrichment: sample disappeared", slog.Any("err", err))
-		return
-	}
-	if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
-		math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon {
-		log.Debug("enrichment: coordinate changed during query, skipping")
-		return
-	}
-	status := locationStatus(rec)
-	if status == statusBackendService {
-		return
-	}
-
 	labels := e.Labels
 	if labels == nil {
 		labels = adminlabels.Default()
 	}
 	res := geoplace.FromOrtus(resp, lat, lon, labels)
 
-	if res.Place != nil {
-		switch status {
-		case statusPending, statusInherited:
-			pm, err := geoplace.LookupOrCreatePlacemark(dao, *res.Place, statusBackendService, "")
-			if err != nil {
-				log.Warn("enrichment: placemark lookup failed", slog.Any("err", err))
-				return
-			}
-			rec.Set("placemark", pm.Id)
-			rec.Set("placemark_suggestion", "")
-			rec.Set("location_status", statusBackendService)
-		case statusManual:
-			cand, err := geoplace.LookupOrCreatePlacemark(dao, *res.Place, statusBackendService, "")
-			if err != nil {
-				log.Warn("enrichment: placemark lookup failed", slog.Any("err", err))
-				return
-			}
-			if res.Place.DedupHash() != e.currentPlacemarkHash(rec) {
-				rec.Set("placemark_suggestion", cand.Id)
-			} else {
+	// Re-read, mutate and save in one transaction (no network inside),
+	// so a client request landing in between is not clobbered.
+	var finalStatus string
+	err = dao.RunInTransaction(func(tx *daos.Dao) error {
+		rec, err := tx.FindRecordById("samples", sampleID)
+		if err != nil {
+			return fmt.Errorf("sample disappeared: %w", err)
+		}
+		// A coordinate moved while we waited on Ortus has its own run
+		// queued by the update hook.
+		if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
+			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon {
+			return errSkip
+		}
+		status := locationStatus(rec)
+		if status == statusBackendService {
+			return errSkip
+		}
+
+		if res.Place != nil {
+			switch status {
+			case statusPending, statusInherited:
+				pm, err := geoplace.LookupOrCreatePlacemark(tx, *res.Place, statusBackendService, "")
+				if err != nil {
+					return fmt.Errorf("placemark lookup: %w", err)
+				}
+				rec.Set("placemark", pm.Id)
 				rec.Set("placemark_suggestion", "")
+				rec.Set("location_status", statusBackendService)
+			case statusManual:
+				cand, err := geoplace.LookupOrCreatePlacemark(tx, *res.Place, statusBackendService, "")
+				if err != nil {
+					return fmt.Errorf("placemark lookup: %w", err)
+				}
+				if res.Place.DedupHash() != currentPlacemarkHash(tx, rec) {
+					rec.Set("placemark_suggestion", cand.Id)
+				} else {
+					rec.Set("placemark_suggestion", "")
+				}
 			}
 		}
-	}
 
-	geoplace.ApplyGeo(rec, res.Geo)
-	if rec.GetString("elevation_source") == "" && res.Geo.ElevationDEM != nil {
-		rec.Set("elevation", *res.Geo.ElevationDEM)
-		rec.Set("elevation_source", "backend_service")
-		if res.Geo.ElevationDEMAccuracy != nil {
-			rec.Set("vertical_accuracy", *res.Geo.ElevationDEMAccuracy)
+		geoplace.ApplyGeo(rec, res.Geo)
+		applyDEMHeight(rec, res.Geo)
+
+		// Bump the optimistic-concurrency counter like the version
+		// guard (hooks/version_conflict.go) does for client writes, so
+		// a client still holding the old version gets 409 instead of
+		// silently reverting the enrichment.
+		rec.Set("version", rec.GetInt("version")+1)
+
+		if err := tx.SaveRecord(rec); err != nil {
+			return fmt.Errorf("save sample: %w", err)
 		}
-	}
-
-	if err := dao.SaveRecord(rec); err != nil {
-		log.Warn("enrichment: save failed", slog.Any("err", err))
+		if err := geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), res.Features); err != nil {
+			return fmt.Errorf("replace features: %w", err)
+		}
+		finalStatus = rec.GetString("location_status")
+		return nil
+	})
+	switch {
+	case errors.Is(err, errSkip):
+		log.Debug("enrichment: sample changed during query, skipping")
 		return
-	}
-	if err := geoplace.ReplaceFeatures(dao, sampleID, rec.GetString("owner"), res.Features); err != nil {
-		log.Warn("enrichment: features save failed", slog.Any("err", err))
+	case err != nil:
+		log.Warn("enrichment: write failed", slog.Any("err", err))
 		return
 	}
 	log.Info("enrichment: sample enriched",
 		slog.String("service", "ortus"),
-		slog.String("location_status", rec.GetString("location_status")),
+		slog.String("location_status", finalStatus),
 		slog.Int("features", len(res.Features)),
 	)
 }
 
+// errSkip aborts the write transaction without logging a failure.
+var errSkip = errors.New("enrichment: skip")
+
+// applyDEMHeight writes the Ortus DEM height when the sample has no
+// height of its own: no elevation source, or a previous DEM height
+// (backend_service), which derives from the coordinate. GPS
+// (location_service) and manual heights are never replaced.
+func applyDEMHeight(rec *models.Record, g geoplace.SampleGeo) {
+	if g.ElevationDEM == nil {
+		return
+	}
+	switch rec.GetString("elevation_source") {
+	case "", "backend_service":
+	default:
+		return
+	}
+	rec.Set("elevation", *g.ElevationDEM)
+	rec.Set("elevation_source", "backend_service")
+	if g.ElevationDEMAccuracy != nil {
+		rec.Set("vertical_accuracy", *g.ElevationDEMAccuracy)
+	} else {
+		rec.Set("vertical_accuracy", 0)
+	}
+}
+
 // currentPlacemarkHash returns the dedup hash of the sample's current
 // placemark, or "" when it has none.
-func (e *Enricher) currentPlacemarkHash(rec *models.Record) string {
+func currentPlacemarkHash(dao *daos.Dao, rec *models.Record) string {
 	id := rec.GetString("placemark")
 	if id == "" {
 		return ""
 	}
-	pm, err := e.App.Dao().FindRecordById("placemarks", id)
+	pm, err := dao.FindRecordById("placemarks", id)
 	if err != nil {
 		return ""
 	}
@@ -232,7 +271,7 @@ func (e *Enricher) currentPlacemarkHash(rec *models.Record) string {
 // locationStatus returns the sample's location_status; empty counts as
 // pending.
 func locationStatus(rec *models.Record) string {
-	if s := rec.GetString("location_status"); s != "" {
+	if s := strings.TrimSpace(rec.GetString("location_status")); s != "" {
 		return s
 	}
 	return statusPending
