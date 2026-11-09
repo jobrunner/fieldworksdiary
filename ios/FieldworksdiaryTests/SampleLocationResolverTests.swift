@@ -201,6 +201,58 @@ final class SampleLocationResolverTests: XCTestCase {
         XCTAssertEqual(fresh.locationStatus, .pending)
     }
 
+    // MARK: - outbox (Task 16)
+
+    func testResolveOnline_PushedSample_QueuesUpdateWithFeatures() async throws {
+        let mutations = PendingMutationsStore(database: database)
+        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
+        sample.backendId = "backend-1"
+        sample.syncStatus = .synced
+        try samples.update(sample)
+
+        let resolver = SampleLocationResolver(ortus: fake, samples: samples, placemarks: placemarks,
+                                              features: features, mutations: mutations)
+        let ok = await resolver.resolveOnline(sampleID: sample.id)
+
+        XCTAssertTrue(ok)
+        let queued = try mutations.fetch(entityType: .sample)
+        XCTAssertEqual(queued.map(\.op), [.update])
+        XCTAssertEqual(queued.first?.entityId, sample.id)
+        XCTAssertEqual(queued.first.map { SampleUpdatePayload.decode($0.payloadJson).pushFeatures }, true)
+    }
+
+    func testResolveOnline_UnpushedSample_QueuesNothing() async throws {
+        let mutations = PendingMutationsStore(database: database)
+        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let sample = try samples.createLocal(lat: lat, lon: lon)
+
+        let resolver = SampleLocationResolver(ortus: fake, samples: samples, placemarks: placemarks,
+                                              features: features, mutations: mutations)
+        _ = await resolver.resolveOnline(sampleID: sample.id)
+
+        XCTAssertEqual(try mutations.count(), 0, "the pending create carries the place data")
+    }
+
+    func testInheritOffline_PushedSample_QueuesUpdate() async throws {
+        let mutations = PendingMutationsStore(database: database)
+        let first = try samples.createLocal(lat: lat, lon: lon, collectedFrom: Self.morning)
+        _ = await makeResolver(FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON))))
+            .resolveOnline(sampleID: first.id)
+        var second = try samples.createLocal(lat: lat, lon: lon,
+                                             collectedFrom: Self.morning.addingTimeInterval(600))
+        second.backendId = "backend-2"
+        try samples.update(second)
+
+        let resolver = SampleLocationResolver(ortus: nil, samples: samples, placemarks: placemarks,
+                                              features: features, mutations: mutations)
+        try resolver.inheritOffline(sampleID: second.id)
+
+        let queued = try mutations.fetch(entityType: .sample)
+        XCTAssertEqual(queued.map(\.entityId), [second.id])
+        XCTAssertEqual(queued.first.map { SampleUpdatePayload.decode($0.payloadJson).pushFeatures }, false)
+    }
+
     // MARK: - LocationProvider fix
 
     func testLocationFix_PassesVerticalAccuracyAndKeepsZeroAltitude() {

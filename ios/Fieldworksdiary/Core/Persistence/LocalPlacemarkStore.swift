@@ -4,7 +4,8 @@ import GRDB
 
 /// Slim wrapper around `local_placemarks`. Placemarks are a
 /// deduplicated reference table on the server (Spec §6): upsert
-/// (rows fetched from the backend), lookupOrCreate (Phase O2: places
+/// (rows fetched from the backend, merged onto locally created rows
+/// via `backend_id`), lookupOrCreate (Phase O2: places
 /// mapped from an Ortus response on-device), fetchById, count, reset.
 final class LocalPlacemarkStore {
     let database: Database
@@ -13,13 +14,87 @@ final class LocalPlacemarkStore {
         self.database = database
     }
 
-    /// Insert-or-update one placemark. Idempotent on the dedup_hash
-    /// at the GRDB level — `id` is the primary key, so the same row
-    /// re-saved with new field values just patches in place.
+    /// Insert-or-update one placemark fetched from the backend.
+    ///
+    /// - A row whose `id` is the backend id is updated in place.
+    /// - Otherwise a locally created row (UUID id) that already maps to
+    ///   this backend id via `backend_id` is updated in place, so the
+    ///   server copy never duplicates it.
+    /// - Otherwise the record is inserted with the backend id as `id`.
+    ///
+    /// Ortus place columns of an existing row are kept when the server
+    /// record has none (legacy row), so an upsert never blanks them.
     func upsert(_ remote: Placemark) throws {
         try database.writer.write { db in
-            var local = LocalPlacemark(from: remote)
-            try local.save(db)
+            try Self.upsert(remote, in: db)
+        }
+    }
+
+    /// Batch variant of `upsert(_:)`, one transaction.
+    func upsert(_ remotes: [Placemark]) throws {
+        try database.writer.write { db in
+            for remote in remotes {
+                try Self.upsert(remote, in: db)
+            }
+        }
+    }
+
+    private static func upsert(_ remote: Placemark, in db: GRDB.Database) throws {
+        let existing = try LocalPlacemark.fetchOne(db, key: remote.id)
+            ?? LocalPlacemark
+            .filter(Column(LocalPlacemark.Columns.backendId) == remote.id)
+            .order(Column.rowID)
+            .fetchOne(db)
+        var row = LocalPlacemark(from: remote)
+        if let existing {
+            row.id = existing.id
+            if remote.countryISO.isEmpty, !existing.countryISO.isEmpty {
+                row.countryISO = existing.countryISO
+                row.admin = existing.admin
+                row.island = existing.island
+                row.mountainRange = existing.mountainRange
+                row.mountain = existing.mountain
+            }
+        }
+        try row.save(db)
+    }
+
+    /// Records the backend id (and owner) of a locally created row
+    /// after `POST /api/placemarks/resolve` answered.
+    func setBackend(localID: String, backendID: String, owner: String?) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE local_placemarks SET backend_id = ?, owner = ? WHERE id = ?",
+                arguments: [backendID, owner, localID]
+            )
+        }
+    }
+
+    /// Local row id for a backend placemark id: the row itself when it
+    /// was pulled from the server (`id == backend id`), else the oldest
+    /// locally created row mapped to it. Nil when unknown locally.
+    func localID(forBackendID backendID: String) throws -> String? {
+        try database.reader.read { db in
+            try Self.localID(forBackendID: backendID, in: db)
+        }
+    }
+
+    static func localID(forBackendID backendID: String, in db: GRDB.Database) throws -> String? {
+        try String.fetchOne(db, sql: """
+            SELECT id FROM local_placemarks
+            WHERE id = ? OR backend_id = ?
+            ORDER BY (id = ?) DESC, rowid
+            LIMIT 1
+        """, arguments: [backendID, backendID, backendID])
+    }
+
+    /// The subset of `backendIDs` with no local row (neither as `id`
+    /// nor as `backend_id`), deduplicated, in first-seen order.
+    func missingBackendIDs(_ backendIDs: [String]) throws -> [String] {
+        var seen = Set<String>()
+        let unique = backendIDs.filter { !$0.isEmpty && seen.insert($0).inserted }
+        return try database.reader.read { db in
+            try unique.filter { try Self.localID(forBackendID: $0, in: db) == nil }
         }
     }
 

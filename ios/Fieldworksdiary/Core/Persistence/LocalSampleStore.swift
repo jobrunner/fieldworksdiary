@@ -219,6 +219,56 @@ final class LocalSampleStore {
         }
     }
 
+    /// Sets only the sync bookkeeping columns. Used by the SyncRunner
+    /// around network calls so it never writes a stale copy of the
+    /// whole row over edits that landed meanwhile.
+    func setSyncState(id: String, status: SyncStatus, error: String?) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE local_samples SET sync_status = ?, sync_error = ? WHERE id = ?",
+                arguments: [status.rawValue, error, id]
+            )
+        }
+    }
+
+    func fetchByBackendID(_ backendID: String) throws -> LocalSample? {
+        try database.reader.read { db in
+            try LocalSample.filter(Column("backend_id") == backendID).fetchOne(db)
+        }
+    }
+
+    func fetchByLocality(_ localityID: String) throws -> [LocalSample] {
+        try database.reader.read { db in
+            try LocalSample.filter(Column("locality") == localityID).fetchAll(db)
+        }
+    }
+
+    /// Corrects the coordinate of an existing sample (Phase O2). The
+    /// place data no longer fits the new point, so the status goes
+    /// back to `pending` — unless the user curated the place
+    /// (`manual`), which is kept. A synced row gets a `.sample/.update`
+    /// outbox entry; the push carries coordinate and status, so the
+    /// backend re-enriches (see `hooks/sample_location.go`). Callers
+    /// re-run `SampleLocationResolver.resolveOnline` afterwards.
+    func updateCoordinate(
+        id: String,
+        latitude: Double,
+        longitude: Double,
+        horizontalAccuracy: Double? = nil,
+        locationSource: LocationSource = .user,
+        mutationsStore: PendingMutationsStore
+    ) throws {
+        guard var sample = try fetchById(id) else { return }
+        sample.latitude = latitude
+        sample.longitude = longitude
+        sample.horizontalAccuracy = horizontalAccuracy
+        sample.locationSource = locationSource.rawValue
+        if sample.locationStatus != .manual {
+            sample.locationStatus = .pending
+        }
+        try saveEdits(sample, mutationsStore: mutationsStore)
+    }
+
     /// Persists user-editable fields on an existing sample and — if
     /// the row has a backend id — enqueues a `.sample/.update`
     /// outbox row whose payload is built fresh at execute time.
@@ -306,6 +356,12 @@ final class LocalSampleStore {
                 let day = Codes.collectingDay(collectedFrom, cutoffHour: cutoffHour, timeZone: timeZone)
                 let dayKey = Codes.collectingDayKey(day, timeZone: timeZone)
 
+                // Server placemark ids map onto the local row that
+                // already represents them (locally created rows keep a
+                // UUID id and carry the backend id in `backend_id`).
+                let localPlacemarkID: (String) -> String = { backendID in
+                    ((try? LocalPlacemarkStore.localID(forBackendID: backendID, in: db)) ?? nil) ?? backendID
+                }
                 let match = try findExisting(db, clientUuid: r.clientUuid, backendId: r.id)
                 if var local = match {
                     if local.syncStatus == .pending || local.syncStatus == .syncing {
@@ -313,12 +369,18 @@ final class LocalSampleStore {
                         // will reconcile the round-trip itself.
                         continue
                     }
-                    apply(remote: r, to: &local, dayKey: dayKey, userId: userId)
+                    if try Self.hasQueuedMutation(db, sampleID: local.id) {
+                        // Local edits (user or on-device resolver) are
+                        // waiting in the outbox — they win; the push
+                        // brings the server up to date.
+                        continue
+                    }
+                    apply(remote: r, to: &local, dayKey: dayKey, userId: userId, localPlacemarkID: localPlacemarkID)
                     try local.update(db)
                 } else {
-                    let local = makeLocal(from: r, dayKey: dayKey, userId: userId)
-                    var copy = local
-                    try copy.insert(db)
+                    var local = makeLocal(from: r, dayKey: dayKey, userId: userId)
+                    local.mergeServerLocation(r, localPlacemarkID: localPlacemarkID)
+                    try local.insert(db)
                 }
 
                 // Keep the sequence counter in sync with hydrated codes
@@ -355,7 +417,20 @@ final class LocalSampleStore {
             .fetchOne(db)
     }
 
-    private func apply(remote r: Sample, to local: inout LocalSample, dayKey: String, userId: String) {
+    private static func hasQueuedMutation(_ db: GRDB.Database, sampleID: String) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(SELECT 1 FROM pending_mutations
+                          WHERE entity_type = 'sample' AND entity_id = ?)
+        """, arguments: [sampleID]) ?? false
+    }
+
+    private func apply(
+        remote r: Sample,
+        to local: inout LocalSample,
+        dayKey: String,
+        userId: String,
+        localPlacemarkID: (String) -> String
+    ) {
         local.backendId = r.id
         // Server may have reassigned the sample_id on collision;
         // respect that as the new authoritative id.
@@ -372,9 +447,6 @@ final class LocalSampleStore {
         local.longitude = r.longitude ?? local.longitude
         local.horizontalAccuracy = r.horizontalAccuracy ?? local.horizontalAccuracy
         local.verticalAccuracy = r.verticalAccuracy ?? local.verticalAccuracy
-        // Wire key is still `altitude` until Task 16 switches the
-        // Sample model to `elevation`.
-        local.elevation = r.altitude ?? local.elevation
         if let from = r.beginDate { local.beginDate = from }
         local.endDate = r.endDate ?? local.endDate
         local.isAllDay = r.isAllDay
@@ -385,10 +457,9 @@ final class LocalSampleStore {
         local.locality = r.locality
         local.locationSource = r.locationSource.rawValue
         local.version = r.version
-        local.adminUnitsLocality = r.adminUnits?.locality
-        local.adminUnitsCountry = r.adminUnits?.country
-        local.mtbSheetNumber = r.mtb?.sheetNumber
-        local.mtbSheetName = r.mtb?.sheetName
+        // Elevation, status, placemark, MTB and geo: never replaced by
+        // nil/empty from a server that has not enriched (yet).
+        local.mergeServerLocation(r, localPlacemarkID: localPlacemarkID)
         local.syncStatus = .synced
         local.syncError = nil
         if let cua = r.clientUpdatedAt { local.updatedAt = cua }
@@ -412,7 +483,7 @@ final class LocalSampleStore {
             longitude: r.longitude,
             horizontalAccuracy: r.horizontalAccuracy,
             verticalAccuracy: r.verticalAccuracy,
-            elevation: r.altitude,
+            elevation: nil, // set by mergeServerLocation
             beginDate: r.beginDate ?? now,
             endDate: r.endDate,
             isAllDay: r.isAllDay,
@@ -423,10 +494,10 @@ final class LocalSampleStore {
             locality: r.locality,
             locationSource: r.locationSource.rawValue,
             version: r.version,
-            adminUnitsLocality: r.adminUnits?.locality,
-            adminUnitsCountry: r.adminUnits?.country,
-            mtbSheetNumber: r.mtb?.sheetNumber,
-            mtbSheetName: r.mtb?.sheetName,
+            adminUnitsLocality: nil,
+            adminUnitsCountry: nil,
+            mtbSheetNumber: nil,
+            mtbSheetName: nil,
             syncStatus: .synced,
             syncError: nil,
             createdAt: r.beginDate ?? now,
@@ -482,6 +553,64 @@ final class LocalSampleStore {
                 arguments: [userId, dayKey]
             )
             return 1
+        }
+    }
+}
+
+extension LocalSample {
+    /// Merges the server-derived place data of `r` into this row.
+    ///
+    /// Rule: a server value only replaces a local one when it is
+    /// present and not worse — the server may simply not have enriched
+    /// yet, and the on-device resolver may already know more.
+    /// - Elevation: taken when the server's source ranks at least as
+    ///   high as the local one (manual > location_service >
+    ///   backend_service), together with its source and accuracy.
+    /// - Status: taken, except a server `pending` never downgrades a
+    ///   local `inherited`/`backend_service`/`manual`.
+    /// - Placemark / suggestion: taken when present, mapped to the local
+    ///   placemark row id via `localPlacemarkID`.
+    /// - MTB / DEM / terrain / bearing: per field, only when present.
+    mutating func mergeServerLocation(_ r: Sample, localPlacemarkID: (String) -> String) {
+        if let serverElevation = r.elevation {
+            let serverSource = r.elevationSource ?? .locationService
+            if elevation == nil || serverSource.rank >= (elevationSource?.rank ?? -1) {
+                elevation = serverElevation
+                elevationSource = serverSource
+                if let accuracy = r.verticalAccuracy { verticalAccuracy = accuracy }
+            }
+        }
+        if let status = r.locationStatus, !(status == .pending && locationStatus != .pending) {
+            locationStatus = status
+        }
+        if let id = r.placemark { placemark = localPlacemarkID(id) }
+        if let id = r.placemarkSuggestion { placemarkSuggestion = localPlacemarkID(id) }
+        guard let g = r.geo else { return }
+        mtbSheetNumber = g.mtbSheetNumber ?? mtbSheetNumber
+        mtbSheetName = g.mtbSheetName ?? mtbSheetName
+        mtbQuadrant = g.mtbQuadrant ?? mtbQuadrant
+        elevationDEM = g.elevationDEM ?? elevationDEM
+        elevationDEMAccuracy = g.elevationDEMAccuracy ?? elevationDEMAccuracy
+        slopeDeg = g.slopeDeg ?? slopeDeg
+        aspectDeg = g.aspectDeg ?? aspectDeg
+        aspectCompass = g.aspectCompass ?? aspectCompass
+        terrainFlat = g.terrainFlat || terrainFlat
+        bearingLabel = g.bearingLabel ?? bearingLabel
+        bearingReference = g.bearingReference ?? bearingReference
+        bearingDistanceKm = g.bearingDistanceKm ?? bearingDistanceKm
+        bearingCompass = g.bearingCompass ?? bearingCompass
+        bearingInside = g.bearingInside || bearingInside
+    }
+}
+
+extension ElevationSource {
+    /// Trust order for merging heights: a user's own value beats GPS,
+    /// GPS beats the DEM.
+    var rank: Int {
+        switch self {
+        case .backendService: 0
+        case .locationService: 1
+        case .manual: 2
         }
     }
 }

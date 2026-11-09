@@ -20,12 +20,18 @@ import Foundation
 ///   query, a re-run would yield the same answer).
 /// - Geo values and features are always replaced; the DEM height is
 ///   used only when the sample has no height of its own.
+///
+/// When the sample is already on the server (`backendId` set), every
+/// write queues a `.sample/.update` outbox row, so the place data
+/// reaches the backend even if the create push went out before the
+/// resolver finished.
 @MainActor
 final class SampleLocationResolver {
     private let ortus: OrtusQuerying?
     private let samples: LocalSampleStore
     private let placemarks: LocalPlacemarkStore
     private let features: LocalSampleFeatureStore
+    private let mutations: PendingMutationsStore?
     private let labels: AdminLabelTable
 
     init(
@@ -33,12 +39,14 @@ final class SampleLocationResolver {
         samples: LocalSampleStore,
         placemarks: LocalPlacemarkStore,
         features: LocalSampleFeatureStore,
+        mutations: PendingMutationsStore? = nil,
         labels: AdminLabelTable = .shared
     ) {
         self.ortus = ortus
         self.samples = samples
         self.placemarks = placemarks
         self.features = features
+        self.mutations = mutations
         self.labels = labels
     }
 
@@ -91,6 +99,7 @@ final class SampleLocationResolver {
         sample.placemark = placemarkID
         sample.locationStatus = .inherited
         try samples.update(sample)
+        enqueueUpdateIfPushed(sample, pushFeatures: false)
         Log.location.info("sample \(sampleID, privacy: .public) inherited place offline")
     }
 
@@ -131,11 +140,32 @@ final class SampleLocationResolver {
         Self.applyDEMHeight(result.geo, to: &sample)
         try samples.update(sample)
         try features.replace(sampleID: sampleID, features: result.features)
+        enqueueUpdateIfPushed(sample, pushFeatures: true)
 
         Log.location.info(
             "sample \(sampleID, privacy: .public) resolved via ortus: status \(sample.locationStatus.rawValue, privacy: .public), \(result.features.count, privacy: .public) features"
         )
         return true
+    }
+
+    /// Queues the place data for the server when the create push has
+    /// already landed; before that the pending create carries it.
+    /// A failed enqueue is logged, not thrown: the local write already
+    /// succeeded and must not be reported as a failed resolution.
+    private func enqueueUpdateIfPushed(_ sample: LocalSample, pushFeatures: Bool) {
+        guard let mutations, let backendID = sample.backendId, !backendID.isEmpty else { return }
+        do {
+            _ = try mutations.enqueue(
+                entityType: .sample,
+                entityId: sample.id,
+                op: .update,
+                payload: SampleUpdatePayload(pushFeatures: pushFeatures).encoded
+            )
+        } catch {
+            Log.persistence.error(
+                "place update enqueue failed for sample \(sample.id, privacy: .public): \(error.localizedDescription)"
+            )
+        }
     }
 
     /// Same tolerance as the backend enricher's `coordEpsilon`.

@@ -145,9 +145,8 @@ extension LocalPlacemark {
 }
 
 extension LocalPlacemark {
-    /// Cache row for a placemark fetched from the backend. Ortus place
-    /// columns stay empty until Task 16 extends the `Placemark` wire
-    /// model.
+    /// Cache row for a placemark fetched from the backend, including
+    /// the Ortus place columns and the owner.
     init(from remote: Placemark) {
         id = remote.id
         country = remote.country
@@ -164,6 +163,12 @@ extension LocalPlacemark {
         dedupHash = remote.dedupHash
         backendUpdatedAt = Date()
         backendId = remote.id
+        countryISO = remote.countryISO
+        admin = remote.admin
+        island = remote.island
+        mountainRange = remote.mountainRange
+        mountain = remote.mountain
+        owner = remote.owner
     }
 
     /// New local row for an Ortus place. `country` mirrors the ISO

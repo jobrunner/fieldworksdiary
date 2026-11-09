@@ -69,6 +69,14 @@ func parseConflictVersion(from body: String) -> Int {
     return 0
 }
 
+/// List endpoint the `SamplesHydrator` pulls from. `SampleClient`
+/// conforms; tests inject a mock.
+protocol SampleListClient {
+    func listRecent(limit: Int) async throws -> [Sample]
+}
+
+extension SampleClient: SampleListClient {}
+
 struct SampleClient {
     let endpoint: String
     let auth: AuthSession?
@@ -84,16 +92,10 @@ struct SampleClient {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        var body: [String: Any] = [
-            "latitude": input.lat,
-            "longitude": input.lon,
-            "begin_date": isoFormatter.string(from: input.collectedFrom),
-            "location_source": LocationSource.locationService.wireValue,
-            "time_zone": "Europe/Berlin",
-            "version": 1
-        ]
-        if let accuracy = input.accuracy { body["horizontal_accuracy"] = accuracy }
-        if let altitude = input.altitude { body["altitude"] = altitude }
+        var body = input.location.wireBody
+        body["begin_date"] = isoFormatter.string(from: input.collectedFrom)
+        body["time_zone"] = "Europe/Berlin"
+        body["version"] = 1
         if let notes = input.notes, !notes.isEmpty { body["notes"] = notes }
         if input.marked { body["marked"] = true }
         if let code = input.code, !code.isEmpty { body["sample_id"] = code }
@@ -124,8 +126,9 @@ struct SampleClient {
         return try await send(request)
     }
 
-    /// Pushes a user-editable field set (code + notes) for an
-    /// already-synced sample. Idempotent over `client_uuid`/
+    /// Pushes the user-editable fields (code + notes) plus coordinate,
+    /// height, place data and `location_status` for an already-synced
+    /// sample. Idempotent over `client_uuid`/
     /// `client_updated_at`, and carries the optimistic-lock `version`
     /// so the backend's `enforceVersion` hook can reject stale
     /// writes with 409.
@@ -135,12 +138,11 @@ struct SampleClient {
         let isoFormatter = ISO8601DateFormatter()
         isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
-        var body: [String: Any] = [
-            "sample_id": input.code,
-            "version": input.version,
-            "client_uuid": input.clientUuid,
-            "client_updated_at": isoFormatter.string(from: input.clientUpdatedAt)
-        ]
+        var body = input.location.wireBody
+        body["sample_id"] = input.code
+        body["version"] = input.version
+        body["client_uuid"] = input.clientUuid
+        body["client_updated_at"] = isoFormatter.string(from: input.clientUpdatedAt)
         // Empty notes are intentional clears, not omissions — send "".
         body["notes"] = input.notes ?? ""
 

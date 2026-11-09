@@ -1,14 +1,124 @@
 import Foundation
 
+/// Coordinate, height and place data of a sample as pushed to the
+/// server (Phase O2). Shared by create and update so both send the
+/// same set. `nil` means "not sent" — the client never blanks a server
+/// value it does not know better.
+///
+/// `placemark` / `placemarkSuggestion` / `locality` are backend ids;
+/// the SyncRunner resolves local placemark UUIDs before building this.
+struct SampleLocationFields: Codable, Equatable {
+    var latitude: Double?
+    var longitude: Double?
+    var horizontalAccuracy: Double?
+    var verticalAccuracy: Double?
+    var elevation: Double?
+    var elevationSource: ElevationSource?
+    var locationSource: LocationSource
+    var locationStatus: LocationStatus
+    var placemark: String?
+    var placemarkSuggestion: String?
+    var locality: String?
+    var mtbSheetNumber: String?
+    var mtbSheetName: String?
+    var mtbQuadrant: Int?
+    var elevationDEM: Double?
+    var elevationDEMAccuracy: Double?
+    var slopeDeg: Double?
+    var aspectDeg: Double?
+    var aspectCompass: String?
+    var terrainFlat: Bool = false
+    var bearingLabel: String?
+    var bearingReference: String?
+    var bearingDistanceKm: Double?
+    var bearingCompass: String?
+    var bearingInside: Bool = false
+
+    /// Wire keys of the PocketBase `samples` record (migration
+    /// 1700000024). `elevation_source` always accompanies an
+    /// elevation (a height without stored source counts as GPS, as
+    /// the backend's create hook does); `location_status` and
+    /// `location_source` are always sent.
+    var wireBody: [String: Any] {
+        var body: [String: Any] = [
+            "location_source": locationSource.wireValue,
+            "location_status": locationStatus.rawValue
+        ]
+        if let latitude { body["latitude"] = latitude }
+        if let longitude { body["longitude"] = longitude }
+        if let horizontalAccuracy { body["horizontal_accuracy"] = horizontalAccuracy }
+        if let verticalAccuracy { body["vertical_accuracy"] = verticalAccuracy }
+        if let elevation {
+            body["elevation"] = elevation
+            body["elevation_source"] = (elevationSource ?? .locationService).rawValue
+        }
+        if let placemark, !placemark.isEmpty { body["placemark"] = placemark }
+        if let placemarkSuggestion, !placemarkSuggestion.isEmpty {
+            body["placemark_suggestion"] = placemarkSuggestion
+        }
+        if let locality, !locality.isEmpty { body["locality"] = locality }
+        if let mtbSheetNumber { body["mtb_sheet_number"] = mtbSheetNumber }
+        if let mtbSheetName { body["mtb_sheet_name"] = mtbSheetName }
+        if let mtbQuadrant { body["mtb_quadrant"] = mtbQuadrant }
+        if let elevationDEM { body["elevation_dem"] = elevationDEM }
+        if let elevationDEMAccuracy { body["elevation_dem_accuracy"] = elevationDEMAccuracy }
+        if let slopeDeg { body["slope_deg"] = slopeDeg }
+        if let aspectDeg { body["aspect_deg"] = aspectDeg }
+        if let aspectCompass { body["aspect_compass"] = aspectCompass }
+        if let bearingLabel { body["bearing_label"] = bearingLabel }
+        if let bearingReference { body["bearing_reference"] = bearingReference }
+        if let bearingDistanceKm { body["bearing_distance_km"] = bearingDistanceKm }
+        if let bearingCompass { body["bearing_compass"] = bearingCompass }
+        // Booleans only travel with the geo set they belong to, so a
+        // never-enriched sample doesn't push `false` over server data.
+        if aspectCompass != nil || slopeDeg != nil || elevationDEM != nil || terrainFlat {
+            body["terrain_flat"] = terrainFlat
+        }
+        if bearingLabel != nil || bearingInside {
+            body["bearing_inside"] = bearingInside
+        }
+        return body
+    }
+}
+
+extension SampleLocationFields {
+    /// Location fields of a local row, with placemark references
+    /// already translated to backend ids by the caller.
+    init(_ s: LocalSample, placemark: String?, placemarkSuggestion: String?, locality: String?) {
+        latitude = s.latitude
+        longitude = s.longitude
+        horizontalAccuracy = s.horizontalAccuracy
+        verticalAccuracy = s.verticalAccuracy
+        elevation = s.elevation
+        elevationSource = s.elevation == nil ? nil : (s.elevationSource ?? .locationService)
+        locationSource = LocationSource(rawValue: s.locationSource) ?? .user
+        locationStatus = s.locationStatus
+        self.placemark = placemark
+        self.placemarkSuggestion = placemarkSuggestion
+        self.locality = locality
+        mtbSheetNumber = s.mtbSheetNumber
+        mtbSheetName = s.mtbSheetName
+        mtbQuadrant = s.mtbQuadrant
+        elevationDEM = s.elevationDEM
+        elevationDEMAccuracy = s.elevationDEMAccuracy
+        slopeDeg = s.slopeDeg
+        aspectDeg = s.aspectDeg
+        aspectCompass = s.aspectCompass
+        terrainFlat = s.terrainFlat
+        bearingLabel = s.bearingLabel
+        bearingReference = s.bearingReference
+        bearingDistanceKm = s.bearingDistanceKm
+        bearingCompass = s.bearingCompass
+        bearingInside = s.bearingInside
+    }
+}
+
 /// Payload-Bundle für `SamplePushClient.createSample`. Spiegelt die
 /// Felder des PocketBase-Sample-Records, die der Client beim Push
 /// schickt — `client_uuid` und `client_updated_at` sind Teil des
 /// Idempotenz-Vertrags (siehe Konfliktauflösung in CLAUDE.md).
-struct SampleCreateInput {
-    var lat: Double
-    var lon: Double
-    var accuracy: Double?
-    var altitude: Double?
+struct SampleCreateInput: Equatable {
+    var location: SampleLocationFields
     var collectedFrom: Date
     var notes: String?
     var marked: Bool
@@ -17,20 +127,35 @@ struct SampleCreateInput {
     var clientUpdatedAt: Date?
 }
 
-/// Payload-Bundle für `SamplePushClient.updateSample`. Nur die
-/// user-editierbaren Felder (Code, Notiz) plus Idempotenz/Versions-
-/// Trio. Andere Spalten (Koordinaten, beginDate, …) werden über ein
-/// separates Formular geändert und tragen dann ihre eigene Mutation.
+/// Payload-Bundle für `SamplePushClient.updateSample`: user-editierbare
+/// Felder (Code, Notiz), Koordinate/Höhe/Ortsdaten/Status (Phase O2)
+/// plus Idempotenz/Versions-Trio.
 ///
-/// `Codable` weil die Outbox den Snapshot beim Enqueue als JSON
-/// persistiert (`pending_mutations.payload_json`) und der SyncRunner
-/// ihn beim Replay zurücklädt.
+/// `Codable`, damit der Snapshot bei Bedarf als JSON persistiert
+/// werden kann.
 struct SampleUpdateInput: Codable, Equatable {
     var code: String
     var notes: String?
     var clientUuid: String
     var clientUpdatedAt: Date
     var version: Int
+    var location: SampleLocationFields
+}
+
+/// Payload of a `.sample/.update` outbox row. Older rows carry an
+/// empty payload, which decodes to the defaults.
+struct SampleUpdatePayload: Codable, Equatable {
+    /// The local feature set changed (on-device resolver) or a previous
+    /// features PUT failed: replace the server's set after the PATCH.
+    var pushFeatures = false
+
+    static func decode(_ data: Data) -> SampleUpdatePayload {
+        (try? JSONDecoder().decode(SampleUpdatePayload.self, from: data)) ?? SampleUpdatePayload()
+    }
+
+    var encoded: Data {
+        (try? JSONEncoder().encode(self)) ?? Data()
+    }
 }
 
 /// Schnittstelle, gegen die `SyncRunner` testet. Produktiv konformt
@@ -47,17 +172,24 @@ extension SampleClient: SamplePushClient {}
 /// Pushes pending local samples up to PocketBase, driven by the
 /// `pending_mutations` outbox (R5b).
 ///
-/// Push contract (Phase 3b, R3, R5):
+/// Push contract (Phase 3b, R3, R5, O2):
 ///   - Wire body uses Spec-aligned names (sample_id, latitude,
-///     longitude, begin_date, version, …).
+///     longitude, begin_date, elevation, location_status, …).
 ///   - Server honors `sample_id` if it doesn't collide. On
 ///     collision the server reassigns and stores our value in
 ///     `original_code` — the user-readable id on the tube remains
 ///     authoritative.
-///   - On any push success we set `syncStatus = .synced` on the
-///     local row, copy backend_id / fieldtrip / locality /
-///     enrichment, dequeue the outbox row, and (best-effort) push
-///     photos + poll enrichment.
+///   - Order per sample (create and update): placemark → sample →
+///     features. A locally created placemark (UUID id) is first looked
+///     up or created on the server via `POST /api/placemarks/resolve`
+///     and only its backend id is ever sent as `placemark`.
+///   - The SyncRunner never writes a row copy read before a network
+///     call back over the whole row: after every call it re-reads the
+///     row and merges only server-derived fields (backend id, version,
+///     fieldtrip, codes, enrichment where local has nothing better —
+///     see `LocalSample.mergeServerLocation`). Local edits made during
+///     the call win; if they missed the create POST, an update is
+///     queued.
 ///
 /// Retry: every 30 s a background tick re-runs the pass if anything
 /// is still in the outbox. `kick()` also runs a pass on demand
@@ -70,6 +202,12 @@ final class SyncRunner: ObservableObject {
     /// Optional — only wired when the app supports client-created
     /// localities (R8d offline-fusion). Nil in the sample-only tests.
     let localitiesStore: LocalLocalityStore?
+    /// Optional (Phase O2): placemark rows referenced by samples. Nil
+    /// in sample-only tests; then only plain backend ids are sent.
+    let placemarkStore: LocalPlacemarkStore?
+    /// Optional (Phase O2): Ortus features per sample. Nil ⇒ no
+    /// features push / hydration.
+    let featureStore: LocalSampleFeatureStore?
     let endpointProvider: () -> String
     let authProvider: () -> AuthSession?
     let onSampleSynced: (String) -> Void
@@ -84,6 +222,9 @@ final class SyncRunner: ObservableObject {
     /// Factory für den Locality-Push-Client (R8d). Analog zu
     /// `clientFactory`; Tests injizieren einen Mock.
     let localityClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient
+    /// Phase O2: placemark resolve/fetch and features replace/fetch.
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
 
     @Published private(set) var inFlight = 0
 
@@ -101,6 +242,8 @@ final class SyncRunner: ObservableObject {
          mutationsStore: PendingMutationsStore,
          photoStore: LocalPhotoStore? = nil,
          localitiesStore: LocalLocalityStore? = nil,
+         placemarkStore: LocalPlacemarkStore? = nil,
+         featureStore: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthSession? = { nil },
          retryInterval: Duration = .seconds(30),
@@ -110,6 +253,12 @@ final class SyncRunner: ObservableObject {
              endpoint: $0,
              auth: $1
          ) },
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+             PlacemarkClient(endpoint: $0, auth: $1)
+         },
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+             SampleFeaturesClient(endpoint: $0, auth: $1)
+         },
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
     {
@@ -117,12 +266,16 @@ final class SyncRunner: ObservableObject {
         self.mutationsStore = mutationsStore
         self.photoStore = photoStore
         self.localitiesStore = localitiesStore
+        self.placemarkStore = placemarkStore
+        self.featureStore = featureStore
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
         self.retryInterval = retryInterval
         self.enrichmentPollInterval = enrichmentPollInterval
         self.clientFactory = clientFactory
         self.localityClientFactory = localityClientFactory
+        self.placemarkClientFactory = placemarkClientFactory
+        self.featuresClientFactory = featuresClientFactory
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
         startRetryLoop()
@@ -210,86 +363,111 @@ final class SyncRunner: ObservableObject {
             return
         }
 
-        var working = sample
-        working.syncStatus = .syncing
-        working.syncError = nil
-        try? store.update(working)
+        if let existing = sample.backendId, !existing.isEmpty {
+            // Already on the server (e.g. a failed update row adopted
+            // by `reconcileLegacyPending`): a second POST would
+            // duplicate it — push the row as an update instead.
+            _ = try? mutationsStore.enqueue(
+                entityType: .sample, entityId: localId, op: .update,
+                payload: SampleUpdatePayload(pushFeatures: true).encoded
+            )
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+
+        try? store.setSyncState(id: localId, status: .syncing, error: nil)
 
         do {
             inFlight += 1
             defer { inFlight -= 1 }
 
-            let created = try await client.createSample(SampleCreateInput(
-                lat: sample.latitude ?? 0,
-                lon: sample.longitude ?? 0,
-                accuracy: sample.horizontalAccuracy,
-                altitude: sample.elevation,
-                collectedFrom: sample.beginDate,
-                notes: sample.notes.isEmpty ? nil : sample.notes,
-                marked: sample.marked,
-                code: sample.sampleID,
-                clientUuid: sample.id,
-                clientUpdatedAt: sample.updatedAt
-            ))
-
-            working.backendId = created.id
-            working.fieldtrip = created.fieldtrip
-            working.locality = created.locality
-            working.version = created.version
-            working.adminUnitsLocality = created.adminUnits?.locality
-            working.adminUnitsCountry = created.adminUnits?.country
-            working.mtbSheetNumber = created.mtb?.sheetNumber
-            working.mtbSheetName = created.mtb?.sheetName
-
-            if created.sampleID != sample.sampleID {
-                // Server reassigned on conflict. The original is what
-                // the user wrote on the tube; the server's reassigned
-                // id is the authoritative database value.
-                working.backendCode = created.sampleID
-                working.originalCode = created.originalCode ?? sample.sampleID
-            } else {
-                working.backendCode = nil
-                // Server honored — but it might still return
-                // original_code from a prior conflict round. Keep
-                // whatever the server has.
-                working.originalCode = created.originalCode
+            // 1. Placemarks first (backend ids), then the input is
+            //    built from the row as it is *after* those calls.
+            guard let pushed = try await pushLocation(forLocalID: localId) else {
+                try? mutationsStore.dequeue(mutation.id)
+                return
             }
+            let (current, location) = pushed
+            let input = Self.createInput(current, location: location)
 
-            working.syncStatus = .synced
-            try store.update(working)
+            // 2. The sample itself.
+            let created = try await client.createSample(input)
+
+            // 3. Merge server-derived fields onto the row as it is now.
+            guard var fresh = try store.fetchById(localId) else {
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+            fresh.backendId = created.id
+            fresh.fieldtrip = created.fieldtrip
+            // An empty server locality must not wipe a local one.
+            fresh.locality = created.locality ?? fresh.locality
+            fresh.version = created.version
+            Self.applyCodes(created, sentCode: input.code ?? fresh.sampleID, to: &fresh)
+            fresh.mergeServerLocation(created, localPlacemarkID: localPlacemarkID)
+            fresh.syncStatus = .synced
+            fresh.syncError = nil
+            try store.update(fresh)
 
             // Persisted on the server — remove from outbox.
             try? mutationsStore.dequeue(mutation.id)
+
+            // Edits that landed while the POST was in flight (user, or
+            // the on-device resolver — it couldn't queue an update yet
+            // because the row had no backend id) are not on the
+            // server: push them as an update.
+            if Self.createInput(fresh, location: syncLocation(fresh)) != input {
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: localId, op: .update,
+                    payload: SampleUpdatePayload(pushFeatures: true).encoded
+                )
+            }
 
             // Hand off the parent fieldtrip id to the container so
             // the fieldtrip-side hydration runs in parallel.
             onSampleSynced(created.fieldtrip)
 
+            // 4. Features (only when the device has some).
+            if let featureStore, ((try? featureStore.count(sampleID: localId)) ?? 0) > 0 {
+                if !(await pushFeatures(localID: localId, backendID: created.id)) {
+                    _ = try? mutationsStore.enqueue(
+                        entityType: .sample, entityId: localId, op: .update,
+                        payload: SampleUpdatePayload(pushFeatures: true).encoded
+                    )
+                }
+            }
+
             // Push any photos that were captured for this sample
             // before the sync round-trip. We have the backend id now,
             // so each photo gets its own multipart POST.
-            await pushPhotos(for: working, backendSampleID: created.id, endpoint: endpointProvider())
+            await pushPhotos(for: fresh, backendSampleID: created.id, endpoint: endpointProvider())
 
-            await pollEnrichment(id: created.id, sample: working, via: client)
+            if location.locationStatus != .backendService {
+                await pollEnrichment(backendID: created.id, localID: localId,
+                                     baseVersion: created.version, via: client)
+            }
         } catch {
-            working.syncStatus = .failed
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            working.syncError = message
-            try? store.update(working)
+            try? store.setSyncState(id: localId, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample push failed: \(message)")
         }
     }
 
-    /// Pushes a user edit (code/notes) on a previously-synced sample.
+    /// Pushes a user edit (code/notes) or a place-data change on a
+    /// previously-synced sample.
     ///
     /// The outbox row carries the *local* sample id as `entityId`
-    /// (same shape as `.sample/.create`) and an empty payload. The
-    /// payload is built fresh from the current local row right before
-    /// the PATCH, so any user edits that landed in the row between
-    /// enqueue and execute are pushed automatically — no coalescing
-    /// race. After the response we re-read the row again to avoid
-    /// clobbering edits that landed during the network hop.
+    /// (same shape as `.sample/.create`) and a `SampleUpdatePayload`
+    /// (empty for plain edits). The body is built fresh from the
+    /// current local row right before the PATCH, so any edits that
+    /// landed in the row between enqueue and execute are pushed
+    /// automatically — no coalescing race. After the response we
+    /// re-read the row again to avoid clobbering edits that landed
+    /// during the network hop.
+    ///
+    /// Order: placemark resolve → PATCH → features PUT (when the
+    /// payload asks for it).
     ///
     /// OCC: the backend's `enforceVersion` hook (versionedCollections
     /// in version_conflict.go) rejects `incoming <= current` with 409.
@@ -326,22 +504,26 @@ final class SyncRunner: ObservableObject {
             return
         }
 
-        var working = preLocal
-        working.syncStatus = .syncing
-        working.syncError = nil
-        try? store.update(working)
-
-        let input = SampleUpdateInput(
-            code: working.sampleID,
-            notes: working.notes,
-            clientUuid: working.id,
-            clientUpdatedAt: working.updatedAt,
-            version: working.version + 1
-        )
+        let payload = SampleUpdatePayload.decode(mutation.payloadJson)
+        try? store.setSyncState(id: localID, status: .syncing, error: nil)
 
         do {
             inFlight += 1
             defer { inFlight -= 1 }
+
+            guard let pushed = try await pushLocation(forLocalID: localID) else {
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+            let (current, location) = pushed
+            let input = SampleUpdateInput(
+                code: current.sampleID,
+                notes: current.notes,
+                clientUuid: current.id,
+                clientUpdatedAt: current.updatedAt,
+                version: current.version + 1,
+                location: location
+            )
 
             let updated = try await client.updateSample(id: backendID, input: input)
 
@@ -349,25 +531,24 @@ final class SyncRunner: ObservableObject {
             // further edits during the await. Preserve user-owned
             // fields (notes, sampleID) and merge only the server-
             // derived ones in.
-            var fresh = (try? store.fetchById(localID)) ?? working
+            var fresh = (try? store.fetchById(localID)) ?? current
             fresh.version = updated.version
-            fresh.adminUnitsLocality = updated.adminUnits?.locality
-            fresh.adminUnitsCountry = updated.adminUnits?.country
-            fresh.mtbSheetNumber = updated.mtb?.sheetNumber
-            fresh.mtbSheetName = updated.mtb?.sheetName
-            if updated.sampleID != input.code {
-                // Server reassigned on collision — keep the user's
-                // tube label as `originalCode` and adopt the server's
-                // authoritative id.
-                fresh.backendCode = updated.sampleID
-                fresh.originalCode = updated.originalCode ?? input.code
-            } else {
-                fresh.backendCode = nil
-                fresh.originalCode = updated.originalCode
-            }
+            fresh.locality = updated.locality ?? fresh.locality
+            Self.applyCodes(updated, sentCode: input.code, to: &fresh)
+            fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
             fresh.syncStatus = .synced
             fresh.syncError = nil
             try store.update(fresh)
+
+            if payload.pushFeatures, featureStore != nil,
+               !(await pushFeatures(localID: localID, backendID: backendID))
+            {
+                // Sample is on the server; only the feature set is
+                // missing. Keep the row queued — the retry re-PATCHes
+                // (with the merged version) and re-PUTs.
+                try? mutationsStore.recordFailure(mutation.id, error: "features push failed")
+                return
+            }
             try? mutationsStore.dequeue(mutation.id)
 
             // Pick up any photos that the edit added on top of an
@@ -384,19 +565,192 @@ final class SyncRunner: ObservableObject {
             Log.sync.warning(
                 "sample update 409 (server version \(serverVersion, privacy: .public))"
             )
-            var aborted = (try? store.fetchById(localID)) ?? working
-            aborted.syncStatus = .failed
-            aborted.syncError = "Konflikt: Probe wurde auf einem anderen Gerät geändert. Bitte neu laden."
-            try? store.update(aborted)
+            try? store.setSyncState(
+                id: localID, status: .failed,
+                error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Bitte neu laden."
+            )
             try? mutationsStore.dequeue(mutation.id)
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            var failed = (try? store.fetchById(localID)) ?? working
-            failed.syncStatus = .failed
-            failed.syncError = message
-            try? store.update(failed)
+            try? store.setSyncState(id: localID, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample update push failed: \(message)")
+        }
+    }
+
+    // MARK: - Phase O2 place data
+
+    /// Outcome of mapping a local placemark reference to the server.
+    private enum PlacemarkRef: Equatable {
+        case none
+        case backend(String)
+        /// Cannot be referenced on the server (no local row for a
+        /// UUID, incomplete place, or the server rejected it).
+        case unresolvable
+
+        var backendID: String? {
+            if case let .backend(id) = self { return id }
+            return nil
+        }
+    }
+
+    /// Resolves the row's placemark references to backend ids (network
+    /// for locally created placemarks), then re-reads the row and
+    /// builds the location fields from that fresh row. Retries when a
+    /// reference changed during the calls. Nil when the row vanished.
+    private func pushLocation(forLocalID id: String) async throws -> (LocalSample, SampleLocationFields)? {
+        for _ in 0 ..< 3 {
+            guard let row = try store.fetchById(id) else { return nil }
+            let placemark = try await backendPlacemark(row.placemark)
+            let suggestion = try await backendPlacemark(row.placemarkSuggestion)
+            guard let fresh = try store.fetchById(id) else { return nil }
+            if fresh.placemark == row.placemark, fresh.placemarkSuggestion == row.placemarkSuggestion {
+                return (fresh, location(fresh, placemark: placemark, suggestion: suggestion))
+            }
+        }
+        // References keep changing under us: send what is already
+        // resolvable without the network; the editor's change queues
+        // its own update.
+        guard let fresh = try store.fetchById(id) else { return nil }
+        return (fresh, syncLocation(fresh))
+    }
+
+    /// Location fields with placemark refs mapped without network
+    /// calls (unknown ⇒ unresolvable). Used to detect edits that
+    /// landed during a create POST.
+    private func syncLocation(_ s: LocalSample) -> SampleLocationFields {
+        location(s, placemark: knownBackendPlacemark(s.placemark),
+                 suggestion: knownBackendPlacemark(s.placemarkSuggestion))
+    }
+
+    private func location(_ s: LocalSample, placemark: PlacemarkRef, suggestion: PlacemarkRef) -> SampleLocationFields {
+        var fields = SampleLocationFields(
+            s,
+            placemark: placemark.backendID,
+            placemarkSuggestion: suggestion.backendID,
+            locality: pushableLocality(s.locality)
+        )
+        if placemark == .unresolvable, fields.locationStatus != .pending {
+            // Without its placemark the status would lie; `pending`
+            // lets the backend enrich the sample itself.
+            fields.locationStatus = .pending
+        }
+        return fields
+    }
+
+    /// A locality id may only be sent once it is a backend id (a
+    /// client-created locality's UUID is swapped by the locality
+    /// push, which then queues a sample update).
+    private func pushableLocality(_ id: String?) -> String? {
+        guard let id, PlacemarkClient.isRecordID(id) else { return nil }
+        return id
+    }
+
+    private func knownBackendPlacemark(_ localID: String?) -> PlacemarkRef {
+        guard let localID, !localID.isEmpty else { return .none }
+        guard let placemarkStore, let row = try? placemarkStore.fetchById(localID) else {
+            return PlacemarkClient.isRecordID(localID) ? .backend(localID) : .unresolvable
+        }
+        if let backendID = row.backendId, !backendID.isEmpty { return .backend(backendID) }
+        return .unresolvable
+    }
+
+    /// Backend id for a local placemark reference. A locally created
+    /// row without `backend_id` is looked up or created on the server
+    /// (`backend_service` rows shared, `manual` rows owned by the
+    /// user) and the id is remembered on the row. Network/auth/5xx
+    /// errors throw (the push retries); a 4xx rejection of the place
+    /// itself yields `.unresolvable`, so the sample is not blocked.
+    private func backendPlacemark(_ localID: String?) async throws -> PlacemarkRef {
+        guard let localID, !localID.isEmpty else { return .none }
+        guard let placemarkStore, let row = try placemarkStore.fetchById(localID) else {
+            if PlacemarkClient.isRecordID(localID) { return .backend(localID) }
+            Log.sync.warning("placemark \(localID, privacy: .public) unknown locally, not sent")
+            return .unresolvable
+        }
+        if let backendID = row.backendId, !backendID.isEmpty { return .backend(backendID) }
+        guard row.countryISO.count == 2 else {
+            Log.sync.warning("placemark \(localID, privacy: .public) has no country, not sent")
+            return .unresolvable
+        }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        let client = placemarkClientFactory(endpoint, authProvider())
+        let source = Placemark.GeocodingSource(wire: row.geocodingSource)
+        do {
+            let remote = try await client.resolve(place: row.place, source: source)
+            try placemarkStore.setBackend(localID: localID, backendID: remote.id, owner: remote.owner)
+            Log.sync.info("placemark \(localID, privacy: .public) resolved to \(remote.id, privacy: .public)")
+            return .backend(remote.id)
+        } catch let SampleClientError.http(status, _) where status == 400 || status == 422 {
+            Log.sync.warning("placemark \(localID, privacy: .public) rejected (\(status, privacy: .public)), not sent")
+            return .unresolvable
+        }
+    }
+
+    private func localPlacemarkID(_ backendID: String) -> String {
+        ((try? placemarkStore?.localID(forBackendID: backendID)) ?? nil) ?? backendID
+    }
+
+    /// PUTs the complete local feature set of the sample. Returns
+    /// false on any failure (logged).
+    private func pushFeatures(localID: String, backendID: String) async -> Bool {
+        guard let featureStore else { return true }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return false }
+        let client = featuresClientFactory(endpoint, authProvider())
+        do {
+            let rows = try featureStore.all(sampleID: localID)
+            try await client.replaceFeatures(sampleBackendID: backendID, features: rows)
+            Log.sync.info("pushed \(rows.count, privacy: .public) features for sample \(backendID, privacy: .public)")
+            return true
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            Log.sync.warning("features push failed for sample \(backendID, privacy: .public): \(message)")
+            return false
+        }
+    }
+
+    private func makeLocationHydration() -> SampleLocationHydration? {
+        guard let placemarkStore, let featureStore else { return nil }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return nil }
+        let auth = authProvider()
+        return SampleLocationHydration(
+            samples: store,
+            placemarks: placemarkStore,
+            features: featureStore,
+            placemarkClient: placemarkClientFactory(endpoint, auth),
+            featuresClient: featuresClientFactory(endpoint, auth)
+        )
+    }
+
+    private func hasQueuedMutation(_ localID: String) -> Bool {
+        ((try? mutationsStore.fetch(entityType: .sample)) ?? []).contains { $0.entityId == localID }
+    }
+
+    private static func createInput(_ s: LocalSample, location: SampleLocationFields) -> SampleCreateInput {
+        SampleCreateInput(
+            location: location,
+            collectedFrom: s.beginDate,
+            notes: s.notes.isEmpty ? nil : s.notes,
+            marked: s.marked,
+            code: s.sampleID,
+            clientUuid: s.id,
+            clientUpdatedAt: s.updatedAt
+        )
+    }
+
+    /// Server reassigned on conflict → keep the tube label as
+    /// `originalCode` and the server's id as `backendCode`.
+    private static func applyCodes(_ remote: Sample, sentCode: String, to row: inout LocalSample) {
+        if remote.sampleID != sentCode {
+            row.backendCode = remote.sampleID
+            row.originalCode = remote.originalCode ?? sentCode
+        } else {
+            row.backendCode = nil
+            // Server honored — but it might still return
+            // original_code from a prior conflict round.
+            row.originalCode = remote.originalCode
         }
     }
 
@@ -439,9 +793,18 @@ final class SyncRunner: ObservableObject {
             ))
 
             // Reconcile UUID → backend id: insert the backend row,
-            // re-point samples, delete the UUID row.
+            // re-point samples, delete the UUID row. Samples that were
+            // already pushed went out without this locality (a local
+            // UUID can't be referenced) — queue an update for them.
+            let pushedSamples = ((try? store.fetchByLocality(local.id)) ?? [])
+                .filter { !($0.backendId ?? "").isEmpty }
             try localitiesStore.upsertOne(created)
             try localitiesStore.applyRemap(oldID: local.id, newID: created.id)
+            for sample in pushedSamples {
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: sample.id, op: .update, payload: Data()
+                )
+            }
             try? mutationsStore.dequeue(mutation.id)
             onLocalityChanged()
         } catch {
@@ -541,22 +904,28 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    private func pollEnrichment(id: String, sample: LocalSample, via client: SamplePushClient) async {
-        var working = sample
+    /// Waits for the backend enrichment of a sample pushed without
+    /// final place data (status ≠ backend_service). Done when the
+    /// server reports `backend_service` or a newer version (the
+    /// enricher bumps it). Merges onto a fresh row: the version always
+    /// (so a queued local edit doesn't 409 against our own
+    /// enrichment), place data only when no local edit is queued —
+    /// then pulls placemark and features.
+    private func pollEnrichment(backendID: String, localID: String, baseVersion: Int,
+                                via client: SamplePushClient) async
+    {
         for _ in 0 ..< 6 {
             try? await Task.sleep(for: enrichmentPollInterval)
-            if let s = try? await client.fetchSample(id: id) {
-                let locality = s.adminUnits?.locality
-                let mtbSheet = s.mtb?.sheetNumber
-                if locality != nil || mtbSheet != nil {
-                    working.adminUnitsLocality = locality
-                    working.adminUnitsCountry = s.adminUnits?.country
-                    working.mtbSheetNumber = mtbSheet
-                    working.mtbSheetName = s.mtb?.sheetName
-                    try? store.update(working)
-                    return
-                }
+            guard let s = try? await client.fetchSample(id: backendID) else { continue }
+            guard s.locationStatus == .backendService || s.version > baseVersion else { continue }
+            guard var fresh = try? store.fetchById(localID), fresh.backendId == backendID else { return }
+            fresh.version = max(fresh.version, s.version)
+            if !hasQueuedMutation(localID) {
+                fresh.mergeServerLocation(s, localPlacemarkID: localPlacemarkID)
             }
+            try? store.update(fresh)
+            await makeLocationHydration()?.hydrate([s])
+            return
         }
     }
 }

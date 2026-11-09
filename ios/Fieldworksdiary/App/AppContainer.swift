@@ -71,8 +71,12 @@ final class AppContainer: ObservableObject {
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
+        let placemarksStore = LocalPlacemarkStore(database: database)
+        let sampleFeatures = LocalSampleFeatureStore(database: database)
         let samplesHydrator = SamplesHydrator(
             store: store,
+            placemarks: placemarksStore,
+            features: sampleFeatures,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
@@ -82,8 +86,6 @@ final class AppContainer: ObservableObject {
             authProvider: { [weak auth] in auth },
             userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
-        let placemarksStore = LocalPlacemarkStore(database: database)
-        let sampleFeatures = LocalSampleFeatureStore(database: database)
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
@@ -91,6 +93,8 @@ final class AppContainer: ObservableObject {
             mutationsStore: mutations,
             photoStore: photos,
             localitiesStore: localitiesStore,
+            placemarkStore: placemarksStore,
+            featureStore: sampleFeatures,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
             onSampleSynced: { fieldtripID in
@@ -127,7 +131,8 @@ final class AppContainer: ObservableObject {
             ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
             samples: store,
             placemarks: placemarksStore,
-            features: sampleFeatures
+            features: sampleFeatures,
+            mutations: mutations
         )
     }
 

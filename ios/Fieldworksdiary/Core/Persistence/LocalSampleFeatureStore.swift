@@ -39,4 +39,22 @@ final class LocalSampleFeatureStore {
                 .fetchAll(db)
         }
     }
+
+    /// Every feature of one sample, in the order they were stored.
+    func all(sampleID: String) throws -> [LocalSampleFeature] {
+        try database.reader.read { db in
+            try LocalSampleFeature
+                .filter(Column("sample_id") == sampleID)
+                .order(Column.rowID)
+                .fetchAll(db)
+        }
+    }
+
+    func count(sampleID: String) throws -> Int {
+        try database.reader.read { db in
+            try LocalSampleFeature
+                .filter(Column("sample_id") == sampleID)
+                .fetchCount(db)
+        }
+    }
 }

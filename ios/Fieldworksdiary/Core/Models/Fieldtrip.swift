@@ -1,5 +1,31 @@
 import Foundation
 
+/// Legacy enrichment shapes still carried by fieldtrip records (samples
+/// use flat Ortus columns since Phase O).
+struct AdminUnits: Codable, Equatable {
+    let country: String?
+    let countryIso: String?
+    let adminArea: String?
+    let adminArea2: String?
+    let adminArea3: String?
+    let locality: String?
+    let locationDescription: String?
+}
+
+struct MTB: Codable, Equatable {
+    let sheetNumber: String?
+    let sheetName: String?
+    let quadrant: Int?
+    let found: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case sheetNumber = "sheet_number"
+        case sheetName = "sheet_name"
+        case quadrant
+        case found
+    }
+}
+
 struct Astro: Codable, Equatable {
     let sunrise: Date?
     let sunset: Date?

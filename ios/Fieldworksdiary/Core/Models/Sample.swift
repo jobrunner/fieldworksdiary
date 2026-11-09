@@ -1,29 +1,5 @@
 import Foundation
 
-struct AdminUnits: Codable, Equatable {
-    let country: String?
-    let countryIso: String?
-    let adminArea: String?
-    let adminArea2: String?
-    let adminArea3: String?
-    let locality: String?
-    let locationDescription: String?
-}
-
-struct MTB: Codable, Equatable {
-    let sheetNumber: String?
-    let sheetName: String?
-    let quadrant: Int?
-    let found: Bool?
-
-    enum CodingKeys: String, CodingKey {
-        case sheetNumber = "sheet_number"
-        case sheetName = "sheet_name"
-        case quadrant
-        case found
-    }
-}
-
 struct Sample: Decodable, Identifiable, Equatable {
     let id: String
     /// Sample identifier in the form "YYMMDD/N" — formerly `code`.
@@ -41,12 +17,21 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// gesperrt, …).
     let latitude: Double?
     let longitude: Double?
-    let altitude: Double?
+    /// Metres above sea level (wire key `elevation`, was `altitude`
+    /// before Phase O). PocketBase stores an unset number as 0, so 0
+    /// without an `elevation_source` decodes to nil.
+    let elevation: Double?
+    let elevationSource: ElevationSource?
     let horizontalAccuracy: Double?
     let verticalAccuracy: Double?
     /// Where the coordinate came from. Drives whether downstream
     /// code may overwrite it.
     let locationSource: LocationSource
+    /// Place-data state; nil when the server sent "" (legacy rows).
+    let locationStatus: LocationStatus?
+    /// Backend placemark ids (never local UUIDs).
+    let placemark: String?
+    let placemarkSuggestion: String?
     /// Time window for the observation. Both UTC; `isAllDay` only
     /// controls how the UI renders them.
     let beginDate: Date?
@@ -70,11 +55,14 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// existing local row instead of creating a duplicate.
     let clientUuid: String?
     let clientUpdatedAt: Date?
-    let adminUnits: AdminUnits?
-    let mtb: MTB?
+    /// Ortus geo values (MTB, DEM, terrain, bearing). Nil when the
+    /// server row carries no enrichment yet — PocketBase returns 0 /
+    /// "" / false for unset columns, which must not be mistaken for
+    /// real values (see `SampleGeoValues.init(from:)`).
+    let geo: SampleGeoValues?
 
     enum CodingKeys: String, CodingKey {
-        case id, fieldtrip, locality, notes, marked, mtb, altitude, latitude, longitude, version
+        case id, fieldtrip, locality, notes, marked, elevation, latitude, longitude, version, placemark
         case sampleID = "sample_id"
         case originalCode = "original_code"
         case horizontalAccuracy = "horizontal_accuracy"
@@ -86,7 +74,9 @@ struct Sample: Decodable, Identifiable, Equatable {
         case locationSource = "location_source"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
-        case adminUnits = "admin_units"
+        case elevationSource = "elevation_source"
+        case locationStatus = "location_status"
+        case placemarkSuggestion = "placemark_suggestion"
     }
 
     init(from decoder: Decoder) throws {
@@ -100,10 +90,15 @@ struct Sample: Decodable, Identifiable, Equatable {
         locality = decodeNonEmpty(c, .locality)
         latitude = decodeNonZeroDouble(c, .latitude)
         longitude = decodeNonZeroDouble(c, .longitude)
-        altitude = try? c.decode(Double.self, forKey: .altitude)
+        elevationSource = decodeNonEmpty(c, .elevationSource).flatMap(ElevationSource.init(rawValue:))
+        let rawElevation = try? c.decode(Double.self, forKey: .elevation)
+        elevation = (rawElevation == 0 && elevationSource == nil) ? nil : rawElevation
         horizontalAccuracy = try? c.decode(Double.self, forKey: .horizontalAccuracy)
         verticalAccuracy = try? c.decode(Double.self, forKey: .verticalAccuracy)
         locationSource = LocationSource(wire: try? c.decode(String.self, forKey: .locationSource))
+        locationStatus = decodeNonEmpty(c, .locationStatus).flatMap(LocationStatus.init(rawValue:))
+        placemark = decodeNonEmpty(c, .placemark)
+        placemarkSuggestion = decodeNonEmpty(c, .placemarkSuggestion)
         beginDate = try? c.decode(Date.self, forKey: .beginDate)
         endDate = try? c.decode(Date.self, forKey: .endDate)
         isAllDay = (try? c.decode(Bool.self, forKey: .isAllDay)) ?? false
@@ -114,8 +109,84 @@ struct Sample: Decodable, Identifiable, Equatable {
         version = (try? c.decode(Int.self, forKey: .version)) ?? 1
         clientUuid = decodeNonEmpty(c, .clientUuid)
         clientUpdatedAt = try? c.decode(Date.self, forKey: .clientUpdatedAt)
-        adminUnits = try? c.decode(AdminUnits.self, forKey: .adminUnits)
-        mtb = try? c.decode(MTB.self, forKey: .mtb)
+        let geo = try SampleGeoValues(from: decoder)
+        self.geo = geo.isEmpty && locationStatus != .backendService ? nil : geo
+    }
+}
+
+/// Flat Ortus geo columns of a server sample (migration 1700000024).
+/// Text columns decode "" to nil; numbers are only taken as real
+/// values when a sibling column proves the enrichment ran (PocketBase
+/// writes 0 for an unset number, and `geoplace.ApplyGeo` writes 0 for
+/// a nil value).
+struct SampleGeoValues: Decodable, Equatable {
+    var mtbSheetNumber: String?
+    var mtbSheetName: String?
+    /// 1–4; 0 on the wire means none and decodes to nil.
+    var mtbQuadrant: Int?
+    var elevationDEM: Double?
+    var elevationDEMAccuracy: Double?
+    var slopeDeg: Double?
+    var aspectDeg: Double?
+    var aspectCompass: String?
+    var terrainFlat: Bool
+    var bearingLabel: String?
+    var bearingReference: String?
+    var bearingDistanceKm: Double?
+    var bearingCompass: String?
+    var bearingInside: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case mtbSheetNumber = "mtb_sheet_number"
+        case mtbSheetName = "mtb_sheet_name"
+        case mtbQuadrant = "mtb_quadrant"
+        case elevationDEM = "elevation_dem"
+        case elevationDEMAccuracy = "elevation_dem_accuracy"
+        case slopeDeg = "slope_deg"
+        case aspectDeg = "aspect_deg"
+        case aspectCompass = "aspect_compass"
+        case terrainFlat = "terrain_flat"
+        case bearingLabel = "bearing_label"
+        case bearingReference = "bearing_reference"
+        case bearingDistanceKm = "bearing_distance_km"
+        case bearingCompass = "bearing_compass"
+        case bearingInside = "bearing_inside"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mtbSheetNumber = decodeNonEmpty(c, .mtbSheetNumber)
+            ?? (try? c.decode(Int.self, forKey: .mtbSheetNumber)).flatMap { $0 == 0 ? nil : String($0) }
+        mtbSheetName = decodeNonEmpty(c, .mtbSheetName)
+        let quadrant = (try? c.decode(Double.self, forKey: .mtbQuadrant)).map { Int($0) } ?? 0
+        mtbQuadrant = quadrant == 0 ? nil : quadrant
+        aspectCompass = decodeNonEmpty(c, .aspectCompass)
+        terrainFlat = (try? c.decode(Bool.self, forKey: .terrainFlat)) ?? false
+        bearingLabel = decodeNonEmpty(c, .bearingLabel)
+        bearingReference = decodeNonEmpty(c, .bearingReference)
+        bearingCompass = decodeNonEmpty(c, .bearingCompass)
+        bearingInside = (try? c.decode(Bool.self, forKey: .bearingInside)) ?? false
+
+        let dem = (try? c.decode(Double.self, forKey: .elevationDEM)) ?? 0
+        let demAccuracy = (try? c.decode(Double.self, forKey: .elevationDEMAccuracy)) ?? 0
+        elevationDEM = (dem != 0 || demAccuracy != 0) ? dem : nil
+        elevationDEMAccuracy = demAccuracy != 0 ? demAccuracy : nil
+        // A slope is only meaningful next to a DEM value or terrain
+        // flag; an aspect next to its compass label; a distance next
+        // to its bearing label.
+        let slope = try? c.decode(Double.self, forKey: .slopeDeg)
+        slopeDeg = (elevationDEM != nil || terrainFlat || (slope ?? 0) != 0) ? slope : nil
+        let aspect = try? c.decode(Double.self, forKey: .aspectDeg)
+        aspectDeg = aspectCompass != nil ? aspect : nil
+        let distance = try? c.decode(Double.self, forKey: .bearingDistanceKm)
+        bearingDistanceKm = bearingLabel != nil ? distance : nil
+    }
+
+    /// True when no column carries a real value.
+    var isEmpty: Bool {
+        mtbSheetNumber == nil && mtbSheetName == nil && mtbQuadrant == nil
+            && elevationDEM == nil && slopeDeg == nil && aspectCompass == nil
+            && !terrainFlat && bearingLabel == nil && bearingCompass == nil && !bearingInside
     }
 }
 

@@ -37,8 +37,7 @@ final class SyncRunnerTests: XCTestCase {
         mock.createResponse = remoteSample(
             id: "backend-1",
             code: local.sampleID,
-            fieldtrip: "ft-1",
-            locality: "Würzburg"
+            fieldtrip: "ft-1"
         )
 
         let onSyncedExpectation = expectation(description: "onSampleSynced fired")
@@ -55,7 +54,6 @@ final class SyncRunnerTests: XCTestCase {
         XCTAssertEqual(stored.syncStatus, .synced)
         XCTAssertEqual(stored.backendId, "backend-1")
         XCTAssertEqual(stored.fieldtrip, "ft-1")
-        XCTAssertEqual(stored.adminUnitsLocality, "Würzburg")
         XCTAssertEqual(notifiedFieldtripID, "ft-1")
     }
 
@@ -126,7 +124,7 @@ final class SyncRunnerTests: XCTestCase {
 
     // MARK: - Enrichment-Poll
 
-    func testPollEnrichment_AppliesLocalityWhenServerReturnsIt() async throws {
+    func testPollEnrichment_AppliesFlatMTBWhenServerEnriched() async throws {
         let local = try store.createLocal(
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
@@ -137,8 +135,9 @@ final class SyncRunnerTests: XCTestCase {
             id: "backend-1",
             code: local.sampleID,
             fieldtrip: "ft-1",
-            locality: "Würzburg",
-            mtbSheet: "6225"
+            mtbSheet: "6225",
+            locationStatus: "backend_service",
+            version: 2
         )
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
@@ -147,8 +146,41 @@ final class SyncRunnerTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.adminUnitsLocality, "Würzburg")
         XCTAssertEqual(stored.mtbSheetNumber, "6225")
+        XCTAssertEqual(stored.mtbSheetName, "Test")
+        XCTAssertEqual(stored.mtbQuadrant, 1)
+        XCTAssertEqual(stored.locationStatus, .backendService)
+        XCTAssertEqual(stored.version, 2, "enrichment bumps version; local follows so the next PATCH doesn't 409")
+    }
+
+    func testPush_SendsElevationAndRealLocationSource() async throws {
+        let local = try store.createLocal(
+            lat: 49.79, lon: 9.94, elevation: 312,
+            collectedFrom: date(2026, 5, 19, 14),
+            locationSource: .user
+        )
+        let mock = MockClient()
+        mock.createResponse = remoteSample(id: "backend-1", code: local.sampleID, fieldtrip: "ft-1")
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        let sent = try XCTUnwrap(mock.lastCreateInput)
+        XCTAssertEqual(sent.location.elevation, 312)
+        XCTAssertEqual(sent.location.elevationSource, .locationService)
+        XCTAssertEqual(sent.location.locationSource, .user, "manual coordinate goes out as `user`")
+        XCTAssertEqual(sent.location.locationStatus, .pending)
+        let body = sent.location.wireBody
+        XCTAssertEqual(body["elevation"] as? Double, 312)
+        XCTAssertNil(body["altitude"], "samples use `elevation` since Phase O")
+        XCTAssertEqual(body["elevation_source"] as? String, "location_service")
+        XCTAssertEqual(body["location_source"] as? String, "user")
+        XCTAssertEqual(body["location_status"] as? String, "pending")
+    }
+
+    func testDecode_ServerSampleWithoutEnrichment_HasNoGeo() throws {
+        let sample = remoteSample(id: "b", code: "260519/1", fieldtrip: "ft")
+        XCTAssertNil(sample.geo, "PocketBase zeros must not count as enrichment")
+        XCTAssertNil(sample.elevation)
+        XCTAssertNil(sample.locationStatus)
     }
 
     // MARK: - helpers
@@ -204,7 +236,9 @@ final class SyncRunnerTests: XCTestCase {
         originalCode: String? = nil,
         fieldtrip: String,
         locality: String? = nil,
-        mtbSheet: String? = nil
+        mtbSheet: String? = nil,
+        locationStatus: String? = nil,
+        version: Int = 1
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
@@ -216,15 +250,22 @@ final class SyncRunnerTests: XCTestCase {
             "client_updated_at": "2026-05-19T14:00:00.000Z",
             "location_source": "location_service",
             "time_zone": "Europe/Berlin",
-            "version": 1
+            "version": version,
+            // PocketBase returns unset columns as zero values.
+            "elevation": 0,
+            "elevation_source": "",
+            "location_status": locationStatus ?? "",
+            "placemark": "",
+            "mtb_sheet_number": mtbSheet ?? "",
+            "mtb_sheet_name": mtbSheet == nil ? "" : "Test",
+            "mtb_quadrant": mtbSheet == nil ? 0 : 1,
+            "slope_deg": 0,
+            "aspect_deg": 0,
+            "terrain_flat": false,
+            "bearing_inside": false
         ]
         if let originalCode { dict["original_code"] = originalCode }
-        if let locality {
-            dict["admin_units"] = ["locality": locality, "country": "DE"]
-        }
-        if let mtbSheet {
-            dict["mtb"] = ["sheet_number": mtbSheet, "sheet_name": "Test", "quadrant": 1, "found": true]
-        }
+        if let locality { dict["locality"] = locality }
         // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: dict)
         // swiftlint:disable:next force_try
@@ -241,8 +282,10 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
     var createError: Error?
     var updateResponse: Sample?
     var updateError: Error?
+    var lastCreateInput: SampleCreateInput?
 
-    func createSample(_: SampleCreateInput) async throws -> Sample {
+    func createSample(_ input: SampleCreateInput) async throws -> Sample {
+        lastCreateInput = input
         if let createError { throw createError }
         // swiftlint:disable:next force_unwrapping
         return createResponse!
