@@ -13,6 +13,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
 )
@@ -47,6 +48,8 @@ type exportPayload struct {
 	People         []map[string]any `json:"people"`
 	Determinations []map[string]any `json:"determinations"`
 	LabelPDFs      []map[string]any `json:"label_pdfs"`
+	Placemarks     []map[string]any `json:"placemarks"`
+	SampleFeatures []map[string]any `json:"sample_features"`
 }
 
 type exportMeta struct {
@@ -93,6 +96,15 @@ func handleExport(app core.App, c echo.Context) error {
 		return apis.NewApiError(http.StatusInternalServerError, "Failed to load label PDFs.", err)
 	}
 	payload.LabelPDFs = exportAll(labelPDFs)
+
+	// Placemarks are a shared, ownerless reference table: export only the
+	// ones referenced by this user's samples and localities.
+	if payload.Placemarks, err = exportReferencedPlacemarks(dao, ownerID); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load placemarks.", err)
+	}
+	if payload.SampleFeatures, err = fetchOwned(dao, "sample_features", ownerID, "sample,source_id"); err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "Failed to load sample features.", err)
+	}
 
 	// Stream the ZIP into the response. Setting headers before we
 	// write the first byte means errors hereafter become broken
@@ -154,6 +166,47 @@ func fetchOwned(dao interface {
 }, name, ownerID, sort string,
 ) ([]map[string]any, error) {
 	recs, err := dao.FindRecordsByFilter(name, "owner = {:o}", sort, 0, 0, dbx.Params{"o": ownerID})
+	if err != nil {
+		return nil, err
+	}
+	return exportAll(recs), nil
+}
+
+// exportReferencedPlacemarks returns the placemarks (and suggested
+// placemarks) referenced by the owner's samples and localities.
+func exportReferencedPlacemarks(dao *daos.Dao, ownerID string) ([]map[string]any, error) {
+	seen := map[string]struct{}{}
+	var ids []string
+	add := func(coll string, fields ...string) error {
+		recs, err := dao.FindRecordsByFilter(coll, "owner = {:o}", "", 0, 0, dbx.Params{"o": ownerID})
+		if err != nil {
+			return err
+		}
+		for _, r := range recs {
+			for _, f := range fields {
+				id := r.GetString(f)
+				if id == "" {
+					continue
+				}
+				if _, ok := seen[id]; ok {
+					continue
+				}
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+		return nil
+	}
+	if err := add("samples", "placemark", "placemark_suggestion"); err != nil {
+		return nil, err
+	}
+	if err := add("localities", "placemark"); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []map[string]any{}, nil
+	}
+	recs, err := dao.FindRecordsByIds("placemarks", ids)
 	if err != nil {
 		return nil, err
 	}

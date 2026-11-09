@@ -115,17 +115,18 @@ provisorische Exkursionszuordnung.
   (`codes/`, `grouping/`) braucht > 80 % Coverage.
 - iOS: Unit-Tests für `Core/Sync/`, `Core/Geo/codes/`. UI-Tests optional.
 
-## Externe Services (read-only Endpoints, gehosted auf dem Docker-Host)
+## Externe Services (read-only)
 
-- Reverse Geocoding: `https://labelloc.example.org/api/location?lat=&lon=&lang=de`
-- MTB-Lookup: `https://coordstomtb.example.org/api/coordinate?lat=&lon=&id=`
+- **Ortus** (Geodaten-Dienst): liefert Reverse-Geocoding/Placemark,
+  Höhe (DEM), Terrain und Feature-Quellen. Endpoint kommt aus der
+  Umgebungsvariable `ORTUS_BASE_URL` (Docker-Compose, nicht im Code).
 
-Beide Wrapper liegen in `backend/internal/services/`. Antworten werden
-in `geocache` (eine PocketBase-Collection) für 7 Tage gecacht. Der
-`labelloc`-Response hat ein bekanntes UTF-8-Issue (`WÃ¼rzburg`) – defensiv
-behandeln (re-decode versuchen, sonst Roh-Wert speichern und im Log
-markieren). MTB liefert in der Regel nur DE-Bezüge — außerhalb DE bleibt
-`mtb` leer (kein Fehler).
+Der Wrapper liegt in `backend/internal/services/ortus.go` (Retry,
+Timeout). Antworten werden in `geocache` (eine PocketBase-Collection)
+für 7 Tage gecacht. Die MTB-Angabe stammt ausschließlich aus der Quelle
+`tk25-blattschnitt-de`; der Quadrant wird lokal in `internal/mtb`
+berechnet. Außerhalb DE bleiben die MTB-Felder leer (kein Fehler).
+Anreicherung läuft asynchron und darf das Sample-Insert nie blockieren.
 
 ## Was der Agent NICHT von sich aus tun soll
 

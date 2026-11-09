@@ -205,9 +205,13 @@ func loadLocalityLabels(dao *daos.Dao, sampleIDs []string) ([]pdf.SampleLabel, [
 	if err != nil {
 		return nil, nil, err
 	}
+	pmByID, err := batchLoadPlacemarks(dao, samples)
+	if err != nil {
+		return nil, nil, err
+	}
 	labels := make([]pdf.SampleLabel, 0, len(samples))
 	for _, s := range samples {
-		labels = append(labels, sampleToLabel(s, ftByID[s.GetString("fieldtrip")]))
+		labels = append(labels, sampleToLabel(s, ftByID[s.GetString("fieldtrip")], pmByID[s.GetString("placemark")]))
 	}
 	return labels, samples, nil
 }
@@ -320,7 +324,40 @@ func batchLoadFieldtrips(dao *daos.Dao, samples []*models.Record) (map[string]*m
 	return out, nil
 }
 
-func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
+// batchLoadPlacemarks loads the placemarks referenced by the samples
+// in one query, keyed by record id.
+func batchLoadPlacemarks(dao *daos.Dao, samples []*models.Record) (map[string]*models.Record, error) {
+	seen := make(map[string]struct{})
+	ids := make([]string, 0, len(samples))
+	for _, s := range samples {
+		id := s.GetString("placemark")
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	out := map[string]*models.Record{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	recs, err := dao.FindRecordsByIds("placemarks", ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, r := range recs {
+		out[r.Id] = r
+	}
+	return out, nil
+}
+
+// sampleToLabel builds the label data for a sample. Country, state and
+// municipality come from the sample's placemark (nil → left empty);
+// the MTB line is no longer printed on labels.
+func sampleToLabel(s *models.Record, ft *models.Record, pm *models.Record) pdf.SampleLabel {
 	label := pdf.SampleLabel{
 		Code:          s.GetString("sample_id"),
 		Lat:           s.GetFloat("latitude"),
@@ -332,59 +369,13 @@ func sampleToLabel(s *models.Record, ft *models.Record) pdf.SampleLabel {
 		label.AltitudeM = alt
 		label.HasAltitude = true
 	}
-
-	// admin_units lives only on the fieldtrip now (R7.4); the per-sample
-	// snapshot was dropped.
-	if ft != nil {
-		if au := decodeAdminUnits(ft.GetString("admin_units")); au != nil {
-			fillAdmin(&label, au)
-		}
-	}
-	if mtb := decodeMTB(s.GetString("mtb")); mtb != nil {
-		label.MTBSheetNumber = mtb.SheetNumber
-		label.MTBSheetName = mtb.SheetName
+	if pm != nil {
+		label.Country = pm.GetString("admin_country")
+		label.AdminArea = pm.GetString("admin_state")
+		label.Locality = pm.GetString("admin_municipality")
 	}
 	if ft != nil {
 		label.PermitNumber = ft.GetString("permit_number")
 	}
 	return label
-}
-
-func fillAdmin(l *pdf.SampleLabel, au *adminUnits) {
-	l.Country = au.Country
-	l.AdminArea = au.AdminArea
-	l.Locality = au.Locality
-}
-
-type adminUnits struct {
-	Country   string `json:"country"`
-	AdminArea string `json:"adminArea"`
-	Locality  string `json:"locality"`
-}
-
-type mtbDecoded struct {
-	SheetNumber string `json:"sheet_number"`
-	SheetName   string `json:"sheet_name"`
-}
-
-func decodeAdminUnits(raw string) *adminUnits {
-	if raw == "" {
-		return nil
-	}
-	var v adminUnits
-	if json.Unmarshal([]byte(raw), &v) != nil {
-		return nil
-	}
-	return &v
-}
-
-func decodeMTB(raw string) *mtbDecoded {
-	if raw == "" {
-		return nil
-	}
-	var v mtbDecoded
-	if json.Unmarshal([]byte(raw), &v) != nil {
-		return nil
-	}
-	return &v
 }

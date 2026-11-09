@@ -201,33 +201,50 @@ func TestDeterminationToLabel_FallsBackToFullName(t *testing.T) {
 	}
 }
 
-func TestDecodeAdminUnits(t *testing.T) {
-	cases := []struct {
-		name    string
-		raw     string
-		wantNil bool
-		wantLoc string
-	}{
-		{"happy", `{"locality":"Würzburg","country":"DE"}`, false, "Würzburg"},
-		{"empty", ``, true, ""},
-		{"malformed", `[1,2,3]`, true, ""},
+func TestSampleToLabel_UsesPlacemark(t *testing.T) {
+	app := setupTestApp(t)
+	owner := makeUser(t, app, "label@example.com")
+	ft := makeFieldtrip(t, app, owner.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ft.Id)
+	pm := makePlacemark(t, app, "DE", "Bayern", "Ochsenfurt")
+	sample.Set("placemark", pm.Id)
+	sample.Set("mtb_sheet_number", "6425")
+	if err := app.Dao().SaveRecord(sample); err != nil {
+		t.Fatalf("save sample: %v", err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := decodeAdminUnits(tc.raw)
-			if tc.wantNil {
-				if got != nil {
-					t.Errorf("got %v, want nil", got)
-				}
-				return
-			}
-			if got == nil {
-				t.Fatal("got nil, want non-nil")
-			} else if got.Locality != tc.wantLoc {
-				t.Errorf("Locality = %q, want %q", got.Locality, tc.wantLoc)
-			}
-		})
+
+	label := sampleToLabel(sample, ft, pm)
+	if label.Country != "DE" || label.AdminArea != "Bayern" || label.Locality != "Ochsenfurt" {
+		t.Errorf("admin = %q/%q/%q, want DE/Bayern/Ochsenfurt", label.Country, label.AdminArea, label.Locality)
 	}
+	if label.MTBSheetNumber != "" || label.MTBSheetName != "" {
+		t.Errorf("MTB must stay empty, got %q/%q", label.MTBSheetNumber, label.MTBSheetName)
+	}
+
+	bare := makeSample(t, app, owner.Id, "260519/2", ft.Id)
+	l2 := sampleToLabel(bare, ft, nil)
+	if l2.Country != "" || l2.AdminArea != "" || l2.Locality != "" {
+		t.Errorf("sample without placemark should have empty admin fields, got %+v", l2)
+	}
+}
+
+func makePlacemark(t *testing.T, app *tests.TestApp, country, state, municipality string) *models.Record {
+	t.Helper()
+	coll, err := app.Dao().FindCollectionByNameOrId("placemarks")
+	if err != nil {
+		t.Fatalf("placemarks collection: %v", err)
+	}
+	rec := models.NewRecord(coll)
+	rec.Set("country", country)
+	rec.Set("admin_country", country)
+	rec.Set("admin_state", state)
+	rec.Set("admin_municipality", municipality)
+	rec.Set("geocoding_source", "backend_service")
+	rec.Set("dedup_hash", country+"|"+state+"|"+municipality)
+	if err := app.Dao().SaveRecord(rec); err != nil {
+		t.Fatalf("save placemark: %v", err)
+	}
+	return rec
 }
 
 // ────────────────────────────────────────────────────────────────────

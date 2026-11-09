@@ -1,5 +1,5 @@
-// Package services holds wrappers around the external Docker-Maschine
-// services (labelloc, MTB) plus a write-through cache for their
+// Package services holds wrappers around the external
+// services (Ortus) plus a write-through cache for their
 // responses. Wrappers retry transient failures, time out aggressively,
 // and never bubble errors up to the caller in a way that would kill
 // the originating sample insert — the worst case is "no enrichment
@@ -24,7 +24,7 @@ import (
 const DefaultCacheTTL = 7 * 24 * time.Hour
 
 // Geocache reads and writes the `geocache` collection. Keys are
-// service-scoped (so labelloc and mtb can share the lat/lon space
+// service-scoped (so different services can share the lat/lon space
 // without collisions).
 type Geocache struct {
 	Dao *daos.Dao

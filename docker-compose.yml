@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: dev
+      ORTUS_BASE_URL: ${ORTUS_BASE_URL:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
       interval: 10s

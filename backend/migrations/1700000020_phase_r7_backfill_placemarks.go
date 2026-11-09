@@ -141,7 +141,7 @@ func backfillLookupOrCreate(dao *daos.Dao, hash, country, adminArea, subAdminAre
 	return rec, nil
 }
 
-// backfillDedupHash mirrors `enrichment.PlacemarkDedupHash` and
+// backfillDedupHash mirrors the (since removed) enrichment dedup hash and
 // `api.manualDedupHash`. We keep a third copy here because the
 // `migrations` package is the bootstrap layer — pulling in
 // `internal/enrichment` would create an import cycle through the

@@ -17,6 +17,7 @@ services:
       - ./pb_data_staging:/app/pb_data
     environment:
       APP_ENV: staging
+      ORTUS_BASE_URL: ${ORTUS_BASE_URL:-}
     labels:
       env: staging
       managed-by: docker-compose

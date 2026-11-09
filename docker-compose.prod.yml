@@ -16,6 +16,7 @@ services:
       - ./pb_data_prod:/app/pb_data
     environment:
       APP_ENV: production
+      ORTUS_BASE_URL: ${ORTUS_BASE_URL:-}
     labels:
       env: production
       managed-by: docker-compose

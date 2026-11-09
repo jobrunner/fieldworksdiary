@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/models"
@@ -175,3 +176,82 @@ func TestExport_NoAuth_Returns401(t *testing.T) {
 // _ silences "imported and not used" if a test rev removes the only
 // httptest reference.
 var _ = httptest.NewRequest
+
+func TestExport_IncludesFeaturesAndPlacemarks(t *testing.T) {
+	app, token := newExportScenario(t)
+	owner, _ := app.Dao().FindAuthRecordByEmail("users", "alice@example.com")
+	samples, _ := app.Dao().FindRecordsByFilter("samples", "owner = {:o}", "", 0, 0, dbx.Params{"o": owner.Id})
+	pm := makePlacemark(t, app, "DE", "Bayern", "Ochsenfurt")
+	samples[0].Set("placemark", pm.Id)
+	if err := app.Dao().SaveRecord(samples[0]); err != nil {
+		t.Fatalf("save sample: %v", err)
+	}
+	fcoll, _ := app.Dao().FindCollectionByNameOrId("sample_features")
+	feat := models.NewRecord(fcoll)
+	feat.Set("owner", owner.Id)
+	feat.Set("sample", samples[0].Id)
+	feat.Set("source_id", "tk25-blattschnitt-de")
+	if err := app.Dao().SaveRecord(feat); err != nil {
+		t.Fatalf("save feature: %v", err)
+	}
+	// Fremdes Feature darf nicht auftauchen.
+	thief, _ := app.Dao().FindAuthRecordByEmail("users", "bob@example.com")
+	thiefSamples, _ := app.Dao().FindRecordsByFilter("samples", "owner = {:o}", "", 0, 0, dbx.Params{"o": thief.Id})
+	other := models.NewRecord(fcoll)
+	other.Set("owner", thief.Id)
+	other.Set("sample", thiefSamples[0].Id)
+	other.Set("source_id", "foreign-source")
+	if err := app.Dao().SaveRecord(other); err != nil {
+		t.Fatalf("save foreign feature: %v", err)
+	}
+	app.ResetEventCalls()
+
+	var captured []byte
+	scenario := tests.ApiScenario{
+		Name:            "export features",
+		Method:          http.MethodGet,
+		Url:             "/api/export",
+		RequestHeaders:  map[string]string{"Authorization": token},
+		ExpectedStatus:  http.StatusOK,
+		ExpectedContent: []string{"PK"},
+		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
+			mountExportRoute(app, e)
+		},
+		AfterTestFunc: func(t *testing.T, _ *tests.TestApp, res *http.Response) {
+			captured, _ = io.ReadAll(res.Body)
+		},
+	}
+	scenario.Test(t)
+
+	r, err := zip.NewReader(bytes.NewReader(captured), int64(len(captured)))
+	if err != nil {
+		t.Fatalf("zip parse: %v", err)
+	}
+	var dataJSON []byte
+	for _, f := range r.File {
+		if f.Name == "data.json" {
+			rc, _ := f.Open()
+			dataJSON, _ = io.ReadAll(rc)
+			rc.Close()
+		}
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(dataJSON, &raw); err != nil {
+		t.Fatalf("data.json parse: %v", err)
+	}
+	payload := map[string][]map[string]any{}
+	for _, k := range []string{"placemarks", "sample_features"} {
+		var arr []map[string]any
+		if err := json.Unmarshal(raw[k], &arr); err != nil {
+			t.Fatalf("data.json %s: %v", k, err)
+		}
+		payload[k] = arr
+	}
+	if len(payload["placemarks"]) != 1 || payload["placemarks"][0]["id"] != pm.Id {
+		t.Errorf("placemarks = %v, want exactly the referenced one", payload["placemarks"])
+	}
+	if len(payload["sample_features"]) != 1 || payload["sample_features"][0]["source_id"] != "tk25-blattschnitt-de" {
+		t.Errorf("sample_features = %v, want exactly the owner's one", payload["sample_features"])
+	}
+}
