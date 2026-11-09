@@ -79,89 +79,219 @@ func uniqueSuffix(t *testing.T) string {
 }
 
 // ────────────────────────────────────────────────────────────────────
-// processSample — Code-Vergabe + Fieldtrip + Sequence
+// processSample — ID bleibt wie gesendet, Sammeltag, Fieldtrip
 // ────────────────────────────────────────────────────────────────────
 
-func TestProcessSample_AssignsFreshCodeForFirstSampleOfDay(t *testing.T) {
+func mustTZ(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatalf("tz %s: %v", name, err)
+	}
+	return loc
+}
+
+// createSample verarbeitet und speichert ein Sample.
+func createSample(t *testing.T, app *tests.TestApp, ownerID string, set map[string]any) *models.Record {
+	t.Helper()
+	rec := newSampleRecord(t, app)
+	if _, ok := set["begin_date"]; !ok {
+		rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
+	}
+	for k, v := range set {
+		rec.Set(k, v)
+	}
+	if err := processSample(app.Dao(), rec, ownerID); err != nil {
+		t.Fatalf("processSample: %v", err)
+	}
+	if err := app.Dao().SaveRecord(rec); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	return rec
+}
+
+func fieldtripOf(t *testing.T, app *tests.TestApp, rec *models.Record) *models.Record {
+	t.Helper()
+	ft, err := app.Dao().FindRecordById("fieldtrips", rec.GetString("fieldtrip"))
+	if err != nil {
+		t.Fatalf("fieldtrip: %v", err)
+	}
+	return ft
+}
+
+func TestCreate_KeepsClientID(t *testing.T) {
 	app := setupTestApp(t)
 	owner := createTestUser(t, app, "ada@example.com")
 
-	rec := newSampleRecord(t, app)
-	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
-
-	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
-		t.Fatalf("processSample: %v", err)
+	rec := createSample(t, app, owner.Id, map[string]any{"sample_id": "JB-17"})
+	if got := rec.GetString("sample_id"); got != "JB-17" {
+		t.Errorf("sample_id = %q, want JB-17", got)
 	}
-
-	if got := rec.GetString("sample_id"); got != "260519/1" {
-		t.Errorf("code = %q, want 260519/1", got)
+	if got := rec.GetString("original_code"); got != "" {
+		t.Errorf("original_code = %q, want empty", got)
 	}
-	if got := rec.GetString("owner"); got != owner.Id {
-		t.Errorf("owner = %q, want %q", got, owner.Id)
-	}
-	if rec.GetString("fieldtrip") == "" {
-		t.Error("fieldtrip not set")
+	if rec.GetString("owner") != owner.Id || rec.GetString("fieldtrip") == "" {
+		t.Error("owner/fieldtrip not set")
 	}
 }
 
-func TestProcessSample_IncrementsSequenceForSecondSampleSameDay(t *testing.T) {
+func TestCreate_EmptyIDStaysEmpty(t *testing.T) {
 	app := setupTestApp(t)
 	owner := createTestUser(t, app, "bea@example.com")
-	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
-	first := newSampleRecord(t, app)
-	first.Set("begin_date", day)
-	if err := processSample(app.Dao(), first, owner.Id); err != nil {
-		t.Fatalf("first: %v", err)
-	}
-	if err := app.Dao().SaveRecord(first); err != nil {
-		t.Fatalf("save first: %v", err)
-	}
-
-	second := newSampleRecord(t, app)
-	second.Set("begin_date", day.Add(2*time.Hour))
-	if err := processSample(app.Dao(), second, owner.Id); err != nil {
-		t.Fatalf("second: %v", err)
-	}
-
-	if got := second.GetString("sample_id"); got != "260519/2" {
-		t.Errorf("second code = %q, want 260519/2", got)
-	}
-	if first.GetString("fieldtrip") != second.GetString("fieldtrip") {
-		t.Errorf("fieldtrip mismatch: first=%q second=%q",
-			first.GetString("fieldtrip"), second.GetString("fieldtrip"))
+	a := createSample(t, app, owner.Id, nil)
+	b := createSample(t, app, owner.Id, map[string]any{"sample_id": "   "})
+	for _, r := range []*models.Record{a, b} {
+		if got := r.GetString("sample_id"); got != "" {
+			t.Errorf("sample_id = %q, want empty", got)
+		}
+		if got := r.GetString("original_code"); got != "" {
+			t.Errorf("original_code = %q, want empty", got)
+		}
 	}
 }
 
-func TestProcessSample_DifferentOwnersGetSeparateFieldtripsAndSequences(t *testing.T) {
+func TestCreate_SuffixPerOwner(t *testing.T) {
 	app := setupTestApp(t)
-	alice := createTestUser(t, app, "alice@example.com")
-	bob := createTestUser(t, app, "bob@example.com")
+	a := createTestUser(t, app, "alice@example.com")
+	b := createTestUser(t, app, "bob@example.com")
+
+	first := createSample(t, app, a.Id, map[string]any{"sample_id": "250611/3"})
+	second := createSample(t, app, a.Id, map[string]any{"sample_id": "250611/3"})
+	third := createSample(t, app, a.Id, map[string]any{"sample_id": "250611/3"})
+	other := createSample(t, app, b.Id, map[string]any{"sample_id": "250611/3"})
+
+	if got := first.GetString("sample_id"); got != "250611/3" {
+		t.Errorf("first = %q", got)
+	}
+	if got := second.GetString("sample_id"); got != "250611/3 (2)" {
+		t.Errorf("second = %q, want '250611/3 (2)'", got)
+	}
+	if got := second.GetString("original_code"); got != "250611/3" {
+		t.Errorf("second original_code = %q", got)
+	}
+	if got := third.GetString("sample_id"); got != "250611/3 (3)" {
+		t.Errorf("third = %q, want '250611/3 (3)'", got)
+	}
+	if got := other.GetString("sample_id"); got != "250611/3" {
+		t.Errorf("other owner = %q, want unchanged", got)
+	}
+	if got := other.GetString("original_code"); got != "" {
+		t.Errorf("other original_code = %q, want empty", got)
+	}
+}
+
+func TestCreate_UsesClientCollectingDay(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "cd@example.com")
+
+	rec := createSample(t, app, owner.Id, map[string]any{
+		"collecting_day": "2026-06-10",
+		"begin_date":     time.Date(2026, 6, 11, 2, 0, 0, 0, time.UTC),
+	})
+	if got := fieldtripOf(t, app, rec).GetString("collecting_day"); got != "2026-06-10" {
+		t.Errorf("fieldtrip day = %q, want 2026-06-10", got)
+	}
+}
+
+func TestCreate_ComputesDayInSampleTimezone(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "tz@example.com")
+	begin := time.Date(2026, 1, 15, 23, 50, 0, 0, time.UTC)
+
+	canary := createSample(t, app, owner.Id, map[string]any{
+		"timezone": "Atlantic/Canary", "begin_date": begin,
+	})
+	if got := canary.GetString("collecting_day"); got != "2026-01-15" {
+		t.Errorf("canary collecting_day = %q, want 2026-01-15", got)
+	}
+	if got := fieldtripOf(t, app, canary).GetString("collecting_day"); got != "2026-01-15" {
+		t.Errorf("canary fieldtrip day = %q", got)
+	}
+
+	ber := createSample(t, app, owner.Id, map[string]any{
+		"timezone": "Europe/Berlin", "begin_date": begin,
+	})
+	if got := ber.GetString("collecting_day"); got != "2026-01-16" {
+		t.Errorf("berlin collecting_day = %q, want 2026-01-16", got)
+	}
+	if got := fieldtripOf(t, app, ber).GetString("collecting_day"); got != "2026-01-16" {
+		t.Errorf("berlin fieldtrip day = %q", got)
+	}
+}
+
+func TestCreate_UserCutoffHour(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "cut@example.com")
+	owner.Set("day_cutoff_hour", 5)
+	if err := app.Dao().SaveRecord(owner); err != nil {
+		t.Fatalf("save user: %v", err)
+	}
+
+	// 03:30 Berlin (CEST) liegt vor dem 5-Uhr-Rollover → Vortag.
+	rec := createSample(t, app, owner.Id, map[string]any{
+		"timezone":   "Europe/Berlin",
+		"begin_date": time.Date(2026, 6, 11, 1, 30, 0, 0, time.UTC),
+	})
+	if got := rec.GetString("collecting_day"); got != "2026-06-10" {
+		t.Errorf("collecting_day = %q, want 2026-06-10", got)
+	}
+}
+
+func TestCreate_DefaultRolloverZero(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "def@example.com")
+
+	rec := createSample(t, app, owner.Id, map[string]any{
+		"begin_date": time.Date(2026, 5, 19, 3, 0, 0, 0, berlin),
+	})
+	if got := rec.GetString("collecting_day"); got != "2026-05-19" {
+		t.Errorf("collecting_day = %q, want 2026-05-19 (Rollover 0)", got)
+	}
+}
+
+func TestCreate_NewFieldtripTakesSampleTimezone(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "ft@example.com")
+
+	rec := createSample(t, app, owner.Id, map[string]any{
+		"timezone":   "Atlantic/Canary",
+		"begin_date": time.Date(2026, 1, 15, 23, 50, 0, 0, time.UTC),
+	})
+	ft := fieldtripOf(t, app, rec)
+	if got := ft.GetString("timezone"); got != "Atlantic/Canary" {
+		t.Errorf("fieldtrip timezone = %q", got)
+	}
+	e := fieldtripFromRecord(ft)
+	if e.StartedAt.Location().String() != "Atlantic/Canary" {
+		t.Errorf("window location = %q, want Atlantic/Canary", e.StartedAt.Location())
+	}
+	if e.StartedAt.Hour() != 23 || e.StartedAt.Day() != 15 {
+		t.Errorf("window start local = %v", e.StartedAt)
+	}
+}
+
+func TestCreate_SameDaySamplesShareFieldtrip(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "same@example.com")
 	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
 
-	aliceSample := newSampleRecord(t, app)
-	aliceSample.Set("begin_date", day)
-	if err := processSample(app.Dao(), aliceSample, alice.Id); err != nil {
-		t.Fatalf("alice: %v", err)
+	a := createSample(t, app, owner.Id, map[string]any{"begin_date": day})
+	b := createSample(t, app, owner.Id, map[string]any{"begin_date": day.Add(2 * time.Hour)})
+	if a.GetString("fieldtrip") != b.GetString("fieldtrip") {
+		t.Errorf("fieldtrip mismatch: %q vs %q", a.GetString("fieldtrip"), b.GetString("fieldtrip"))
 	}
+}
 
-	bobSample := newSampleRecord(t, app)
-	bobSample.Set("begin_date", day)
-	if err := processSample(app.Dao(), bobSample, bob.Id); err != nil {
-		t.Fatalf("bob: %v", err)
-	}
+func TestCreate_DifferentOwnersGetSeparateFieldtrips(t *testing.T) {
+	app := setupTestApp(t)
+	alice := createTestUser(t, app, "alice2@example.com")
+	bob := createTestUser(t, app, "bob2@example.com")
 
-	// Beide bekommen Sequence 1 — Counter ist pro (owner, day).
-	if got := aliceSample.GetString("sample_id"); got != "260519/1" {
-		t.Errorf("alice code = %q, want 260519/1", got)
-	}
-	if got := bobSample.GetString("sample_id"); got != "260519/1" {
-		t.Errorf("bob code = %q, want 260519/1", got)
-	}
-	// Aber unterschiedliche Fieldtrips.
-	if aliceSample.GetString("fieldtrip") == bobSample.GetString("fieldtrip") {
-		t.Errorf("alice und bob teilen sich eine Fieldtrip: %q",
-			aliceSample.GetString("fieldtrip"))
+	a := createSample(t, app, alice.Id, nil)
+	b := createSample(t, app, bob.Id, nil)
+	if a.GetString("fieldtrip") == b.GetString("fieldtrip") {
+		t.Errorf("alice und bob teilen sich eine Fieldtrip")
 	}
 }
 
@@ -170,8 +300,6 @@ func TestProcessSample_DefaultsCollectedFromToNowWhenZero(t *testing.T) {
 	owner := createTestUser(t, app, "carla@example.com")
 
 	rec := newSampleRecord(t, app)
-	// collected_from bewusst nicht gesetzt → Zero-Value.
-
 	before := time.Now()
 	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
@@ -180,167 +308,82 @@ func TestProcessSample_DefaultsCollectedFromToNowWhenZero(t *testing.T) {
 
 	got := rec.GetDateTime("begin_date").Time()
 	if got.Before(before) || got.After(after.Add(time.Second)) {
-		t.Errorf("collected_from = %v, expected between %v and %v", got, before, after)
+		t.Errorf("begin_date = %v, expected between %v and %v", got, before, after)
 	}
 }
 
-func TestProcessSample_RespectsTagesrolloverBeforeCutoff(t *testing.T) {
+func TestCollectingDayFor_FallsBackToBerlinOnBadTimezone(t *testing.T) {
 	app := setupTestApp(t)
-	owner := createTestUser(t, app, "dora@example.com")
-
-	// 19.05.2026 um 03:00 Uhr Berlin liegt VOR dem 5-Uhr-Cutoff →
-	// gehört noch zum Sammeltag des 18.05.
 	rec := newSampleRecord(t, app)
-	rec.Set("begin_date", time.Date(2026, 5, 19, 3, 0, 0, 0, berlin))
-
-	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
-		t.Fatalf("processSample: %v", err)
-	}
-
-	if got := rec.GetString("sample_id"); got != "260518/1" {
-		t.Errorf("code = %q, want 260518/1 (vor Cutoff = Vortag)", got)
+	rec.Set("timezone", "Nowhere/Land")
+	rec.Set("begin_date", time.Date(2026, 1, 15, 23, 50, 0, 0, time.UTC))
+	day, loc := collectingDayFor(rec, 0)
+	if loc.String() != "Europe/Berlin" || day.Format("2006-01-02") != "2026-01-16" {
+		t.Errorf("got %v in %v", day, loc)
 	}
 }
 
-func TestProcessSample_HonorsClientCodeWithoutConflict(t *testing.T) {
+func TestUniqueSampleID_ExcludesOwnRecord(t *testing.T) {
 	app := setupTestApp(t)
-	owner := createTestUser(t, app, "erik@example.com")
-	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
+	owner := createTestUser(t, app, "uq@example.com")
+	rec := createSample(t, app, owner.Id, map[string]any{"sample_id": "X1"})
 
-	rec := newSampleRecord(t, app)
-	rec.Set("begin_date", day)
-	rec.Set("sample_id", "260519/7") // Offline-vergebener Code
-
-	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
-		t.Fatalf("processSample: %v", err)
+	got, err := uniqueSampleID(app.Dao(), owner.Id, "X1", rec.Id)
+	if err != nil || got != "X1" {
+		t.Errorf("own id: got %q, %v", got, err)
 	}
-
-	if got := rec.GetString("sample_id"); got != "260519/7" {
-		t.Errorf("code = %q, want 260519/7 (Client-Code honoriert)", got)
+	got, err = uniqueSampleID(app.Dao(), owner.Id, "X1", "")
+	if err != nil || got != "X1 (2)" {
+		t.Errorf("foreign id: got %q, %v", got, err)
 	}
-	if got := rec.GetString("original_code"); got != "" {
-		t.Errorf("original_code = %q, want empty (kein Reassignment)", got)
-	}
-
-	// Sequence muss auf 7 gesetzt worden sein — nächstes Sample soll 8 sein.
-	if err := app.Dao().SaveRecord(rec); err != nil {
-		t.Fatalf("save: %v", err)
-	}
-	next := newSampleRecord(t, app)
-	next.Set("begin_date", day)
-	if err := processSample(app.Dao(), next, owner.Id); err != nil {
-		t.Fatalf("next: %v", err)
-	}
-	if got := next.GetString("sample_id"); got != "260519/8" {
-		t.Errorf("next code = %q, want 260519/8 (Sequenz war nach 7 hochgezogen)", got)
+	got, err = uniqueSampleID(app.Dao(), owner.Id, "", "")
+	if err != nil || got != "" {
+		t.Errorf("empty: got %q, %v", got, err)
 	}
 }
 
-func TestProcessSample_ReassignsCodeOnConflict(t *testing.T) {
+func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	app := setupTestApp(t)
-	owner := createTestUser(t, app, "frida@example.com")
-	day := time.Date(2026, 5, 19, 14, 0, 0, 0, berlin)
+	owner := createTestUser(t, app, "upd@example.com")
+	createSample(t, app, owner.Id, map[string]any{"sample_id": "A"})
+	x := createSample(t, app, owner.Id, map[string]any{"sample_id": "B"})
 
-	// Vorbelegung: ein Sample mit Code 260519/3 existiert bereits.
-	existing := newSampleRecord(t, app)
-	existing.Set("begin_date", day)
-	if err := processSample(app.Dao(), existing, owner.Id); err != nil {
-		t.Fatalf("seed processSample: %v", err)
-	}
-	// Forciere den Code auf /3 (statt /1) für den Conflict-Test.
-	existing.Set("sample_id", "260519/3")
-	if err := app.Dao().SaveRecord(existing); err != nil {
-		t.Fatalf("save existing: %v", err)
-	}
-
-	// Zweiter User pusht denselben Code (z. B. Multi-Device-Offline).
-	other := createTestUser(t, app, "george@example.com")
-	rec := newSampleRecord(t, app)
-	rec.Set("begin_date", day)
-	rec.Set("sample_id", "260519/3")
-
-	if err := processSample(app.Dao(), rec, other.Id); err != nil {
-		t.Fatalf("processSample: %v", err)
-	}
-
-	if got := rec.GetString("sample_id"); got == "260519/3" {
-		t.Errorf("code = %q, expected Reassignment", got)
-	}
-	if got := rec.GetString("original_code"); got != "260519/3" {
-		t.Errorf("original_code = %q, want 260519/3 (Audit-Trail)", got)
-	}
-}
-
-// ────────────────────────────────────────────────────────────────────
-// ensureSequenceAtLeast — Idempotenz + Raise-Logik
-// ────────────────────────────────────────────────────────────────────
-
-func TestEnsureSequenceAtLeast_CreatesRowWhenMissing(t *testing.T) {
-	app := setupTestApp(t)
-	owner := createTestUser(t, app, "hank@example.com")
-
-	if err := ensureSequenceAtLeast(app.Dao(), owner.Id, "2026-05-19", 5); err != nil {
-		t.Fatalf("ensureSequenceAtLeast: %v", err)
-	}
-
-	// Nächste Aufruf von nextSequence muss 6 zurückgeben.
-	n, err := nextSequence(app.Dao(), owner.Id, "2026-05-19")
-	if err != nil {
-		t.Fatalf("nextSequence: %v", err)
-	}
-	if n != 6 {
-		t.Errorf("nextSequence = %d, want 6", n)
-	}
-}
-
-func TestEnsureSequenceAtLeast_RaisesWhenLower(t *testing.T) {
-	app := setupTestApp(t)
-	owner := createTestUser(t, app, "ina@example.com")
-	dayStr := "2026-05-19"
-
-	// Counter zunächst auf 2 setzen via nextSequence.
-	for i := 0; i < 2; i++ {
-		if _, err := nextSequence(app.Dao(), owner.Id, dayStr); err != nil {
-			t.Fatalf("seed nextSequence: %v", err)
+	reload := func() *models.Record {
+		r, err := app.Dao().FindRecordById("samples", x.Id)
+		if err != nil {
+			t.Fatalf("reload: %v", err)
 		}
+		return r
 	}
 
-	if err := ensureSequenceAtLeast(app.Dao(), owner.Id, dayStr, 10); err != nil {
-		t.Fatalf("ensureSequenceAtLeast: %v", err)
+	// Update ohne ID-Änderung: ID und original_code bleiben.
+	r := reload()
+	r.Set("notes", "geändert")
+	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if r.GetString("sample_id") != "B" || r.GetString("original_code") != "" {
+		t.Errorf("unchanged: %q / %q", r.GetString("sample_id"), r.GetString("original_code"))
 	}
 
-	n, err := nextSequence(app.Dao(), owner.Id, dayStr)
-	if err != nil {
-		t.Fatalf("nextSequence: %v", err)
+	// Update auf eigene aktuelle ID: kein Suffix.
+	r = reload()
+	r.Set("sample_id", "B")
+	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+		t.Fatalf("update: %v", err)
 	}
-	if n != 11 {
-		t.Errorf("nextSequence = %d, want 11", n)
-	}
-}
-
-func TestEnsureSequenceAtLeast_NoOpWhenHigher(t *testing.T) {
-	app := setupTestApp(t)
-	owner := createTestUser(t, app, "jana@example.com")
-	dayStr := "2026-05-19"
-
-	// Counter auf 5 hochziehen.
-	for i := 0; i < 5; i++ {
-		if _, err := nextSequence(app.Dao(), owner.Id, dayStr); err != nil {
-			t.Fatalf("seed: %v", err)
-		}
+	if r.GetString("sample_id") != "B" {
+		t.Errorf("own id: %q", r.GetString("sample_id"))
 	}
 
-	// EnsureAtLeast mit kleinerem Wert darf nicht senken.
-	if err := ensureSequenceAtLeast(app.Dao(), owner.Id, dayStr, 2); err != nil {
-		t.Fatalf("ensureSequenceAtLeast: %v", err)
+	// Update auf vergebene ID: Suffix + original_code.
+	r = reload()
+	r.Set("sample_id", "A")
+	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+		t.Fatalf("update: %v", err)
 	}
-
-	n, err := nextSequence(app.Dao(), owner.Id, dayStr)
-	if err != nil {
-		t.Fatalf("nextSequence: %v", err)
-	}
-	if n != 6 {
-		t.Errorf("nextSequence = %d, want 6 (Counter blieb auf 5)", n)
+	if r.GetString("sample_id") != "A (2)" || r.GetString("original_code") != "A" {
+		t.Errorf("colliding: %q / %q", r.GetString("sample_id"), r.GetString("original_code"))
 	}
 }
 

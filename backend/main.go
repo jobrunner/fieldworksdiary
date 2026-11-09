@@ -81,6 +81,7 @@ func main() {
 
 	// Phase 1: code-vergabe + auto-grouping on sample insert.
 	hooks.RegisterSampleCreate(app)
+	hooks.RegisterSampleIDUpdate(app)
 
 	// Phase 11a: fill `owner` from the authenticated user on the
 	// other user-facing collections.

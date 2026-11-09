@@ -83,7 +83,7 @@ func TestFusion_SingleClose_MergeAndEmit(t *testing.T) {
 		s.Set("longitude", 9.94042)
 		s.Set("collecting_day", "2026-05-19")
 		s.Set("location_source", "location_service")
-		s.Set("time_zone", "Europe/Berlin")
+		s.Set("timezone", "Europe/Berlin")
 		s.Set("version", 1)
 		if err := app.Dao().SaveRecord(s); err != nil {
 			t.Fatalf("seed sample: %v", err)

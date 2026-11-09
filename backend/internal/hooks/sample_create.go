@@ -1,7 +1,7 @@
 // Package hooks adapts the pure logic in internal/codes and
 // internal/grouping to PocketBase: it implements grouping.Repo on top
-// of a daos.Dao, allocates the per-(owner, day) sequence atomically,
-// and wires the BeforeCreate request hook on the samples collection.
+// of a daos.Dao, and wires the BeforeCreate/BeforeUpdate request
+// hooks on the samples collection.
 //
 // Phase 11 changes: the owner is read from the authenticated user in
 // the request context (apis.RequestInfo). The legacy `user_id` text
@@ -27,10 +27,6 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 )
 
-// Phase-1 default: the cutoff hour is fixed for now. It moves to
-// `users.day_cutoff_hour` per-user once we wire the user-settings UI.
-const defaultCutoff = 5
-
 var berlin = func() *time.Location {
 	loc, err := time.LoadLocation("Europe/Berlin")
 	if err != nil {
@@ -44,13 +40,14 @@ var berlin = func() *time.Location {
 //
 //  1. requires an authenticated user (the CreateRule does too, but
 //     defence in depth — we panic-proof the hook),
-//  2. computes the collecting_day from collected_from (default = now)
-//     in Europe/Berlin under a 5 h rollover,
+//  2. takes the collecting_day from the client or computes it from
+//     begin_date in the sample's timezone under the user's rollover,
 //  3. finds or creates the matching fieldtrip for (owner, day) and
 //     extends its time window to include the new sample,
-//  4. allocates the next sequence number atomically,
-//  5. populates the record's `code`, `fieldtrip` and `owner` so
-//     PocketBase's subsequent save sees a complete sample.
+//  4. keeps the sample_id as sent (only a per-owner collision gets a
+//     " (n)" suffix, the sent value goes to original_code),
+//  5. populates `fieldtrip` and `owner` so PocketBase's subsequent
+//     save sees a complete sample.
 func RegisterSampleCreate(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeCreateRequest("samples").Add(func(e *core.RecordCreateEvent) error {
 		ownerID, err := authOwnerID(e.HttpContext)
@@ -110,15 +107,26 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 		collectedFrom = time.Now()
 		rec.Set("begin_date", collectedFrom)
 	}
-	collectedLocal := collectedFrom.In(berlin)
-	day := codes.CollectingDay(collectedLocal, defaultCutoff)
-	dayStr := day.Format("2006-01-02")
 
-	incomingCode := strings.TrimSpace(rec.GetString("sample_id"))
+	cutoff := 0
+	if user, err := dao.FindRecordById("users", ownerID); err == nil {
+		cutoff = user.GetInt("day_cutoff_hour")
+	}
+	day, loc := collectingDayFor(rec, cutoff)
+	rec.Set("collecting_day", day.Format("2006-01-02"))
+	collectedLocal := collectedFrom.In(loc)
+
+	// The sample_id is the client's; the backend only resolves
+	// per-owner collisions with a " (n)" suffix. Whitespace-only
+	// counts as empty.
+	wanted := rec.GetString("sample_id")
+	if strings.TrimSpace(wanted) == "" {
+		wanted = ""
+	}
 
 	var (
-		ftID      string
-		finalCode string
+		ftID    string
+		finalID string
 	)
 	err := dao.RunInTransaction(func(txDao *daos.Dao) error {
 		repo := newPBRepo(txDao)
@@ -128,38 +136,10 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 		}
 		ftID = ft.ID
 
-		if incomingCode != "" {
-			// Honor the client-supplied code unless it collides with
-			// one already issued. Collision case is rare (multi-device
-			// offline) but the audit trail matters — the user wrote
-			// the original on the tube.
-			conflict, err := codeConflicts(txDao, incomingCode)
-			if err != nil {
-				return fmt.Errorf("conflict check: %w", err)
-			}
-			if !conflict {
-				finalCode = incomingCode
-				if n, ok := codes.ParseSequence(incomingCode); ok {
-					if err := ensureSequenceAtLeast(txDao, ownerID, dayStr, n); err != nil {
-						return fmt.Errorf("sequence raise: %w", err)
-					}
-				}
-				return nil
-			}
-			s, err := nextSequence(txDao, ownerID, dayStr)
-			if err != nil {
-				return fmt.Errorf("sequence: %w", err)
-			}
-			finalCode = codes.FormatCode(day, s)
-			rec.Set("original_code", incomingCode)
-			return nil
-		}
-
-		s, err := nextSequence(txDao, ownerID, dayStr)
+		finalID, err = uniqueSampleID(txDao, ownerID, wanted, "")
 		if err != nil {
-			return fmt.Errorf("sequence: %w", err)
+			return fmt.Errorf("sample_id: %w", err)
 		}
-		finalCode = codes.FormatCode(day, s)
 		return nil
 	})
 	if err != nil {
@@ -168,7 +148,10 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 
 	rec.Set("fieldtrip", ftID)
 	rec.Set("owner", ownerID)
-	rec.Set("sample_id", finalCode)
+	rec.Set("sample_id", finalID)
+	if finalID != wanted {
+		rec.Set("original_code", wanted)
+	}
 	// Without location data from the client the backend enrichment
 	// fills the place after the insert (see internal/enrichment).
 	if strings.TrimSpace(rec.GetString("location_status")) == "" {
@@ -182,86 +165,99 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 	return nil
 }
 
-// codeConflicts checks for an existing sample with this sample_id
-// under any owner. Sample IDs are not globally unique post-Phase-3b,
-// but we honour-or-reassign per user; here we only need to know if
-// reusing would collide.
-func codeConflicts(dao *daos.Dao, code string) (bool, error) {
-	rec, err := dao.FindFirstRecordByFilter(
-		"samples",
-		"sample_id = {:c}",
-		dbx.Params{"c": code},
-	)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
+// loadLocation resolves an IANA name; empty or invalid falls back to
+// Europe/Berlin (legacy data without a timezone).
+func loadLocation(name string) *time.Location {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return berlin
 	}
+	loc, err := time.LoadLocation(name)
 	if err != nil {
-		return false, err
+		return berlin
 	}
-	return rec != nil, nil
+	return loc
 }
 
-// ensureSequenceAtLeast raises the (owner, day) counter to `n` if it
-// is currently lower. Creates the row if missing. Idempotent.
-func ensureSequenceAtLeast(dao *daos.Dao, ownerID, dayStr string, n int) error {
-	coll, err := dao.FindCollectionByNameOrId("sample_sequences")
+// collectingDayFor returns the collecting day of a sample and the
+// location it was computed in. A valid `collecting_day` sent by the
+// client wins; otherwise the day is derived from begin_date in the
+// sample's timezone under the given rollover hour.
+func collectingDayFor(rec *models.Record, cutoffHour int) (time.Time, *time.Location) {
+	loc := loadLocation(rec.GetString("timezone"))
+	if d, err := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), loc); err == nil {
+		return d, loc
+	}
+	begin := rec.GetDateTime("begin_date").Time()
+	if begin.IsZero() {
+		begin = time.Now()
+	}
+	return codes.CollectingDay(begin.In(loc), cutoffHour), loc
+}
+
+// uniqueSampleID makes `wanted` unique among the owner's samples
+// (excluding excludeID): "" stays "", a free ID is kept, a taken one
+// gets the smallest free " (n)" suffix with n >= 2.
+func uniqueSampleID(dao *daos.Dao, ownerID, wanted, excludeID string) (string, error) {
+	if wanted == "" {
+		return "", nil
+	}
+	taken := func(id string) (bool, error) {
+		_, err := dao.FindFirstRecordByFilter(
+			"samples",
+			"owner = {:o} && sample_id = {:s} && id != {:x}",
+			dbx.Params{"o": ownerID, "s": id, "x": excludeID},
+		)
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	candidate := wanted
+	for n := 1; ; n++ {
+		if n > 1 {
+			candidate = fmt.Sprintf("%s (%d)", wanted, n)
+		}
+		t, err := taken(candidate)
+		if err != nil {
+			return "", err
+		}
+		if !t {
+			return candidate, nil
+		}
+	}
+}
+
+// RegisterSampleIDUpdate keeps (owner, sample_id) unique when a
+// client edits the ID: only a changed ID is checked, collisions get
+// the " (n)" suffix and the sent ID lands in original_code.
+func RegisterSampleIDUpdate(app *pocketbase.PocketBase) {
+	app.OnRecordBeforeUpdateRequest("samples").Add(func(e *core.RecordUpdateEvent) error {
+		return resolveSampleIDOnUpdate(app.Dao(), e.Record)
+	})
+}
+
+func resolveSampleIDOnUpdate(dao *daos.Dao, rec *models.Record) error {
+	wanted := rec.GetString("sample_id")
+	if strings.TrimSpace(wanted) == "" {
+		rec.Set("sample_id", "")
+		return nil
+	}
+	if orig := rec.OriginalCopy(); orig != nil && orig.GetString("sample_id") == wanted {
+		return nil
+	}
+	final, err := uniqueSampleID(dao, rec.GetString("owner"), wanted, rec.Id)
 	if err != nil {
 		return err
 	}
-
-	rec, err := dao.FindFirstRecordByFilter(
-		"sample_sequences",
-		"owner = {:o} && collecting_day = {:day}",
-		dbx.Params{"o": ownerID, "day": dayStr},
-	)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-
-	if rec == nil {
-		rec = models.NewRecord(coll)
-		rec.Set("owner", ownerID)
-		rec.Set("collecting_day", dayStr)
-		rec.Set("last_seq", n)
-		return dao.SaveRecord(rec)
-	}
-	if rec.GetInt("last_seq") < n {
-		rec.Set("last_seq", n)
-		return dao.SaveRecord(rec)
+	if final != wanted {
+		rec.Set("sample_id", final)
+		rec.Set("original_code", wanted)
 	}
 	return nil
-}
-
-// nextSequence increments and returns the per-(owner, day) counter.
-// The unique index on (owner, collecting_day) plus the surrounding
-// transaction give us atomic increment.
-func nextSequence(dao *daos.Dao, ownerID, dayStr string) (int, error) {
-	coll, err := dao.FindCollectionByNameOrId("sample_sequences")
-	if err != nil {
-		return 0, err
-	}
-
-	rec, err := dao.FindFirstRecordByFilter(
-		"sample_sequences",
-		"owner = {:o} && collecting_day = {:day}",
-		dbx.Params{"o": ownerID, "day": dayStr},
-	)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, err
-	}
-
-	if rec == nil {
-		rec = models.NewRecord(coll)
-		rec.Set("owner", ownerID)
-		rec.Set("collecting_day", dayStr)
-		rec.Set("last_seq", 1)
-	} else {
-		rec.Set("last_seq", rec.GetInt("last_seq")+1)
-	}
-	if err := dao.SaveRecord(rec); err != nil {
-		return 0, err
-	}
-	return rec.GetInt("last_seq"), nil
 }
 
 // pbRepo implements grouping.Repo on top of a PocketBase dao.
@@ -311,7 +307,8 @@ func (r *pbRepo) Update(e *grouping.Fieldtrip) error {
 }
 
 func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
-	day, _ := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), berlin)
+	loc := loadLocation(rec.GetString("timezone"))
+	day, _ := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), loc)
 	// PocketBase returns datetimes in UTC. We convert to the user's
 	// TZ so grouping.SpansMidnight evaluates against local calendar
 	// dates (a 22:00→01:30 window must register as crossing
@@ -320,8 +317,8 @@ func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
 		ID:        rec.Id,
 		UserID:    rec.GetString("owner"),
 		Day:       day,
-		StartedAt: rec.GetDateTime("begin_date").Time().In(berlin),
-		EndedAt:   rec.GetDateTime("end_date").Time().In(berlin),
+		StartedAt: rec.GetDateTime("begin_date").Time().In(loc),
+		EndedAt:   rec.GetDateTime("end_date").Time().In(loc),
 		Night:     rec.GetBool("night_fieldtrip"),
 	}
 }
@@ -332,6 +329,11 @@ func writeFieldtrip(rec *models.Record, e *grouping.Fieldtrip) {
 	rec.Set("begin_date", e.StartedAt)
 	rec.Set("end_date", e.EndedAt)
 	rec.Set("night_fieldtrip", e.Night)
+	// A new fieldtrip takes the timezone of its first sample (carried
+	// by the window's location); legacy rows without one get Berlin.
+	if strings.TrimSpace(rec.GetString("timezone")) == "" {
+		rec.Set("timezone", e.StartedAt.Location().String())
+	}
 	if rec.GetString("title") == "" {
 		rec.Set("title", "Sammeltag "+e.Day.Format("02.01.2006"))
 	}
