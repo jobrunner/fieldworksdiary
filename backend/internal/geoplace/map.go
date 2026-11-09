@@ -13,6 +13,10 @@ import (
 
 const tk25Source = "tk25-blattschnitt-de"
 
+// timezoneSource is the Ortus source that yields the IANA timezone. It
+// feeds SampleGeo.Timezone only and never becomes a stored feature.
+const timezoneSource = "timezones-2026a"
+
 // FromOrtus maps an Ortus response for (lat, lon) onto place columns, geo
 // values and features.
 func FromOrtus(r *services.OrtusResponse, lat, lon float64, t *adminlabels.Table) Result {
@@ -27,6 +31,7 @@ func FromOrtus(r *services.OrtusResponse, lat, lon float64, t *adminlabels.Table
 		mapGeo(g, &res.Geo)
 	}
 	res.Features = mapFeatures(r.Results)
+	mapTimezone(r.Results, &res.Geo)
 	if res.Place != nil && res.Place.CountryISO == "DE" {
 		mapMTB(r.Results, lat, lon, &res.Geo)
 	}
@@ -102,6 +107,9 @@ func mapGeo(g *services.OrtusGazetteer, out *SampleGeo) {
 func mapFeatures(results []services.OrtusSourceResult) []Feature {
 	var fs []Feature
 	for _, sr := range results {
+		if sr.SourceID == timezoneSource {
+			continue
+		}
 		for _, f := range sr.Features {
 			fs = append(fs, Feature{
 				SourceID: sr.SourceID, SourceName: sr.SourceName, Layer: f.Layer,
@@ -158,6 +166,18 @@ func mapMTB(results []services.OrtusSourceResult, lat, lon float64, out *SampleG
 		}
 		if _, _, q, ok := mtb.Cell(lat, lon); ok {
 			out.MTBQuadrant = q
+		}
+		return
+	}
+}
+
+func mapTimezone(results []services.OrtusSourceResult, out *SampleGeo) {
+	for _, sr := range results {
+		if sr.SourceID != timezoneSource || len(sr.Features) == 0 {
+			continue
+		}
+		if tz, ok := sr.Features[0].Properties["tzid"].(string); ok {
+			out.Timezone = strings.TrimSpace(tz)
 		}
 		return
 	}

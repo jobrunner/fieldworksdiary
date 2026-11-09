@@ -745,3 +745,65 @@ func TestLocationStatus_TrimsAndDefaults(t *testing.T) {
 		}
 	}
 }
+
+func TestEnrich_SetsTimezoneUnlessManual(t *testing.T) {
+	t.Run("device is replaced by location_service", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status": "pending", "timezone": "Atlantic/Canary", "timezone_source": "device",
+			"collecting_day": "2026-05-19",
+		})
+		before := loadSample(t, app, sampleID)
+
+		runEnrich(t, newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json")), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if got := s.GetString("timezone"); got != "Europe/Berlin" {
+			t.Errorf("timezone = %q, want Europe/Berlin", got)
+		}
+		if got := s.GetString("timezone_source"); got != "location_service" {
+			t.Errorf("timezone_source = %q, want location_service", got)
+		}
+		// timezone change must not touch day, trip or id
+		if s.GetString("collecting_day") != before.GetString("collecting_day") ||
+			s.GetString("fieldtrip") != ftID || s.GetString("sample_id") != before.GetString("sample_id") {
+			t.Errorf("collecting_day/fieldtrip/sample_id changed: %v", s.PublicExport())
+		}
+		for _, fr := range sampleFeatures(t, app, sampleID) {
+			if fr.GetString("source_id") == "timezones-2026a" {
+				t.Error("timezone source stored as feature")
+			}
+		}
+	})
+
+	t.Run("manual stays", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status": "pending", "timezone": "Asia/Tokyo", "timezone_source": "manual",
+		})
+
+		runEnrich(t, newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json")), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if s.GetString("timezone") != "Asia/Tokyo" || s.GetString("timezone_source") != "manual" {
+			t.Errorf("manual timezone changed: %q / %q", s.GetString("timezone"), s.GetString("timezone_source"))
+		}
+	})
+
+	t.Run("no tzid leaves untouched", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status": "pending", "timezone": "Atlantic/Canary", "timezone_source": "device",
+		})
+
+		runEnrich(t, newOrtusEnricher(app, newFakeOrtus(t, "query_sea.json")), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if s.GetString("timezone") != "Atlantic/Canary" || s.GetString("timezone_source") != "device" {
+			t.Errorf("timezone changed without tzid: %q / %q", s.GetString("timezone"), s.GetString("timezone_source"))
+		}
+	})
+}

@@ -203,6 +203,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 
 		geoplace.ApplyGeo(rec, res.Geo)
 		applyDEMHeight(rec, res.Geo)
+		applyTimezone(rec, res.Geo)
 
 		// Bump the optimistic-concurrency counter like the version
 		// guard (hooks/version_conflict.go) does for client writes, so
@@ -257,6 +258,17 @@ func applyDEMHeight(rec *models.Record, g geoplace.SampleGeo) {
 	} else {
 		rec.Set("vertical_accuracy", 0)
 	}
+}
+
+// applyTimezone stores the Ortus timezone unless the user set one by hand
+// or Ortus has none. It never touches collecting_day, fieldtrip or
+// sample_id: those stay as the app computed them.
+func applyTimezone(rec *models.Record, g geoplace.SampleGeo) {
+	if g.Timezone == "" || rec.GetString("timezone_source") == "manual" {
+		return
+	}
+	rec.Set("timezone", g.Timezone)
+	rec.Set("timezone_source", "location_service")
 }
 
 // currentPlacemarkHash returns the dedup hash of the sample's current

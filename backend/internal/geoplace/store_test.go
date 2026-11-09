@@ -178,3 +178,24 @@ func mkSample(t *testing.T, app *tests.TestApp, u *models.Record) *models.Record
 	}
 	return s
 }
+
+// ApplyGeo must not write elevation_dem* (columns are gone): the sample
+// collection saves without them.
+func TestApplyGeo_NoDEMColumns(t *testing.T) {
+	app := newStoreApp(t)
+	u := mkUser(t, app, "nodem@example.com")
+	sample := mkSample(t, app, u)
+	v, acc := 12.5, 3.0
+	ApplyGeo(sample, SampleGeo{ElevationDEM: &v, ElevationDEMAccuracy: &acc})
+	if err := app.Dao().SaveRecord(sample); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range sample.Collection().Schema.Fields() {
+		if f.Name == "elevation_dem" || f.Name == "elevation_dem_accuracy" {
+			t.Errorf("column %s still in schema", f.Name)
+		}
+	}
+	if sample.Get("elevation_dem") != nil {
+		t.Error("ApplyGeo set elevation_dem")
+	}
+}

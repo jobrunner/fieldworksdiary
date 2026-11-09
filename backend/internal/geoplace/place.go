@@ -38,6 +38,10 @@ type SampleGeo struct {
 
 	MTBSheetNumber, MTBSheetName string
 	MTBQuadrant                  int // 0 means none
+
+	// Timezone is the IANA identifier at the point (Ortus source
+	// timezones-2026a); empty means unknown.
+	Timezone string
 }
 
 // Feature is one Ortus source feature at the query point.

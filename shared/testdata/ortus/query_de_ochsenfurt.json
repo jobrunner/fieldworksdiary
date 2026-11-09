@@ -21,6 +21,16 @@
       "feature_count": 1,
       "query_time_ms": 4,
       "license": {"name": "EEA standard re-use policy", "url": "https://www.eea.europa.eu/legal/copyright", "attribution": "© European Environment Agency"}
+    },
+    {
+      "source_id": "timezones-2026a",
+      "source_name": "timezones-2026a",
+      "features": [
+        {"id": 0, "layer": "timezones", "properties": {"orig_id": 318, "rowid": 62665, "tzid": "Europe/Berlin"}}
+      ],
+      "feature_count": 1,
+      "query_time_ms": 0,
+      "license": {"name": "ODbL-1.0", "url": "https://opendatacommons.org/licenses/odbl/1-0/", "attribution": "Timezone boundaries © timezone-boundary-builder contributors, derived from OpenStreetMap data © OpenStreetMap contributors, licensed under ODbL 1.0."}
     }
   ],
   "total_features": 2,

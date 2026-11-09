@@ -285,3 +285,20 @@ func TestSheetNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestFromOrtus_Timezone(t *testing.T) {
+	q := loadQuery(t, "query_de_ochsenfurt.json")
+	exp := loadExpected(t, "expected_de_ochsenfurt.json")
+	res := FromOrtus(q, q.WGS84.Lat, q.WGS84.Lon, adminlabels.Default())
+	if res.Geo.Timezone != "Europe/Berlin" {
+		t.Errorf("Timezone = %q, want Europe/Berlin", res.Geo.Timezone)
+	}
+	for _, f := range res.Features {
+		if f.SourceID == timezoneSource {
+			t.Errorf("timezone source leaked into features: %+v", f)
+		}
+	}
+	if len(res.Features) != exp.FeatureCount {
+		t.Errorf("features = %d, want %d", len(res.Features), exp.FeatureCount)
+	}
+}
