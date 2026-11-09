@@ -1,4 +1,4 @@
-# Sample: Zeitzone, Zeitfenster und Sample-ID — Design
+# Sample: Zeitzone, Zeitfenster, Sample-ID und Höhe — Design
 
 Stand: 2026-11-09 · Branch-Basis: `feat/ortus-sample-ort` (nach Abschluss Phase O2)
 
@@ -175,6 +175,55 @@ danach nie. Der User darf sie jederzeit selbst ändern. Format und Zähler sind 
   entscheidet der Builder.
 - `sample_sequences` wird beim Übernehmen einer Client-ID weiterhin hochgezogen, wenn
   sie einen erkennbaren Tageszähler enthält — das ist Zählerpflege, keine Änderung der ID.
+
+## 5. Höhe: nur noch ein Wert
+
+Bisher gibt es zwei Höhen am Sample (`elevation` und den DEM-Referenzwert
+`elevation_dem`/`elevation_dem_accuracy`). Das ist mehrdeutig und entfällt.
+
+- Am Sample gibt es genau **`elevation`** (m) mit **`vertical_accuracy`** (m, Fehler) und
+  **`elevation_source`** (`location_service` | `backend_service` | `manual`).
+- **Herkunft:**
+  - GPS liefert im Feld eine Höhe → `elevation` + `vertical_accuracy` vom Gerät,
+    Quelle `location_service`.
+  - Kommt vom Gerät keine Höhe, liefert Ortus sie (DEM): `gazetteer.elevation.meters`
+    → `elevation`, `accuracy_m` → `vertical_accuracy`, Quelle `backend_service`.
+    Gilt in App (`SampleLocationResolver`) und Backend-Anreicherung gleichermaßen.
+  - Trägt der User eine Höhe ein oder ändert eine vorhandene (egal welcher Herkunft),
+    wird die Quelle `manual`. Den Fehler kann er eintragen, muss aber nicht; ohne Eingabe
+    bleibt `vertical_accuracy` leer. Der Fehler der vorherigen Herkunft wird dabei
+    verworfen, weil er zur neuen Höhe nicht mehr passt *(Entscheidung Claude)*.
+- GPS- und manuelle Höhen werden nie durch Ortus ersetzt, auch nicht nach einer
+  Koordinatenkorrektur. Eine `backend_service`-Höhe wird bei Koordinatenkorrektur neu
+  bestimmt (bestehende Regel „Korrektur leert abgeleitete Werte“).
+- **`elevation_source` ist reines Metadatum** für den späteren Datenexport. Die UI zeigt
+  sie nicht mehr an (heute: `SampleEditorView.elevationSourceText`). `vertical_accuracy`
+  wird wie bisher angezeigt („± 4 m“), wenn bekannt.
+- **„Höhe vorhanden“** heißt `elevation_source` ist gesetzt — nicht `elevation != 0`,
+  denn 0 m (Meeresniveau) ist eine gültige Höhe. Leerer `vertical_accuracy` = unbekannt
+  (PocketBase speichert 0; ein Fehler von 0 m kommt real nicht vor).
+  *(Entscheidung Claude)*
+- **Spalten entfallen:** `samples.elevation_dem`, `samples.elevation_dem_accuracy`
+  (Backend-Migration, iOS-GRDB-Migration, Modelle, Sync, Mapping in `internal/geoplace`
+  und `FieldworksGeo`).
+- **Bestandsdaten:** Hat ein Sample keine Höhe, aber einen DEM-Wert, wandert dieser vor
+  dem Löschen nach `elevation`/`vertical_accuracy` mit Quelle `backend_service`.
+  Lokal betrifft das aktuell 0 von 15 Samples; die Migration ist trotzdem nötig für Prod.
+- Localities (`altitude`, `vertical_accuracy`) sind nicht Teil dieser Änderung.
+
+## 6. Placemark-Bereinigung
+
+Die labelloc-Altspalten `country`, `administrative_area`, `sub_administrative_area`,
+`locality`, `sub_locality`, `postal_code`, `name`, `thoroughfare` sind durch `country_iso`
+und `admin_*` ersetzt und sollen weg. Das ist bereits als **Phase O3, Task 20** geplant
+(zusammen mit `samples.mtb`, `fieldtrips.admin_units/mtb/country/admin_area` und den
+iOS-Altspalten) und bleibt dort, weil vorher der Backfill (O3, Task 19) die Werte
+manueller Alt-Placemarks nach `admin_*` übernehmen muss — sonst gehen sie verloren
+(lokal gibt es einen manuellen Placemark mit Altwerten).
+
+**Reihenfolge:** O2-Test → diese Phase (Zeit, ID, Höhe) → O3 (Backfill nach der neuen
+Höhenregel aus §5, danach Altspalten löschen). Der O3-Backfill schreibt also keine
+`elevation_dem` mehr.
 
 ## Entscheidungen nach Builder-Check (Claudes Calls, von Jo zu prüfen)
 
