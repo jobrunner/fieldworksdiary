@@ -36,7 +36,8 @@ struct SampleEditorView: View {
             fieldtripStore: container.fieldtrips,
             localitiesStore: container.localitiesStore,
             mutationsStore: container.mutations,
-            sync: container.sync
+            sync: container.sync,
+            locationResolver: container.makeLocationResolver()
         )
     }
 }
@@ -60,7 +61,8 @@ private struct SampleEditorContent: View {
         fieldtripStore: LocalFieldtripStore,
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
-        sync: SyncRunner
+        sync: SyncRunner,
+        locationResolver: SampleLocationResolver
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
@@ -69,7 +71,8 @@ private struct SampleEditorContent: View {
             fieldtripStore: fieldtripStore,
             localitiesStore: localitiesStore,
             mutationsStore: mutationsStore,
-            sync: sync
+            sync: sync,
+            locationResolver: locationResolver
         ))
     }
 

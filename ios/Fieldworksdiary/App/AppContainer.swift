@@ -23,6 +23,7 @@ final class AppContainer: ObservableObject {
     let samplesHydrator: SamplesHydrator
     let remapPuller: RemapEventsPuller
     let placemarksStore: LocalPlacemarkStore
+    let sampleFeatures: LocalSampleFeatureStore
     let photos: LocalPhotoStore
     let mutations: PendingMutationsStore
     let sync: SyncRunner
@@ -82,6 +83,7 @@ final class AppContainer: ObservableObject {
             userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
         let placemarksStore = LocalPlacemarkStore(database: database)
+        let sampleFeatures = LocalSampleFeatureStore(database: database)
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
@@ -110,9 +112,23 @@ final class AppContainer: ObservableObject {
         self.samplesHydrator = samplesHydrator
         self.remapPuller = remapPuller
         self.placemarksStore = placemarksStore
+        self.sampleFeatures = sampleFeatures
         self.photos = photos
         self.mutations = mutations
         self.sync = sync
+    }
+
+    /// Resolver for on-device place data. Reads the Ortus endpoint
+    /// from `config` at call time, so a changed setting applies to the
+    /// next editor; an empty endpoint yields a resolver without client
+    /// (behaves as offline).
+    func makeLocationResolver() -> SampleLocationResolver {
+        SampleLocationResolver(
+            ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
+            samples: store,
+            placemarks: placemarksStore,
+            features: sampleFeatures
+        )
     }
 
     /// Run once at app start: restore the auth session if there's a

@@ -43,6 +43,18 @@ final class AppConfig: ObservableObject {
         }
     }
 
+    /// Base URL of the Ortus geo service, queried directly from the
+    /// device right after a sample is saved (Phase O2). An empty value
+    /// disables the on-device query — samples then behave as offline
+    /// and the backend fills the place after sync.
+    @Published var ortusEndpointURL: String {
+        didSet {
+            UserDefaults.standard.set(ortusEndpointURL, forKey: Self.Keys.ortusEndpointURL)
+        }
+    }
+
+    static let defaultOrtusEndpointURL = "https://ortus.fieldworksdiary.org"
+
     /// User-chosen provisional sample-id format (R8e). Persisted so
     /// the offline code generator (`SampleCodeTemplate.current`) picks
     /// it up on the next sample.
@@ -77,6 +89,11 @@ final class AppConfig: ObservableObject {
             endpointURL = stored
         }
 
+        // `nil` = never set → default; an explicitly stored "" stays
+        // empty (the user switched the on-device query off).
+        ortusEndpointURL = UserDefaults.standard.string(forKey: Self.Keys.ortusEndpointURL)
+            ?? Self.defaultOrtusEndpointURL
+
         let storedTemplate = UserDefaults.standard.string(forKey: SampleCodeTemplate.userDefaultsKey)
         sampleCodeTemplate = (storedTemplate?.isEmpty == false)
             ? storedTemplate! // swiftlint:disable:this force_unwrapping
@@ -85,5 +102,6 @@ final class AppConfig: ObservableObject {
 
     fileprivate enum Keys {
         static let endpointURL = "AppConfig.endpointURL"
+        static let ortusEndpointURL = "ortusEndpointURL"
     }
 }

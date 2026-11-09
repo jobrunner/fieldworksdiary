@@ -20,6 +20,42 @@ final class LocationProvider: NSObject, ObservableObject {
         case failed(String)
     }
 
+    /// Values of a GPS fix as the sample stores them. CoreLocation
+    /// marks invalid values with a negative accuracy; those become nil.
+    /// An altitude of 0 m is a real value and is kept.
+    struct Fix: Equatable {
+        let latitude: Double
+        let longitude: Double
+        let horizontalAccuracy: Double?
+        /// Vertical accuracy of `elevation`; nil when the fix has no
+        /// valid altitude.
+        let verticalAccuracy: Double?
+        /// Altitude above sea level; nil when `verticalAccuracy` is
+        /// invalid.
+        let elevation: Double?
+
+        init(latitude: Double, longitude: Double,
+             horizontalAccuracy: Double, verticalAccuracy: Double, altitude: Double)
+        {
+            self.latitude = latitude
+            self.longitude = longitude
+            self.horizontalAccuracy = horizontalAccuracy >= 0 ? horizontalAccuracy : nil
+            let altitudeValid = verticalAccuracy >= 0
+            self.verticalAccuracy = altitudeValid ? verticalAccuracy : nil
+            elevation = altitudeValid ? altitude : nil
+        }
+
+        init(_ location: CLLocation) {
+            self.init(
+                latitude: location.coordinate.latitude,
+                longitude: location.coordinate.longitude,
+                horizontalAccuracy: location.horizontalAccuracy,
+                verticalAccuracy: location.verticalAccuracy,
+                altitude: location.altitude
+            )
+        }
+    }
+
     @Published private(set) var status: Status = .idle
 
     private let manager = CLLocationManager()

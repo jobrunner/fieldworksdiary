@@ -14,6 +14,8 @@ struct SettingsScreen: View {
     @EnvironmentObject var auth: AuthSession
     @State private var draft: String = ""
     @State private var savedHint: Bool = false
+    @State private var ortusDraft: String = ""
+    @State private var ortusSavedHint: Bool = false
     @State private var confirmSignOut: Bool = false
     @State private var showDeleteSheet: Bool = false
     @State private var exportState: ExportState = .idle
@@ -31,6 +33,7 @@ struct SettingsScreen: View {
             dataSection
             sampleCodeSection
             endpointSection
+            ortusEndpointSection
             aboutSection
         }
         .navigationTitle("Einstellungen")
@@ -39,8 +42,12 @@ struct SettingsScreen: View {
                 EnvBadge(environment: config.environment)
             }
         }
-        .onAppear { draft = config.endpointURL }
+        .onAppear {
+            draft = config.endpointURL
+            ortusDraft = config.ortusEndpointURL
+        }
         .onChange(of: draft) { _, _ in savedHint = false }
+        .onChange(of: ortusDraft) { _, _ in ortusSavedHint = false }
         .confirmationDialog("Wirklich abmelden?",
                             isPresented: $confirmSignOut,
                             titleVisibility: .visible)
@@ -173,6 +180,33 @@ struct SettingsScreen: View {
                 Text("Gespeichert.")
             } else {
                 Text("Beispiel: http://localhost:8090 (Simulator) oder http://<host-ip>:8090 (Gerät).")
+            }
+        }
+    }
+
+    /// Ortus is queried directly from the device after a sample is
+    /// saved; an empty value switches that off.
+    private var ortusEndpointSection: some View {
+        Section {
+            TextField("Ortus-Endpoint", text: $ortusDraft,
+                      prompt: Text(AppConfig.defaultOrtusEndpointURL))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            Button("Speichern") {
+                let trimmed = ortusDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                config.ortusEndpointURL = trimmed
+                ortusDraft = trimmed
+                ortusSavedHint = true
+            }
+            .disabled(ortusDraft.trimmingCharacters(in: .whitespacesAndNewlines) == config.ortusEndpointURL)
+        } header: {
+            Text("Ortus-Endpoint")
+        } footer: {
+            if ortusSavedHint {
+                Text("Gespeichert.")
+            } else {
+                Text("Geodienst für Ort, Höhe und MTB direkt beim Anlegen einer Probe. Leer lassen, um die Abfrage auf dem Gerät abzuschalten – das Backend ergänzt die Daten dann nach dem Sync.")
             }
         }
     }

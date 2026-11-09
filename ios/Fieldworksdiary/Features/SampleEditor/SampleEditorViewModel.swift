@@ -57,6 +57,9 @@ final class SampleEditorViewModel: ObservableObject {
     @Published private(set) var coordinate: CLLocationCoordinate2D?
     @Published private(set) var accuracyM: Double?
     @Published private(set) var altitudeM: Double?
+    /// Vertical accuracy of `altitudeM` from the GPS fix; stored on the
+    /// sample as `vertical_accuracy`.
+    private var verticalAccuracyM: Double?
     /// nil while the sample lives only in the editor; populated once
     /// `save()` writes the row.
     @Published private(set) var savedSample: LocalSample?
@@ -82,6 +85,9 @@ final class SampleEditorViewModel: ObservableObject {
     private let mutationsStore: PendingMutationsStore
     private let sync: SyncRunner
     private let location: LocationProvider
+    /// On-device place resolution after save (Phase O2). nil skips it
+    /// (tests that don't care about place data).
+    private let locationResolver: SampleLocationResolver?
 
     private var observerTask: Task<Void, Never>?
 
@@ -92,7 +98,8 @@ final class SampleEditorViewModel: ObservableObject {
         fieldtripStore: LocalFieldtripStore,
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
-        sync: SyncRunner
+        sync: SyncRunner,
+        locationResolver: SampleLocationResolver? = nil
     ) {
         self.store = store
         self.photoStore = photoStore
@@ -100,6 +107,7 @@ final class SampleEditorViewModel: ObservableObject {
         self.localitiesStore = localitiesStore
         self.mutationsStore = mutationsStore
         self.sync = sync
+        self.locationResolver = locationResolver
         location = LocationProvider()
 
         if let sampleID, let existing = try? store.fetchById(sampleID) {
@@ -159,6 +167,7 @@ final class SampleEditorViewModel: ObservableObject {
         coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         accuracyM = nil
         altitudeM = nil
+        verticalAccuracyM = nil
     }
 
     private func handleModeChange(from previous: Mode) {
@@ -182,9 +191,11 @@ final class SampleEditorViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 self.locationStatus = status
                 if case let .fixed(loc) = status {
-                    self.coordinate = loc.coordinate
-                    self.accuracyM = loc.horizontalAccuracy >= 0 ? loc.horizontalAccuracy : nil
-                    self.altitudeM = loc.verticalAccuracy >= 0 ? loc.altitude : nil
+                    let fix = LocationProvider.Fix(loc)
+                    self.coordinate = CLLocationCoordinate2D(latitude: fix.latitude, longitude: fix.longitude)
+                    self.accuracyM = fix.horizontalAccuracy
+                    self.altitudeM = fix.elevation
+                    self.verticalAccuracyM = fix.verticalAccuracy
                 }
             }
         }
@@ -316,6 +327,7 @@ final class SampleEditorViewModel: ObservableObject {
                 lat: coordinate.latitude,
                 lon: coordinate.longitude,
                 accuracy: accuracyM,
+                verticalAccuracy: verticalAccuracyM,
                 elevation: altitudeM,
                 notes: trimmedNotes,
                 overrideCode: userCode == store.peekNextCode() ? nil : userCode,
@@ -334,10 +346,37 @@ final class SampleEditorViewModel: ObservableObject {
             // Re-read so `adoptExisting` reflects the locality we just set.
             let fresh = (try? store.fetchById(sample.id)) ?? sample
             adoptExisting(fresh)
-            sync.kick()
             startObservingSync(sampleID: sample.id)
+            resolveLocationThenSync(sampleID: sample.id)
         } catch {
             saveError = error.localizedDescription
+        }
+    }
+
+    /// Runs after the sample is persisted, so Ortus can never block or
+    /// fail the save. Online → Ortus fills place/features/MTB right
+    /// away; otherwise the place is inherited from the previous sample
+    /// of the collecting day. The sync is kicked afterwards (at most
+    /// the 5 s Ortus timeout later) so the create push already carries
+    /// the place data. The task deliberately doesn't capture `self`:
+    /// it must finish even if the editor is dismissed meanwhile.
+    private func resolveLocationThenSync(sampleID: String) {
+        guard let resolver = locationResolver else {
+            sync.kick()
+            return
+        }
+        let sync = self.sync
+        Task { [weak self] in
+            let resolved = await resolver.resolveOnline(sampleID: sampleID)
+            if !resolved {
+                do {
+                    try resolver.inheritOffline(sampleID: sampleID)
+                } catch {
+                    Log.persistence.error("offline place inheritance failed: \(error.localizedDescription)")
+                }
+            }
+            sync.kick()
+            self?.refreshDerivedFields()
         }
     }
 
