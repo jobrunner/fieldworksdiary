@@ -1093,6 +1093,30 @@ Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026
 - [x] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
 - [ ] Task 18: Phase O2 abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach O2 done
 
-Phase O3 – Backfill und Aufräumen
+Phase O3 – Backfill und Aufräumen (läuft erst nach Phase Z; Task 20 bekommt die Migration `1700000027`)
 - [ ] Task 19: Backfill-Kommando
 - [ ] Task 20: Alte Spalten entfernen
+
+## Phase Z – Zeitzone, Sample-ID, Höhe
+
+**Status: in progress** (gestartet 2026-11-09, Branch `feat/sample-zeit-id`)
+
+Ziel: Zeiten in UTC mit Ortszeit-Anzeige pro Sample (Zeitzone aus Ortus
+`timezones-2026a`), Sample-ID-Format und Tagesrollover als User-Einstellung,
+Sample-ID wird nach dem Speichern nie mehr umnummeriert, nur noch eine Höhe.
+
+- Spec: `docs/superpowers/specs/2026-11-09-sample-zeit-und-id-design.md`
+- Plan: `docs/superpowers/plans/2026-11-09-sample-zeit-id-hoehe.md`
+
+- [x] Task 0: Phasenstatus und Worktree
+- [ ] Task 1: Backend-Migration `1700000026`
+- [ ] Task 2: Backend-Hook – ID nie anfassen, Sammeltag aus Client/Zeitzone
+- [ ] Task 3: Backend-Anreicherung – Zeitzone und eine Höhe
+- [ ] Task 4: FieldworksGeo – reine Zeit- und ID-Logik
+- [ ] Task 5: iOS-Persistenz und Sync-Schema
+- [ ] Task 6: iOS-Einstellungen – Format, Präfix, Offset, Rollover
+- [ ] Task 7: iOS-Anlegen – Zeitfenster, Sammeltag, Vorschlag, Eindeutigkeit
+- [ ] Task 8: iOS-Ortsauflösung – Zeitzone und Höhe
+- [ ] Task 9: iOS-UI – Ortszeit, Zeitzonen-Anzeige, Zeitfenster, Zeitzonenwahl
+- [ ] Task 10: iOS-UI – Höhe bearbeiten, Konflikthinweis
+- [ ] Task 11: Phase Z abschließen
