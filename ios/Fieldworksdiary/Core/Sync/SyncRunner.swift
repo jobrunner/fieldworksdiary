@@ -22,8 +22,6 @@ struct SampleLocationFields: Codable, Equatable {
     var mtbSheetNumber: String?
     var mtbSheetName: String?
     var mtbQuadrant: Int?
-    var elevationDEM: Double?
-    var elevationDEMAccuracy: Double?
     var slopeDeg: Double?
     var aspectDeg: Double?
     var aspectCompass: String?
@@ -70,8 +68,6 @@ struct SampleLocationFields: Codable, Equatable {
         if let mtbSheetNumber { body["mtb_sheet_number"] = mtbSheetNumber }
         if let mtbSheetName { body["mtb_sheet_name"] = mtbSheetName }
         if let mtbQuadrant { body["mtb_quadrant"] = mtbQuadrant }
-        if let elevationDEM { body["elevation_dem"] = elevationDEM }
-        if let elevationDEMAccuracy { body["elevation_dem_accuracy"] = elevationDEMAccuracy }
         if let slopeDeg { body["slope_deg"] = slopeDeg }
         if let aspectDeg { body["aspect_deg"] = aspectDeg }
         if let aspectCompass { body["aspect_compass"] = aspectCompass }
@@ -81,7 +77,7 @@ struct SampleLocationFields: Codable, Equatable {
         if let bearingCompass { body["bearing_compass"] = bearingCompass }
         // Booleans only travel with the geo set they belong to, so a
         // never-enriched sample doesn't push `false` over server data.
-        if aspectCompass != nil || slopeDeg != nil || elevationDEM != nil || terrainFlat {
+        if aspectCompass != nil || slopeDeg != nil || terrainFlat {
             body["terrain_flat"] = terrainFlat
         }
         if bearingLabel != nil || bearingInside {
@@ -99,8 +95,7 @@ struct SampleLocationFields: Codable, Equatable {
     private func addClears(to body: inout [String: Any]) {
         let text = ["placemark", "placemark_suggestion", "mtb_sheet_number", "mtb_sheet_name",
                     "aspect_compass", "bearing_label", "bearing_reference", "bearing_compass"]
-        let numbers = ["mtb_quadrant", "elevation_dem", "elevation_dem_accuracy", "slope_deg",
-                       "aspect_deg", "bearing_distance_km"]
+        let numbers = ["mtb_quadrant", "slope_deg", "aspect_deg", "bearing_distance_km"]
         for key in text where body[key] == nil {
             body[key] = ""
         }
@@ -135,8 +130,6 @@ extension SampleLocationFields {
         mtbSheetNumber = s.mtbSheetNumber
         mtbSheetName = s.mtbSheetName
         mtbQuadrant = s.mtbQuadrant
-        elevationDEM = s.elevationDEM
-        elevationDEMAccuracy = s.elevationDEMAccuracy
         slopeDeg = s.slopeDeg
         aspectDeg = s.aspectDeg
         aspectCompass = s.aspectCompass
@@ -161,6 +154,9 @@ struct SampleCreateInput: Equatable {
     var code: String?
     var clientUuid: String?
     var clientUpdatedAt: Date?
+    var timezone: String = "Europe/Berlin"
+    var timezoneSource: TimezoneSource?
+    var collectingDay: String?
 }
 
 /// Payload-Bundle für `SamplePushClient.updateSample`: user-editierbare
@@ -176,6 +172,9 @@ struct SampleUpdateInput: Codable, Equatable {
     var clientUpdatedAt: Date
     var version: Int
     var location: SampleLocationFields
+    var timezone: String = "Europe/Berlin"
+    var timezoneSource: TimezoneSource?
+    var collectingDay: String?
 }
 
 /// Payload of a `.sample/.update` outbox row. Older rows carry an
@@ -740,7 +739,10 @@ final class SyncRunner: ObservableObject {
             clientUuid: current.id,
             clientUpdatedAt: current.updatedAt,
             version: current.version + 1,
-            location: location
+            location: location,
+            timezone: current.timezone,
+            timezoneSource: current.timezoneSource,
+            collectingDay: current.collectingDay
         )
 
         let updated = try await client.updateSample(id: backendID, input: input)
@@ -968,7 +970,10 @@ final class SyncRunner: ObservableObject {
             marked: s.marked,
             code: s.sampleID,
             clientUuid: s.id,
-            clientUpdatedAt: s.updatedAt
+            clientUpdatedAt: s.updatedAt,
+            timezone: s.timezone,
+            timezoneSource: s.timezoneSource,
+            collectingDay: s.collectingDay
         )
     }
 

@@ -287,7 +287,6 @@ final class SyncRunnerOrtusTests: XCTestCase {
         sample.locationStatus = .manual
         sample.placemarkSuggestion = "pmsuggestion01"
         sample.elevationSource = .backendService
-        sample.elevationDEM = 250
         try store.update(sample)
 
         try store.updateCoordinate(id: sample.id, latitude: 47.0, longitude: 11.0, mutationsStore: mutations)
@@ -298,7 +297,6 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertNil(stored.placemarkSuggestion)
         XCTAssertNil(stored.elevation)
         XCTAssertNil(stored.elevationSource)
-        XCTAssertNil(stored.elevationDEM)
     }
 
     func testUpdate_WeakLocalStatus_TakesServerEnrichmentInsteadOfReverting() async throws {
@@ -1084,7 +1082,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
             "begin_date": "2026-05-19T12:00:00.000Z",
             "client_updated_at": "2026-05-19T12:00:00.000Z",
             "location_source": "location_service",
-            "time_zone": "Europe/Berlin",
+            "timezone": "Europe/Berlin",
             "version": version,
             "elevation": elevation,
             "elevation_source": elevationSource,
@@ -1094,7 +1092,6 @@ final class SyncRunnerOrtusTests: XCTestCase {
             "mtb_sheet_number": mtb ?? "",
             "mtb_sheet_name": mtb == nil ? "" : "Ochsenfurt",
             "mtb_quadrant": mtb == nil ? 0 : 1,
-            "elevation_dem": 0,
             "slope_deg": 0,
             "aspect_deg": 0,
             "aspect_compass": "",

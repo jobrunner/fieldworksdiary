@@ -40,7 +40,11 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// IANA identifier (`Europe/Berlin` etc.). Stored alongside the
     /// UTC instants so the UI can format them in the right zone
     /// without losing DST information across years.
-    let timeZone: String
+    let timezone: String
+    /// Where `timezone` came from; nil for rows from before Phase Z.
+    let timezoneSource: TimezoneSource?
+    /// Collecting day `YYYY-MM-DD`; nil when the server sent none.
+    let collectingDay: String?
     /// Free-text notes (substrate, host plant, weather, …) collected
     /// in the add-sample form. PocketBase serialises empty editor
     /// fields as `""` — we decode those to nil for cleaner UI checks.
@@ -70,7 +74,10 @@ struct Sample: Decodable, Identifiable, Equatable {
         case beginDate = "begin_date"
         case endDate = "end_date"
         case isAllDay = "is_all_day"
-        case timeZone = "time_zone"
+        case timezone
+        case legacyTimeZone = "time_zone"
+        case timezoneSource = "timezone_source"
+        case collectingDay = "collecting_day"
         case locationSource = "location_source"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
@@ -102,8 +109,10 @@ struct Sample: Decodable, Identifiable, Equatable {
         beginDate = try? c.decode(Date.self, forKey: .beginDate)
         endDate = try? c.decode(Date.self, forKey: .endDate)
         isAllDay = (try? c.decode(Bool.self, forKey: .isAllDay)) ?? false
-        timeZone = (try? c.decode(String.self, forKey: .timeZone))
-            .flatMap { $0.isEmpty ? nil : $0 } ?? "Europe/Berlin"
+        // `timezone` since Phase Z; older servers sent `time_zone`.
+        timezone = decodeNonEmpty(c, .timezone) ?? decodeNonEmpty(c, .legacyTimeZone) ?? "Europe/Berlin"
+        timezoneSource = decodeNonEmpty(c, .timezoneSource).flatMap(TimezoneSource.init(rawValue:))
+        collectingDay = decodeNonEmpty(c, .collectingDay)
         notes = decodeNonEmpty(c, .notes)
         marked = (try? c.decode(Bool.self, forKey: .marked)) ?? false
         version = (try? c.decode(Int.self, forKey: .version)) ?? 1
@@ -124,8 +133,6 @@ struct SampleGeoValues: Decodable, Equatable {
     var mtbSheetName: String?
     /// 1–4; 0 on the wire means none and decodes to nil.
     var mtbQuadrant: Int?
-    var elevationDEM: Double?
-    var elevationDEMAccuracy: Double?
     var slopeDeg: Double?
     var aspectDeg: Double?
     var aspectCompass: String?
@@ -140,8 +147,6 @@ struct SampleGeoValues: Decodable, Equatable {
         case mtbSheetNumber = "mtb_sheet_number"
         case mtbSheetName = "mtb_sheet_name"
         case mtbQuadrant = "mtb_quadrant"
-        case elevationDEM = "elevation_dem"
-        case elevationDEMAccuracy = "elevation_dem_accuracy"
         case slopeDeg = "slope_deg"
         case aspectDeg = "aspect_deg"
         case aspectCompass = "aspect_compass"
@@ -167,15 +172,11 @@ struct SampleGeoValues: Decodable, Equatable {
         bearingCompass = decodeNonEmpty(c, .bearingCompass)
         bearingInside = (try? c.decode(Bool.self, forKey: .bearingInside)) ?? false
 
-        let dem = (try? c.decode(Double.self, forKey: .elevationDEM)) ?? 0
-        let demAccuracy = (try? c.decode(Double.self, forKey: .elevationDEMAccuracy)) ?? 0
-        elevationDEM = (dem != 0 || demAccuracy != 0) ? dem : nil
-        elevationDEMAccuracy = demAccuracy != 0 ? demAccuracy : nil
-        // A slope is only meaningful next to a DEM value or terrain
-        // flag; an aspect next to its compass label; a distance next
+        // A slope is only meaningful when non-zero or next to a
+        // terrain flag; an aspect next to its compass label; a distance next
         // to its bearing label.
         let slope = try? c.decode(Double.self, forKey: .slopeDeg)
-        slopeDeg = (elevationDEM != nil || terrainFlat || (slope ?? 0) != 0) ? slope : nil
+        slopeDeg = (terrainFlat || (slope ?? 0) != 0) ? slope : nil
         let aspect = try? c.decode(Double.self, forKey: .aspectDeg)
         aspectDeg = aspectCompass != nil ? aspect : nil
         let distance = try? c.decode(Double.self, forKey: .bearingDistanceKm)
@@ -185,7 +186,7 @@ struct SampleGeoValues: Decodable, Equatable {
     /// True when no column carries a real value.
     var isEmpty: Bool {
         mtbSheetNumber == nil && mtbSheetName == nil && mtbQuadrant == nil
-            && elevationDEM == nil && slopeDeg == nil && aspectCompass == nil
+            && slopeDeg == nil && aspectCompass == nil
             && !terrainFlat && bearingLabel == nil && bearingCompass == nil && !bearingInside
     }
 }

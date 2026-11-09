@@ -58,8 +58,6 @@ final class SampleLocationResolverTests: XCTestCase {
         XCTAssertEqual(fresh.mtbSheetNumber, "6326")
         XCTAssertEqual(fresh.mtbSheetName, "Ochsenfurt")
         XCTAssertEqual(fresh.mtbQuadrant, 1)
-        XCTAssertEqual(fresh.elevationDEM, 236)
-        XCTAssertEqual(fresh.elevationDEMAccuracy, 4)
         XCTAssertEqual(fresh.slopeDeg, 8.4)
         XCTAssertEqual(fresh.aspectCompass, "SSW")
         XCTAssertEqual(fresh.bearingLabel, "2 km WNW Ochsenfurt")
@@ -82,7 +80,6 @@ final class SampleLocationResolverTests: XCTestCase {
         let fresh = try XCTUnwrap(samples.fetchById(sample.id))
         XCTAssertEqual(fresh.elevation, 0)
         XCTAssertEqual(fresh.elevationSource, .locationService)
-        XCTAssertEqual(fresh.elevationDEM, 236)
     }
 
     func testResolveOnline_ManualCoordinateWithoutHeight_UsesDEM() async throws {
@@ -113,7 +110,6 @@ final class SampleLocationResolverTests: XCTestCase {
         let fresh = try XCTUnwrap(samples.fetchById(sample.id))
         XCTAssertEqual(fresh.elevation, 300)
         XCTAssertEqual(fresh.elevationSource, .manual)
-        XCTAssertEqual(fresh.elevationDEM, 236)
     }
 
     func testResolveOnline_Sea_StoresGeoWithoutPlacemark() async throws {
@@ -141,7 +137,6 @@ final class SampleLocationResolverTests: XCTestCase {
         let fresh = try XCTUnwrap(samples.fetchById(sample.id))
         XCTAssertEqual(fresh.locationStatus, .pending)
         XCTAssertNil(fresh.placemark)
-        XCTAssertNil(fresh.elevationDEM)
     }
 
     func testResolveOnline_NoClient_ReturnsFalse() async throws {

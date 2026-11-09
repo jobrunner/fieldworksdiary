@@ -114,23 +114,51 @@ struct SampleClient {
         self.auth = auth
     }
 
-    func createSample(_ input: SampleCreateInput) async throws -> Sample {
-        let url = try makeURL(path: "/api/collections/samples/records")
-
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
+    /// Wire body of `POST /samples/records`. Time fields: `timezone`,
+    /// `timezone_source` and the client's `collecting_day` (the backend
+    /// takes it when valid, else computes it).
+    static func createBody(_ input: SampleCreateInput) -> [String: Any] {
         var body = input.location.wireBody
-        body["begin_date"] = isoFormatter.string(from: input.collectedFrom)
-        body["time_zone"] = "Europe/Berlin"
+        body["begin_date"] = wireFormatter.string(from: input.collectedFrom)
+        body["timezone"] = input.timezone
+        if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
+        if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }
         body["version"] = 1
         if let notes = input.notes, !notes.isEmpty { body["notes"] = notes }
         if input.marked { body["marked"] = true }
         if let code = input.code, !code.isEmpty { body["sample_id"] = code }
         if let clientUuid = input.clientUuid, !clientUuid.isEmpty { body["client_uuid"] = clientUuid }
         if let clientUpdatedAt = input.clientUpdatedAt {
-            body["client_updated_at"] = isoFormatter.string(from: clientUpdatedAt)
+            body["client_updated_at"] = wireFormatter.string(from: clientUpdatedAt)
         }
+        return body
+    }
+
+    /// Wire body of `PATCH /samples/records/{id}`.
+    static func updateBody(_ input: SampleUpdateInput) -> [String: Any] {
+        var body = input.location.wireBody
+        body["sample_id"] = input.code
+        body["timezone"] = input.timezone
+        if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
+        if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }
+        body["version"] = input.version
+        body["client_uuid"] = input.clientUuid
+        body["client_updated_at"] = wireFormatter.string(from: input.clientUpdatedAt)
+        // Empty notes are intentional clears, not omissions — send "".
+        body["notes"] = input.notes ?? ""
+        return body
+    }
+
+    private static var wireFormatter: ISO8601DateFormatter {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }
+
+    func createSample(_ input: SampleCreateInput) async throws -> Sample {
+        let url = try makeURL(path: "/api/collections/samples/records")
+
+        let body = Self.createBody(input)
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -163,16 +191,7 @@ struct SampleClient {
     func updateSample(id: String, input: SampleUpdateInput) async throws -> Sample {
         let url = try makeURL(path: "/api/collections/samples/records/\(id)")
 
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        var body = input.location.wireBody
-        body["sample_id"] = input.code
-        body["version"] = input.version
-        body["client_uuid"] = input.clientUuid
-        body["client_updated_at"] = isoFormatter.string(from: input.clientUpdatedAt)
-        // Empty notes are intentional clears, not omissions — send "".
-        body["notes"] = input.notes ?? ""
+        let body = Self.updateBody(input)
 
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"

@@ -265,7 +265,7 @@ final class LocalSampleStoreTests: XCTestCase {
           "longitude": 9.94,
           "begin_date": "2026-05-19T14:00:00.000Z",
           "location_source": "location_service",
-          "time_zone": "Europe/Berlin",
+          "timezone": "Europe/Berlin",
           "version": 1,
           "client_uuid": "\(clientUuid ?? "")",
           "client_updated_at": "2026-05-19T14:00:00.000Z"

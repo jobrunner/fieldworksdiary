@@ -264,7 +264,7 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
             "begin_date": "2026-06-05T14:00:00.000Z",
             "client_updated_at": "2026-06-05T14:00:00.000Z",
             "location_source": "location_service",
-            "time_zone": "Europe/Berlin",
+            "timezone": "Europe/Berlin",
             "version": version
         ]
         if let originalCode { dict["original_code"] = originalCode }

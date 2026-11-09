@@ -16,6 +16,14 @@ enum ElevationSource: String, Codable, DatabaseValueConvertible {
     case manual
 }
 
+/// Provenance of `LocalSample.timezone`. Raw values are the
+/// PocketBase select values on `samples.timezone_source`.
+enum TimezoneSource: String, Codable, DatabaseValueConvertible {
+    case device
+    case locationService = "location_service"
+    case manual
+}
+
 /// State of a sample's place data (`samples.location_status`).
 /// `pending` until the backend (or the offline inheritance from an
 /// earlier sample of the same day) has filled it in.
@@ -48,7 +56,9 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var beginDate: Date
     var endDate: Date?
     var isAllDay: Bool
-    var timeZone: String
+    /// IANA identifier of the zone `beginDate` is read in.
+    var timezone: String
+    var timezoneSource: TimezoneSource?
     var notes: String
     var marked: Bool
     var fieldtrip: String? // backend fieldtrip id, set after sync
@@ -74,8 +84,6 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var placemarkSuggestion: String?
     /// TK25 quadrant 1–4; nil or 0 means none.
     var mtbQuadrant: Int?
-    var elevationDEM: Double?
-    var elevationDEMAccuracy: Double?
     var slopeDeg: Double?
     var aspectDeg: Double?
     var aspectCompass: String?
@@ -100,7 +108,8 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case beginDate = "begin_date"
         case endDate = "end_date"
         case isAllDay = "is_all_day"
-        case timeZone = "time_zone"
+        case timezone
+        case timezoneSource = "timezone_source"
         case notes, marked, fieldtrip, locality, version
         case locationSource = "location_source"
         case adminUnitsLocality = "admin_units_locality"
@@ -116,8 +125,6 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case placemark
         case placemarkSuggestion = "placemark_suggestion"
         case mtbQuadrant = "mtb_quadrant"
-        case elevationDEM = "elevation_dem"
-        case elevationDEMAccuracy = "elevation_dem_accuracy"
         case slopeDeg = "slope_deg"
         case aspectDeg = "aspect_deg"
         case aspectCompass = "aspect_compass"

@@ -68,6 +68,7 @@ final class Database {
         migrator.registerMigration("v11_pending_mutations_outbox", migrate: migrateV11)
         migrator.registerMigration("v12_localities_needs_human_review", migrate: migrateV12)
         migrator.registerMigration("v13_ortus_location", migrate: migrateV13)
+        migrator.registerMigration("v14_timezone_elevation", migrate: migrateV14)
         return migrator
     }
 
@@ -417,5 +418,34 @@ final class Database {
             t.column("fetched_at", .datetime).notNull()
         }
         try db.create(indexOn: "local_sample_features", columns: ["sample_id", "source_id"])
+    }
+
+    /// Phase Z: mirrors the PocketBase migration that renamed
+    /// `samples.time_zone` to `timezone`, added `timezone_source` and
+    /// dropped the DEM columns.
+    ///
+    /// 1. `time_zone` → `timezone` (data kept); `timezone_source` added
+    ///    and backfilled with `device` (every old zone came from the
+    ///    device).
+    /// 2. A DEM height moves into `elevation` / `vertical_accuracy`
+    ///    (source `backend_service`) when the sample has no height of
+    ///    its own; then both DEM columns are dropped.
+    private static func migrateV14(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_samples") { t in
+            t.rename(column: "time_zone", to: "timezone")
+            t.add(column: "timezone_source", .text)
+        }
+        try db.execute(sql: "UPDATE local_samples SET timezone_source = 'device'")
+        try db.execute(sql: """
+            UPDATE local_samples
+            SET elevation = elevation_dem,
+                vertical_accuracy = elevation_dem_accuracy,
+                elevation_source = 'backend_service'
+            WHERE elevation_source IS NULL AND elevation IS NULL AND elevation_dem IS NOT NULL
+        """)
+        try db.alter(table: "local_samples") { t in
+            t.drop(column: "elevation_dem")
+            t.drop(column: "elevation_dem_accuracy")
+        }
     }
 }

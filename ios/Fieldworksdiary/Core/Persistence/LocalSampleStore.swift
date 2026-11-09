@@ -75,7 +75,8 @@ final class LocalSampleStore {
                 beginDate: collectedFrom,
                 endDate: nil,
                 isAllDay: false,
-                timeZone: timeZone.identifier,
+                timezone: timeZone.identifier,
+                timezoneSource: .device,
                 notes: notes,
                 marked: false,
                 fieldtrip: nil,
@@ -625,7 +626,8 @@ final class LocalSampleStore {
         if let from = r.beginDate { local.beginDate = from }
         local.endDate = r.endDate ?? local.endDate
         local.isAllDay = r.isAllDay
-        local.timeZone = r.timeZone
+        local.timezone = r.timezone
+        local.timezoneSource = r.timezoneSource ?? local.timezoneSource
         if let n = r.notes { local.notes = n }
         local.marked = r.marked
         local.fieldtrip = r.fieldtrip
@@ -666,7 +668,8 @@ final class LocalSampleStore {
             beginDate: r.beginDate ?? now,
             endDate: r.endDate,
             isAllDay: r.isAllDay,
-            timeZone: r.timeZone,
+            timezone: r.timezone,
+            timezoneSource: r.timezoneSource,
             notes: r.notes ?? "",
             marked: r.marked,
             fieldtrip: r.fieldtrip,
@@ -768,8 +771,6 @@ extension LocalSample {
         mtbSheetNumber = g.mtbSheetNumber ?? mtbSheetNumber
         mtbSheetName = g.mtbSheetName ?? mtbSheetName
         mtbQuadrant = g.mtbQuadrant ?? mtbQuadrant
-        elevationDEM = g.elevationDEM ?? elevationDEM
-        elevationDEMAccuracy = g.elevationDEMAccuracy ?? elevationDEMAccuracy
         slopeDeg = g.slopeDeg ?? slopeDeg
         aspectDeg = g.aspectDeg ?? aspectDeg
         aspectCompass = g.aspectCompass ?? aspectCompass
@@ -789,8 +790,6 @@ extension LocalSample {
         mtbSheetNumber = nil
         mtbSheetName = nil
         mtbQuadrant = nil
-        elevationDEM = nil
-        elevationDEMAccuracy = nil
         slopeDeg = nil
         aspectDeg = nil
         aspectCompass = nil

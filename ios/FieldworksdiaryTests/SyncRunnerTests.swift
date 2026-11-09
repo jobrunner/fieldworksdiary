@@ -249,7 +249,7 @@ final class SyncRunnerTests: XCTestCase {
             "begin_date": "2026-05-19T14:00:00.000Z",
             "client_updated_at": "2026-05-19T14:00:00.000Z",
             "location_source": "location_service",
-            "time_zone": "Europe/Berlin",
+            "timezone": "Europe/Berlin",
             "version": version,
             // PocketBase returns unset columns as zero values.
             "elevation": 0,

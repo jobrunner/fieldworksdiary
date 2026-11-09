@@ -176,8 +176,6 @@ final class SampleLocationResolver {
     private static let coordEpsilon = 1e-7
 
     private static func applyGeo(_ g: SampleGeo, to s: inout LocalSample) {
-        s.elevationDEM = g.elevationDEM
-        s.elevationDEMAccuracy = g.elevationDEMAccuracy
         s.slopeDeg = g.slopeDeg
         s.aspectDeg = g.aspectDeg
         s.aspectCompass = nonEmpty(g.aspectCompass)
