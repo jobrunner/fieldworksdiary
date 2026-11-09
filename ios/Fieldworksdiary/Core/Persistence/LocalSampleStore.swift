@@ -15,20 +15,28 @@ final class LocalSampleStore {
     var userId: String
     /// Zone used for new samples (the device zone) and as the fallback
     /// when a remote row carries no usable zone.
-    let timeZone: TimeZone
+    /// Resolved at use time, so a traveller whose app stays alive gets
+    /// the current device zone for new samples.
+    var timeZone: TimeZone { timeZoneProvider() }
+    private let timeZoneProvider: () -> TimeZone
     private let defaults: UserDefaults
     private let settingsProvider: () -> SampleIDSettings
 
     /// `settings` defaults to a fresh read of the persisted app settings.
     init(database: Database,
          userId: String = "default",
-         timeZone: TimeZone = .current,
+         timeZone: TimeZone? = nil,
+         timeZoneProvider: (() -> TimeZone)? = nil,
          defaults: UserDefaults = .standard,
          settings: (() -> SampleIDSettings)? = nil)
     {
         self.database = database
         self.userId = userId
-        self.timeZone = timeZone
+        if let timeZone {
+            self.timeZoneProvider = { timeZone }
+        } else {
+            self.timeZoneProvider = timeZoneProvider ?? { TimeZone.current }
+        }
         self.defaults = defaults
         settingsProvider = settings ?? { SampleIDSettings.current(defaults: defaults) }
     }
@@ -731,6 +739,17 @@ final class LocalSampleStore {
 }
 
 extension LocalSample {
+    /// Adopts the server's zone when it comes from the location service
+    /// or the user, unless the local zone was set manually (a device
+    /// zone must never override the Ortus zone on a retry).
+    mutating func adoptServerZone(_ r: Sample) {
+        guard timezoneSource != .manual,
+              let source = r.timezoneSource, source == .locationService || source == .manual,
+              !r.timezone.isEmpty else { return }
+        timezone = r.timezone
+        timezoneSource = source
+    }
+
     /// Merges the server-derived place data of `r` into this row.
     ///
     /// Rule: a server value only replaces a local one when it is
@@ -750,7 +769,9 @@ extension LocalSample {
             if elevation == nil || serverSource.rank >= (elevationSource?.rank ?? -1) {
                 elevation = serverElevation
                 elevationSource = serverSource
-                if let accuracy = r.verticalAccuracy { verticalAccuracy = accuracy }
+                // The server's value is authoritative for the elevation it
+                // sent, including "no accuracy" (stale one from another device).
+                verticalAccuracy = r.verticalAccuracy
             }
         }
         if let status = r.locationStatus, !(status == .pending && locationStatus != .pending) {

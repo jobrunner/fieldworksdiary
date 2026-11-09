@@ -90,7 +90,7 @@ final class PlaceEditorViewModel: ObservableObject, Identifiable {
     var parsedAccuracy: Double? {
         let raw = accuracyText.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: ",", with: ".")
-        guard !raw.isEmpty, let value = Double(raw), value.isFinite, value >= 0 else { return nil }
+        guard !raw.isEmpty, let value = Double(raw), value.isFinite, value > 0 else { return nil }
         return value
     }
 

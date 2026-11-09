@@ -208,6 +208,17 @@ final class PlaceEditorViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.elevationError)
     }
 
+    func testAccuracyZero_IsInvalidInput() throws {
+        let vm = try makeVM(sample: seedSample(placemark: nil))
+        vm.elevationText = "312"
+        vm.accuracyText = "0"
+        XCTAssertNil(vm.parsedAccuracy)
+        XCTAssertNotNil(vm.accuracyError)
+        vm.accuracyText = "2,5"
+        XCTAssertEqual(vm.parsedAccuracy, 2.5)
+        XCTAssertNil(vm.accuracyError)
+    }
+
     // MARK: - helpers
 
     private func makeVM(sample: LocalSample) throws -> PlaceEditorViewModel {

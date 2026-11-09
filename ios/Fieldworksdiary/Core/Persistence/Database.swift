@@ -436,6 +436,14 @@ final class Database {
             t.add(column: "timezone_source", .text)
         }
         try db.execute(sql: "UPDATE local_samples SET timezone_source = 'device'")
+        // The id the backend assigned (`backend_code`) becomes the one id;
+        // what the user typed moves to `original_code` (conflict marker).
+        try db.execute(sql: """
+            UPDATE local_samples
+            SET original_code = COALESCE(original_code, sample_id),
+                sample_id = backend_code
+            WHERE backend_code IS NOT NULL AND backend_code <> ''
+        """)
         try db.execute(sql: """
             UPDATE local_samples
             SET elevation = elevation_dem,

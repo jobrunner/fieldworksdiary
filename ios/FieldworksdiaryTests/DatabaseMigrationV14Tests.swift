@@ -89,4 +89,29 @@ final class DatabaseMigrationV14Tests: XCTestCase {
             XCTAssertFalse(columns.contains("elevation_dem_accuracy"))
         }
     }
+
+    func testMigration_FoldsBackendCodeIntoSampleID() throws {
+        let queue = try migratedToV13()
+        try queue.write { db in
+            try insert(db, id: "1")
+            try insert(db, id: "2")
+            try insert(db, id: "3")
+            try db.execute(sql: "UPDATE local_samples SET backend_code = '260519/1 (2)' WHERE id = '1'")
+            try db.execute(sql: "UPDATE local_samples SET backend_code = '' WHERE id = '2'")
+        }
+
+        try Database.makeMigrator().migrate(queue)
+
+        try queue.read { db in
+            let folded = try XCTUnwrap(LocalSample.fetchOne(db, key: "1"))
+            XCTAssertEqual(folded.sampleID, "260519/1 (2)")
+            XCTAssertEqual(folded.originalCode, "260519/1")
+            let empty = try XCTUnwrap(LocalSample.fetchOne(db, key: "2"))
+            XCTAssertEqual(empty.sampleID, "260519/2")
+            XCTAssertNil(empty.originalCode)
+            let none = try XCTUnwrap(LocalSample.fetchOne(db, key: "3"))
+            XCTAssertEqual(none.sampleID, "260519/3")
+            XCTAssertNil(none.originalCode)
+        }
+    }
 }

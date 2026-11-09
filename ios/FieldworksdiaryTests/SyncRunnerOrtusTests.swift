@@ -1058,6 +1058,40 @@ final class SyncRunnerOrtusTests: XCTestCase {
         return cal.date(from: c)!
     }
 
+    // MARK: - Phase Z final fixes
+
+    func testAdoptServerZone_LocationServiceBeatsDevice() throws {
+        var sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        XCTAssertEqual(sample.timezoneSource, .device)
+        sample.adoptServerZone(remote(id: "b", code: "x", timezone: "Atlantic/Canary", timezoneSource: "location_service"))
+        XCTAssertEqual(sample.timezone, "Atlantic/Canary")
+        XCTAssertEqual(sample.timezoneSource, .locationService)
+    }
+
+    func testAdoptServerZone_ManualLocalWinsAndDeviceServerIsIgnored() throws {
+        var manual = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        manual.timezone = "Asia/Tokyo"
+        manual.timezoneSource = .manual
+        manual.adoptServerZone(remote(id: "b", code: "x", timezone: "Atlantic/Canary", timezoneSource: "location_service"))
+        XCTAssertEqual(manual.timezone, "Asia/Tokyo")
+
+        var device = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        device.adoptServerZone(remote(id: "b", code: "x", timezone: "Atlantic/Canary", timezoneSource: "device"))
+        XCTAssertEqual(device.timezone, "Europe/Berlin")
+        XCTAssertEqual(device.timezoneSource, .device)
+    }
+
+    func testMergeServerLocation_ServerElevationClearsStaleVerticalAccuracy() throws {
+        var sample = try store.createLocal(lat: 49.68, lon: 10.04, verticalAccuracy: 7, elevation: 100,
+                                           collectedFrom: date(2026, 5, 19, 14))
+        sample.mergeServerLocation(
+            remote(id: "b", code: "x", elevation: 120, elevationSource: "location_service"),
+            localPlacemarkID: { $0 }
+        )
+        XCTAssertEqual(sample.elevation, 120)
+        XCTAssertNil(sample.verticalAccuracy, "server sent no accuracy for its elevation")
+    }
+
     private func remote(
         id: String,
         code: String,
@@ -1070,7 +1104,10 @@ final class SyncRunnerOrtusTests: XCTestCase {
         version: Int = 1,
         mtb: String? = nil,
         lat: Double = 49.68,
-        lon: Double = 10.04
+        lon: Double = 10.04,
+        timezone: String = "Europe/Berlin",
+        timezoneSource: String? = nil,
+        verticalAccuracy: Double? = nil
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
@@ -1082,7 +1119,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
             "begin_date": "2026-05-19T12:00:00.000Z",
             "client_updated_at": "2026-05-19T12:00:00.000Z",
             "location_source": "location_service",
-            "timezone": "Europe/Berlin",
+            "timezone": timezone,
             "version": version,
             "elevation": elevation,
             "elevation_source": elevationSource,
@@ -1101,6 +1138,8 @@ final class SyncRunnerOrtusTests: XCTestCase {
             "bearing_inside": false
         ]
         if let clientUuid { dict["client_uuid"] = clientUuid }
+        if let timezoneSource { dict["timezone_source"] = timezoneSource }
+        if let verticalAccuracy { dict["vertical_accuracy"] = verticalAccuracy }
         // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: dict)
         // swiftlint:disable:next force_try

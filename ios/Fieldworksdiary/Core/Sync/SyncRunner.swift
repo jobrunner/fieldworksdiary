@@ -820,6 +820,9 @@ final class SyncRunner: ObservableObject {
     /// as does a moved coordinate (its push re-triggers enrichment).
     private func adoptServer(_ s: Sample, into fresh: inout LocalSample) {
         fresh.version = max(fresh.version, s.version)
+        // The server's zone (location service / manual) beats a device
+        // zone we may still hold from before the enrichment ran.
+        fresh.adoptServerZone(s)
         guard Self.sameCoordinate(fresh, s) else { return }
         let weak = fresh.locationStatus == .pending || fresh.locationStatus == .inherited
         if weak || !hasQueuedMutation(fresh.id) {

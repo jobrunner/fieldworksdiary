@@ -87,4 +87,22 @@ final class LocalSampleStoreZeitTests: XCTestCase {
         XCTAssertEqual(defaults.integer(forKey: SampleIDSettings.Keys.lastRunning), 1)
         XCTAssertEqual(store.peekNextCode(), "K2")
     }
+
+    func testCreateLocal_ResolvesZoneAtUseTime() throws {
+        var zone = canary
+        let store = LocalSampleStore(
+            database: database, userId: "u1", timeZoneProvider: { zone }, defaults: defaults,
+            settings: { SampleIDSettings(cutoffHour: 0) }
+        )
+        // 23:30Z: still 15 Jan in Canary (UTC+0), already 16 Jan in Tokyo.
+        let at = date("2026-01-15T23:30:00Z")
+        let first = try store.createLocal(lat: 1, lon: 1, collectedFrom: at, overrideCode: "a")
+        XCTAssertEqual(first.timezone, "Atlantic/Canary")
+        XCTAssertEqual(first.collectingDay, "2026-01-15")
+        // swiftlint:disable:next force_unwrapping
+        zone = TimeZone(identifier: "Asia/Tokyo")!
+        let second = try store.createLocal(lat: 1, lon: 1, collectedFrom: at, overrideCode: "b")
+        XCTAssertEqual(second.timezone, "Asia/Tokyo")
+        XCTAssertEqual(second.collectingDay, "2026-01-16")
+    }
 }

@@ -150,11 +150,17 @@ struct SettingsScreen: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             if currentTemplate.counter == .running {
-                Stepper(value: $config.sampleIDOffset, in: 0 ... Int.max) {
-                    LabeledContent("Offset", value: "\(config.sampleIDOffset)")
+                // Typed directly: an offset like 1000 must not need 1000 taps.
+                // `AppConfig.sampleIDOffset` clamps negative input to 0.
+                LabeledContent("Offset") {
+                    TextField("Offset", value: $config.sampleIDOffset, format: .number.grouping(.never))
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                        .accessibilityLabel("Offset")
                 }
             }
-            LabeledContent("Nächster Vorschlag") {
+            LabeledContent("Beispiel") {
                 Text(sampleIDPreview)
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
