@@ -54,6 +54,11 @@ private struct SampleEditorContent: View {
 
     @State private var showingCoordinatePicker = false
     @State private var showingCorrectionPicker = false
+    /// Coordinate picked on the correction map. Handed to the view
+    /// model only after the sheet is gone (`onDismiss`), so the
+    /// „Ortsangaben neu übernehmen?“ dialog isn't requested while the
+    /// sheet is still presented (SwiftUI drops it then).
+    @State private var pickedCorrection: CLLocationCoordinate2D?
     @State private var showingDiscardConfirm = false
     @State private var placeEditor: PlaceEditorViewModel?
 
@@ -238,14 +243,14 @@ private struct SampleEditorContent: View {
         } message: {
             Text("Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?")
         }
-        .sheet(isPresented: $showingCorrectionPicker) {
+        .sheet(isPresented: $showingCorrectionPicker, onDismiss: {
+            guard let c = pickedCorrection else { return }
+            pickedCorrection = nil
+            viewModel.requestCoordinateCorrection(latitude: c.latitude, longitude: c.longitude)
+        }) {
             CoordinatePickerView(selected: Binding(
-                get: { viewModel.coordinate },
-                set: { newValue in
-                    if let c = newValue {
-                        viewModel.requestCoordinateCorrection(latitude: c.latitude, longitude: c.longitude)
-                    }
-                }
+                get: { pickedCorrection ?? viewModel.coordinate },
+                set: { pickedCorrection = $0 }
             ))
         }
         .sheet(item: $placeEditor) { editor in
@@ -630,14 +635,16 @@ private struct SampleEditorContent: View {
 
     @ViewBuilder
     private var suggestionButtons: some View {
+        // `.large` bordered buttons reach the 44 pt tap target (a frame
+        // outside the button style only grows the layout box).
         Button("Übernehmen") { viewModel.acceptSuggestion() }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
             .tint(AppColor.brandPrimary)
-            .frame(minHeight: 44)
             .accessibilityHint("Ersetzt deine Ortsangaben durch die neu ermittelten.")
         Button("Verwerfen") { viewModel.dismissSuggestion() }
             .buttonStyle(.bordered)
-            .frame(minHeight: 44)
+            .controlSize(.large)
             .accessibilityHint("Behält deine Ortsangaben und blendet den Vorschlag aus.")
     }
 
@@ -655,9 +662,9 @@ private struct SampleEditorContent: View {
                 viewModel.resendFailed()
             } label: {
                 Label("Erneut senden", systemImage: "arrow.clockwise")
-                    .frame(minHeight: 44)
             }
             .buttonStyle(.bordered)
+            .controlSize(.large)
             .accessibilityHint("Überträgt die lokal gespeicherte Probe erneut an den Server.")
         }
         .padding(AppSpacing.md)

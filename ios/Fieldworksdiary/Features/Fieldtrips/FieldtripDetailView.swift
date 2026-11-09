@@ -338,7 +338,7 @@ struct FieldtripDetailView: View {
     private func sampleRow(_ sample: LocalSample) -> some View {
         HStack {
             Text(sample.sampleID)
-                .font(.system(.body, design: .monospaced).weight(.medium))
+                .font(AppFont.code.weight(.medium))
             if let place = PlaceDisplay.shortName(
                 sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }?.place
             ) {
@@ -358,7 +358,7 @@ struct FieldtripDetailView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppSpacing.xs)
         .contentShape(Rectangle())
     }
 

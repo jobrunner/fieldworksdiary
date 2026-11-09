@@ -33,6 +33,10 @@ struct PlaceForm: Equatable {
     var values: [String: String]
     /// The place the form was opened with (natives are kept from it).
     let original: Place?
+    /// Field values the form was opened with; "changed" is decided
+    /// against these, not via the dedup hash (a place may carry tiers
+    /// the label table doesn't list, which the form can't show).
+    private let initialValues: [String: String]
 
     init(place: Place?) {
         original = place
@@ -47,6 +51,7 @@ struct PlaceForm: Equatable {
             values[Self.mountainID] = place.mountain
         }
         self.values = values
+        initialValues = values
     }
 
     /// Switches the country. The country tier is prefilled with the
@@ -82,33 +87,46 @@ struct PlaceForm: Equatable {
     }
 
     /// The place described by the visible fields; nil without country.
+    ///
+    /// With the country unchanged, tiers of the original place that the
+    /// form doesn't show (levels outside the label table, `admin_other`
+    /// with an Ortus level, countries the table doesn't know) are kept
+    /// as they are, and an untouched field keeps its original value
+    /// (name, native and level).
     func place(table: AdminLabelTable = .shared) -> Place? {
         guard countryISO.count == 2 else { return nil }
-        var admin: [AdminTier: AdminValue] = [:]
+        let sameCountry = original?.countryISO == countryISO
+        var admin: [AdminTier: AdminValue] = sameCountry ? (original?.admin ?? [:]) : [:]
         for field in fields(table: table) {
             guard let tier = field.tier, let level = field.level else { continue }
             let name = trimmed(field.id)
-            guard !name.isEmpty else { continue }
-            var native = ""
-            if let original, original.countryISO == countryISO, let old = original.admin[tier],
-               old.name == name || (old.name.isEmpty && old.native == name)
-            {
-                native = old.native
+            if sameCountry, name == initialTrimmed(field.id), let old = original?.admin[tier] {
+                admin[tier] = old
+                continue
             }
-            admin[tier] = AdminValue(name: name, native: native, level: level)
+            guard !name.isEmpty else {
+                admin[tier] = nil
+                continue
+            }
+            admin[tier] = AdminValue(name: name, native: "", level: level)
         }
         return Place(countryISO: countryISO, admin: admin, island: trimmed(Self.islandID),
                      mountainRange: trimmed(Self.mountainRangeID), mountain: trimmed(Self.mountainID))
     }
 
-    /// True when `place()` differs from the place the form opened with.
+    /// True when the user changed the country or a visible field
+    /// (compared with the values the form opened with).
     func isChanged(table: AdminLabelTable = .shared) -> Bool {
-        guard let place = place(table: table) else { return false }
-        guard let original else { return true }
-        return place.dedupHash != original.dedupHash
+        guard countryISO.count == 2 else { return false }
+        guard let original, original.countryISO == countryISO else { return true }
+        return fields(table: table).contains { trimmed($0.id) != initialTrimmed($0.id) }
     }
 
     private func trimmed(_ id: String) -> String {
         values[id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private func initialTrimmed(_ id: String) -> String {
+        initialValues[id]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }

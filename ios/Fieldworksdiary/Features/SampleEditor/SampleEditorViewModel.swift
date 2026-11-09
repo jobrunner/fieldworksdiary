@@ -490,7 +490,9 @@ final class SampleEditorViewModel: ObservableObject {
     /// first („Ortsangaben neu übernehmen?“); otherwise the place is
     /// fetched again right away.
     func requestCoordinateCorrection(latitude: Double, longitude: Double) {
-        guard let sample = savedSample else { return }
+        guard let id = savedSample?.id else { return }
+        // Fresh row: `savedSample` may lag behind (resolver, sync).
+        guard let sample = (try? store.fetchById(id)) ?? savedSample else { return }
         pendingCorrection = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         if sample.locationStatus == .manual {
             askRetakePlace = true

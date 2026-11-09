@@ -29,7 +29,6 @@ struct PlaceEditorView: View {
                 Section {
                     TextField("Höhe in Metern", text: $viewModel.elevationText)
                         .keyboardType(.decimalPad)
-                        .accessibilityLabel("Höhe in Metern")
                     if let error = viewModel.elevationError {
                         Text(error)
                             .font(AppFont.footnote)
@@ -79,11 +78,18 @@ struct PlaceFormSections: View {
     let value: (String) -> String
     let setValue: (String, String) -> Void
 
+    /// The table's countries plus the current one if the table doesn't
+    /// know it, so the picker always has a tag for its selection.
+    private var pickerCountries: [(iso: String, name: String)] {
+        guard !countryISO.isEmpty, !countries.contains(where: { $0.iso == countryISO }) else { return countries }
+        return [(iso: countryISO, name: PlaceDisplay.countryName(countryISO))] + countries
+    }
+
     var body: some View {
         Section {
             Picker("Land", selection: Binding(get: { countryISO }, set: onSelectCountry)) {
                 Text("Bitte wählen").tag("")
-                ForEach(countries, id: \.iso) { country in
+                ForEach(pickerCountries, id: \.iso) { country in
                     Text(country.name).tag(country.iso)
                 }
             }

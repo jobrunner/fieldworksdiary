@@ -160,6 +160,47 @@ final class PlaceEditorViewModelTests: XCTestCase {
         XCTAssertEqual(try mutations.count(), 1)
     }
 
+    func testElevationOnly_WithTierOutsideTheTable_KeepsPlaceUntouched() throws {
+        var withOther = ochsenfurt
+        withOther.admin[.other] = AdminValue(name: "Flur Am Hang", level: 11)
+        let pm = try placemarks.lookupOrCreate(place: withOther, source: .backendService)
+        let sample = try seedSample(placemark: pm.id, backendID: "backend-1")
+        let vm = try makeVM(sample: sample)
+        XCTAssertFalse(vm.placeChanged, "opening the sheet changes nothing")
+        XCTAssertFalse(vm.canSave)
+
+        vm.elevationText = "300"
+        XCTAssertTrue(vm.save())
+
+        let stored = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(stored.placemark, pm.id, "height-only save never detaches the sample")
+        XCTAssertEqual(stored.locationStatus, .backendService)
+        XCTAssertEqual(stored.elevationSource, .manual)
+        XCTAssertEqual(try placemarks.count(), 1, "no manual placemark created")
+    }
+
+    func testCountryOutsideTheTable_IsNotChangedOnOpen() throws {
+        let place = Place(countryISO: "ZZ", admin: [.state: AdminValue(name: "Nowhere", level: 4)])
+        let pm = try placemarks.lookupOrCreate(place: place, source: .backendService)
+        let vm = try makeVM(sample: seedSample(placemark: pm.id))
+        XCTAssertFalse(vm.placeChanged)
+        XCTAssertFalse(vm.canSave)
+    }
+
+    func testEditingOneField_KeepsLevelsTheFormDoesNotShow() throws {
+        var withOther = ochsenfurt
+        withOther.admin[.other] = AdminValue(name: "Flur Am Hang", level: 11)
+        let pm = try placemarks.lookupOrCreate(place: withOther, source: .backendService)
+        let vm = try makeVM(sample: seedSample(placemark: pm.id))
+        vm.setValue("Sommerhausen", for: AdminTier.municipality.rawValue)
+        XCTAssertTrue(vm.save())
+
+        let stored = try XCTUnwrap(samples.fetchById(vm.sampleID))
+        let manual = try XCTUnwrap(stored.placemark.flatMap { try placemarks.fetchById($0) })
+        XCTAssertEqual(manual.admin[.other], AdminValue(name: "Flur Am Hang", level: 11))
+        XCTAssertEqual(manual.admin[.municipality]?.name, "Sommerhausen")
+    }
+
     func testInvalidElevation_BlocksSave() throws {
         let vm = try makeVM(sample: seedSample(placemark: nil))
         vm.elevationText = "hoch"
