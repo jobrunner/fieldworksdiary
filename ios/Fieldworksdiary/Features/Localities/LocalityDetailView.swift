@@ -169,8 +169,23 @@ struct LocalityDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func placemarkLines(_ pm: LocalPlacemark) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        if !pm.countryISO.isEmpty {
+            // Ortus place (Phase O2): country-specific terms per level.
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                ForEach(PlaceDisplay.fields(pm.place)) { item in
+                    PlaceFieldRow(item)
+                }
+            }
+        } else {
+            legacyPlacemarkLines(pm)
+        }
+    }
+
+    /// Pre-Ortus address fields (legacy rows until the O3 backfill).
+    private func legacyPlacemarkLines(_ pm: LocalPlacemark) -> some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
             if let n = pm.name, !n.isEmpty {
                 Text(n).font(.body.weight(.medium))
             }

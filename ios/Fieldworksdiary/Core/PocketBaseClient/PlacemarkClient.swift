@@ -1,52 +1,6 @@
 import FieldworksGeo
 import Foundation
 
-/// The eight editable placemark fields the manual-override endpoint
-/// accepts (Spec §6.2 / backend `manualPlacemarkRequest`). `country`
-/// is the only required one — an ISO 3166-1 alpha-2 code.
-struct PlacemarkOverrideFields: Equatable {
-    var country: String
-    var administrativeArea: String = ""
-    var subAdministrativeArea: String = ""
-    var locality: String = ""
-    var subLocality: String = ""
-    var postalCode: String = ""
-    var name: String = ""
-    var thoroughfare: String = ""
-
-    /// The JSON body keyed exactly as the backend expects. `country`
-    /// is upper-cased here so the UI doesn't have to.
-    var wireBody: [String: Any] {
-        [
-            "country": country.trimmingCharacters(in: .whitespaces).uppercased(),
-            "administrative_area": administrativeArea,
-            "sub_administrative_area": subAdministrativeArea,
-            "locality": locality,
-            "sub_locality": subLocality,
-            "postal_code": postalCode,
-            "name": name,
-            "thoroughfare": thoroughfare
-        ]
-    }
-
-    /// Pre-fill the form from an already-cached placemark so the user
-    /// edits the current values instead of a blank sheet.
-    init(from pm: LocalPlacemark) {
-        country = pm.country
-        administrativeArea = pm.administrativeArea ?? ""
-        subAdministrativeArea = pm.subAdministrativeArea ?? ""
-        locality = pm.locality ?? ""
-        subLocality = pm.subLocality ?? ""
-        postalCode = pm.postalCode ?? ""
-        name = pm.name ?? ""
-        thoroughfare = pm.thoroughfare ?? ""
-    }
-
-    init(country: String = "") {
-        self.country = country
-    }
-}
-
 /// What the sync layer needs from the placemarks API. `PlacemarkClient`
 /// conforms; tests inject a mock.
 protocol PlacemarkSyncClient {
@@ -102,11 +56,14 @@ struct PlacemarkClient {
     }
 
     /// PATCH `/api/localities/:id/placemark` — set (or replace) the
-    /// manual override. The server looks-up-or-creates a placemark
-    /// with `geocoding_source = "manual"`, attaches it to the
-    /// locality, and returns the full placemark record so the caller
-    /// can write it straight through to the local cache.
-    func setManual(localityID: String, fields: PlacemarkOverrideFields) async throws -> Placemark {
+    /// manual override. The body is the flat place body of
+    /// `/api/placemarks/resolve` without `geocoding_source`
+    /// (`placeFromBody` in `backend/internal/api/placemark.go`). The
+    /// server looks-up-or-creates a placemark with
+    /// `geocoding_source = "manual"`, attaches it to the locality, and
+    /// returns the full placemark record so the caller can write it
+    /// straight through to the local cache.
+    func setManual(localityID: String, place: Place) async throws -> Placemark {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
         guard let url = URL(string: trimmed.appending("/api/localities/\(localityID)/placemark")) else {
@@ -116,7 +73,7 @@ struct PlacemarkClient {
         request.httpMethod = "PATCH"
         request.timeoutInterval = 6
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: fields.wireBody)
+        request.httpBody = try JSONSerialization.data(withJSONObject: Self.placeBody(place, source: nil))
         request.authenticate(with: auth)
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? -1
