@@ -97,7 +97,7 @@ final class HomeViewModel: ObservableObject {
         guard let sample = try? samples.mostRecent() else { return nil }
         return RecentSample(
             id: sample.id,
-            code: sample.backendCode ?? sample.sampleID,
+            code: sample.sampleID,
             locality: placeName(for: sample)
         )
     }

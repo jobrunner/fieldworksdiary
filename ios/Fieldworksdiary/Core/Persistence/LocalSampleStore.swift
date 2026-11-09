@@ -79,7 +79,6 @@ final class LocalSampleStore {
                 id: UUID().uuidString,
                 backendId: nil,
                 sampleID: code,
-                backendCode: nil,
                 originalCode: nil,
                 userId: userId,
                 collectingDay: dayKey,
@@ -363,6 +362,11 @@ final class LocalSampleStore {
     func saveEdits(_ sample: LocalSample, mutationsStore: PendingMutationsStore) throws {
         let backendID: String? = try database.writer.write { db in
             guard var stored = try LocalSample.fetchOne(db, key: sample.id) else { return nil }
+            if stored.sampleID != sample.sampleID {
+                // User edited the ID: the conflict marker no longer
+                // applies (the update sends original_code "").
+                stored.originalCode = nil
+            }
             stored.sampleID = sample.sampleID
             stored.notes = sample.notes
             stored.marked = sample.marked
@@ -413,13 +417,20 @@ final class LocalSampleStore {
         return placemark
     }
 
-    /// A height typed by the user: source `manual`, no measured
-    /// accuracy. Never overwritten by GPS or the DEM afterwards.
-    func setManualElevation(id: String, elevation: Double, mutationsStore: PendingMutationsStore) throws {
-        try writePlaceEdit(id: id, mutationsStore: mutationsStore, payload: SampleUpdatePayload()) { sample in
+    /// A height typed by the user: source `manual`, accuracy = the
+    /// given value or nil (a previous accuracy is discarded). Never
+    /// overwritten by GPS or the DEM afterwards.
+    func setManualElevation(
+        id: String,
+        elevation: Double,
+        verticalAccuracy: Double?,
+        mutationsStore: PendingMutationsStore
+    ) throws {
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore,
+                           payload: SampleUpdatePayload(elevationEdited: true)) { sample in
             sample.elevation = elevation
             sample.elevationSource = .manual
-            sample.verticalAccuracy = nil
+            sample.verticalAccuracy = verticalAccuracy
             return true
         }
     }
@@ -647,13 +658,8 @@ final class LocalSampleStore {
         local.backendId = r.id
         // Server may have reassigned the sample_id on collision;
         // respect that as the new authoritative id.
-        if local.sampleID != r.sampleID {
-            local.backendCode = r.sampleID
-            local.originalCode = r.originalCode ?? local.sampleID
-        } else {
-            local.backendCode = nil
-            local.originalCode = r.originalCode
-        }
+        local.sampleID = r.sampleID
+        local.originalCode = r.originalCode
         local.userId = userId
         local.collectingDay = dayKey
         local.latitude = r.latitude ?? local.latitude
@@ -693,7 +699,6 @@ final class LocalSampleStore {
             id: (r.clientUuid.flatMap { $0.isEmpty ? nil : $0 }) ?? r.id,
             backendId: r.id,
             sampleID: r.sampleID,
-            backendCode: nil,
             originalCode: r.originalCode,
             userId: userId,
             collectingDay: dayKey,

@@ -71,12 +71,32 @@ final class SampleLocationEditsTests: XCTestCase {
 
     func testSetManualElevation() throws {
         let sample = try seedPushed(status: .backendService)
-        try store.setManualElevation(id: sample.id, elevation: 412, mutationsStore: mutations)
+        try store.setManualElevation(id: sample.id, elevation: 412, verticalAccuracy: nil, mutationsStore: mutations)
         let stored = try XCTUnwrap(store.fetchById(sample.id))
         XCTAssertEqual(stored.elevation, 412)
         XCTAssertEqual(stored.elevationSource, .manual)
-        XCTAssertNil(stored.verticalAccuracy, "a typed height has no measured accuracy")
+        XCTAssertNil(stored.verticalAccuracy, "no input, no accuracy")
         XCTAssertEqual(try mutations.count(), 1)
+    }
+
+    func testSetManualElevation_WithAccuracyStoresIt() throws {
+        var sample = try seedPushed(status: .backendService)
+        sample.verticalAccuracy = 30
+        try store.update(sample)
+        try store.setManualElevation(id: sample.id, elevation: 412, verticalAccuracy: 5, mutationsStore: mutations)
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.verticalAccuracy, 5)
+        XCTAssertEqual(stored.elevationSource, .manual)
+    }
+
+    func testManualElevationPayload_ClearsEmptyAccuracyOnServer() {
+        var fields = SampleLocationFields(
+            elevation: 412, elevationSource: .manual, locationSource: .user, locationStatus: .manual)
+        fields.clearsVerticalAccuracy = true
+        let body = fields.wireBody
+        XCTAssertEqual(body["elevation"] as? Double, 412)
+        XCTAssertEqual(body["elevation_source"] as? String, "manual")
+        XCTAssertEqual(body["vertical_accuracy"] as? Int, 0)
     }
 
     // MARK: - coordinate correction on a manual sample

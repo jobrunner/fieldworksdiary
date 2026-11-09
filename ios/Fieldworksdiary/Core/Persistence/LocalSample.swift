@@ -42,8 +42,10 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var id: String // client-side UUID, also `client_uuid` on the wire
     var backendId: String? // PocketBase id, set on first successful push
     var sampleID: String // provisional or backend-confirmed
-    var backendCode: String? // set if server relabelled (rare)
-    var originalCode: String? // = `sampleID` at push-time when relabelled
+    /// ID the user sent when the server appended a conflict suffix
+    /// (`sampleID` is then the server's „X (2)“). Cleared on ID edit.
+    /// The legacy `backend_code` column is no longer read or written.
+    var originalCode: String?
     var userId: String
     var collectingDay: String // YYYY-MM-DD in user TZ
     var latitude: Double?
@@ -98,7 +100,6 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case id
         case backendId = "backend_id"
         case sampleID = "sample_id"
-        case backendCode = "backend_code"
         case originalCode = "original_code"
         case userId = "user_id"
         case collectingDay = "collecting_day"

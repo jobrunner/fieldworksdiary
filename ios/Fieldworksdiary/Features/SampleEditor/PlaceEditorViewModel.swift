@@ -7,13 +7,17 @@ import Foundation
 /// country's levels plus island / mountain range / mountain
 /// (`fields`). Saving a changed place detaches only this sample onto a
 /// `manual` placemark (`LocalSampleStore.setManualPlace`); a changed
-/// height is stored with `elevation_source = manual`. Both go through
+/// height is stored with `elevation_source = manual` and the optional
+/// error ("Fehler (m)") typed next to it (empty = no accuracy). Both go through
 /// store methods that queue the outbox update — the editor never
 /// writes a whole row copy.
 @MainActor
 final class PlaceEditorViewModel: ObservableObject, Identifiable {
     @Published private(set) var form: PlaceForm
     @Published var elevationText: String
+    /// Optional error of the typed height in metres (starts empty: the
+    /// accuracy of an earlier height says nothing about a new one).
+    @Published var accuracyText = ""
     @Published private(set) var saveError: String?
 
     let sampleID: String
@@ -82,15 +86,36 @@ final class PlaceEditorViewModel: ObservableObject, Identifiable {
         return value
     }
 
+    /// Typed error in metres; nil when empty or invalid.
+    var parsedAccuracy: Double? {
+        let raw = accuracyText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: ".")
+        guard !raw.isEmpty, let value = Double(raw), value.isFinite, value >= 0 else { return nil }
+        return value
+    }
+
+    private var accuracyTyped: Bool {
+        !accuracyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var accuracyError: String? {
+        guard accuracyTyped, parsedAccuracy == nil else { return nil }
+        return "Bitte einen Fehler in Metern eingeben, z. B. 5."
+    }
+
+    /// The height is written when it or the error was typed.
+    private var elevationEdited: Bool { elevationChanged || accuracyTyped }
+
     /// Inline hint under the height field.
     var elevationError: String? {
-        guard elevationChanged else { return nil }
+        guard elevationEdited else { return nil }
         return parsedElevation == nil ? "Bitte eine Höhe in Metern eingeben, z. B. 312." : nil
     }
 
     var canSave: Bool {
-        if elevationChanged, parsedElevation == nil { return false }
-        return placeChanged || elevationChanged
+        if elevationEdited, parsedElevation == nil { return false }
+        if accuracyError != nil { return false }
+        return placeChanged || elevationEdited
     }
 
     /// Writes the changes. Returns true on success.
@@ -104,8 +129,9 @@ final class PlaceEditorViewModel: ObservableObject, Identifiable {
                                          mutationsStore: mutationsStore)
                 Log.persistence.info("manual place saved for sample \(self.sampleID, privacy: .public)")
             }
-            if elevationChanged, let elevation = parsedElevation {
-                try store.setManualElevation(id: sampleID, elevation: elevation, mutationsStore: mutationsStore)
+            if elevationEdited, let elevation = parsedElevation {
+                try store.setManualElevation(id: sampleID, elevation: elevation,
+                                             verticalAccuracy: parsedAccuracy, mutationsStore: mutationsStore)
                 Log.persistence.info("manual elevation saved for sample \(self.sampleID, privacy: .public)")
             }
             return true

@@ -57,10 +57,11 @@ struct SamplesListScreen: View {
 
     private func row(for sample: LocalSample) -> some View {
         SampleListRow(
-            code: sample.backendCode ?? sample.sampleID,
+            code: sample.sampleID,
             placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place),
             pendingPlaceText: "Ortsangaben ausstehend",
             notes: sample.notes,
+            hasIdConflict: sample.hasIdConflict,
             syncStatus: sample.syncStatus
         )
     }

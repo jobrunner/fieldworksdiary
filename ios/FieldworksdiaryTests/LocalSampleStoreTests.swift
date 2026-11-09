@@ -112,7 +112,7 @@ final class LocalSampleStoreTests: XCTestCase {
         XCTAssertEqual(stored.sampleID, local.sampleID, "code must not change while push in flight")
     }
 
-    func testUpsert_AppliesServerCodeReassignmentAsBackendCode() throws {
+    func testUpsert_AdoptsServerCodeReassignment() throws {
         // Lokal mit Code /1 gespeichert, dann gesynct, Server hat
         // beim Push auf /7 umgemappt.
         var local = try store.createLocal(
@@ -131,8 +131,7 @@ final class LocalSampleStoreTests: XCTestCase {
         try store.upsert([remote])
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.sampleID, "260519/1", "local code (= auf Röhrchen) bleibt erhalten")
-        XCTAssertEqual(stored.backendCode, "260519/7", "Server-Reassignment landet in backendCode")
+        XCTAssertEqual(stored.sampleID, "260519/7", "Server-ID wird übernommen")
         XCTAssertEqual(stored.originalCode, "260519/1", "Audit-Trail: was auf der Röhre stand")
     }
 

@@ -41,6 +41,10 @@ struct SampleLocationFields: Codable, Equatable {
     /// suggestion (or saved a manual place): a nil suggestion is sent
     /// as an explicit `""`, so the server drops it as well.
     var clearsSuggestion = false
+    /// Set for a push after the user typed a height: a nil
+    /// `vertical_accuracy` is sent as an explicit 0 (= cleared), so a
+    /// measured accuracy of the old height does not stay on the server.
+    var clearsVerticalAccuracy = false
 
     /// Wire keys of the PocketBase `samples` record (migration
     /// 1700000024). `elevation_source` always accompanies an
@@ -85,6 +89,9 @@ struct SampleLocationFields: Codable, Equatable {
         }
         if clearsDerived {
             addClears(to: &body)
+        }
+        if clearsVerticalAccuracy, body["vertical_accuracy"] == nil {
+            body["vertical_accuracy"] = 0
         }
         if clearsSuggestion, body["placemark_suggestion"] == nil {
             body["placemark_suggestion"] = ""
@@ -170,6 +177,9 @@ struct SampleCreateInput: Equatable {
 /// werden kann.
 struct SampleUpdateInput: Codable, Equatable {
     var code: String
+    /// Conflict marker; "" (no conflict / ID edited) is sent as an
+    /// explicit clear.
+    var originalCode: String = ""
     var notes: String?
     var clientUuid: String
     var clientUpdatedAt: Date
@@ -198,11 +208,21 @@ struct SampleUpdatePayload: Codable, Equatable {
     /// a nil `placemark_suggestion` is sent as `""` (see
     /// `SampleLocationFields.clearsSuggestion`).
     var clearsSuggestion = false
+    /// Queued by `LocalSampleStore.setManualElevation`: a nil
+    /// `vertical_accuracy` is sent as a clear (see
+    /// `SampleLocationFields.clearsVerticalAccuracy`).
+    var elevationEdited = false
 
-    init(pushFeatures: Bool = false, coordinateChanged: Bool = false, clearsSuggestion: Bool = false) {
+    init(
+        pushFeatures: Bool = false,
+        coordinateChanged: Bool = false,
+        clearsSuggestion: Bool = false,
+        elevationEdited: Bool = false
+    ) {
         self.pushFeatures = pushFeatures
         self.coordinateChanged = coordinateChanged
         self.clearsSuggestion = clearsSuggestion
+        self.elevationEdited = elevationEdited
     }
 
     init(from decoder: Decoder) throws {
@@ -210,6 +230,7 @@ struct SampleUpdatePayload: Codable, Equatable {
         pushFeatures = (try? c.decode(Bool.self, forKey: .pushFeatures)) ?? false
         coordinateChanged = (try? c.decode(Bool.self, forKey: .coordinateChanged)) ?? false
         clearsSuggestion = (try? c.decode(Bool.self, forKey: .clearsSuggestion)) ?? false
+        elevationEdited = (try? c.decode(Bool.self, forKey: .elevationEdited)) ?? false
     }
 
     /// Union of the flags (a parked mutation's flags ride along with
@@ -218,7 +239,8 @@ struct SampleUpdatePayload: Codable, Equatable {
         SampleUpdatePayload(
             pushFeatures: pushFeatures || other.pushFeatures,
             coordinateChanged: coordinateChanged || other.coordinateChanged,
-            clearsSuggestion: clearsSuggestion || other.clearsSuggestion
+            clearsSuggestion: clearsSuggestion || other.clearsSuggestion,
+            elevationEdited: elevationEdited || other.elevationEdited
         )
     }
 
@@ -740,8 +762,10 @@ final class SyncRunner: ObservableObject {
         var location = pushedLocation
         location.clearsDerived = payload.coordinateChanged
         location.clearsSuggestion = payload.clearsSuggestion
+        location.clearsVerticalAccuracy = payload.elevationEdited
         let input = SampleUpdateInput(
             code: current.sampleID,
+            originalCode: current.originalCode ?? "",
             notes: current.notes,
             clientUuid: current.id,
             clientUpdatedAt: current.updatedAt,
@@ -989,16 +1013,15 @@ final class SyncRunner: ObservableObject {
         )
     }
 
-    /// Server reassigned on conflict → keep the tube label as
-    /// `originalCode` and the server's id as `backendCode`.
-    private static func applyCodes(_ remote: Sample, sentCode: String, to row: inout LocalSample) {
-        if remote.sampleID != sentCode {
-            row.backendCode = remote.sampleID
+    /// Server appended a conflict suffix → adopt its id as `sampleID`
+    /// and keep the sent id as `originalCode` (drives the hint). A
+    /// user edit of the ID while the request was in flight wins.
+    static func applyCodes(_ remote: Sample, sentCode: String, to row: inout LocalSample) {
+        guard row.sampleID == sentCode else { return }
+        if remote.sampleID != sentCode, !remote.sampleID.isEmpty {
+            row.sampleID = remote.sampleID
             row.originalCode = remote.originalCode ?? sentCode
         } else {
-            row.backendCode = nil
-            // Server honored — but it might still return
-            // original_code from a prior conflict round.
             row.originalCode = remote.originalCode
         }
     }

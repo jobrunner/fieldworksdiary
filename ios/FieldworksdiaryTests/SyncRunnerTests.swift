@@ -77,13 +77,13 @@ final class SyncRunnerTests: XCTestCase {
         await runUntilQuiescent(runner)
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.sampleID, "260519/1", "Lokaler Code (= auf Röhrchen) bleibt")
-        XCTAssertEqual(stored.backendCode, "260519/7", "Server-Code separat festgehalten")
+        XCTAssertEqual(stored.sampleID, "260519/7", "Server-ID wird übernommen")
         XCTAssertEqual(stored.originalCode, "260519/1", "originalCode dokumentiert den Konflikt")
+        XCTAssertTrue(stored.hasIdConflict)
         XCTAssertEqual(stored.syncStatus, .synced)
     }
 
-    func testPush_ServerHonorsCode_DoesNotSetBackendCode() async throws {
+    func testPush_ServerHonorsCode_NoConflict() async throws {
         let local = try store.createLocal(
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
@@ -99,7 +99,7 @@ final class SyncRunnerTests: XCTestCase {
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
         XCTAssertEqual(stored.sampleID, local.sampleID)
-        XCTAssertNil(stored.backendCode, "Bei Honorierung kein backendCode")
+        XCTAssertFalse(stored.hasIdConflict)
     }
 
     // MARK: - Failure

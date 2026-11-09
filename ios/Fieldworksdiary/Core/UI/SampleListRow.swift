@@ -17,6 +17,8 @@ struct SampleListRow: View {
     var pendingPlaceText: String?
     var notes: String = ""
     var isMarked: Bool = false
+    /// Shows the „ID doppelt vergeben“ hint under the place line.
+    var hasIdConflict: Bool = false
     var syncStatus: SyncStatus?
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -71,6 +73,9 @@ struct SampleListRow: View {
                     .font(AppFont.subhead)
                     .foregroundStyle(AppColor.textSecondary)
             }
+            if hasIdConflict {
+                IdConflictHint()
+            }
             if !notes.isEmpty {
                 // Two lines are enough to recognise a note in a list;
                 // the full text is in the editor.
@@ -98,6 +103,7 @@ private struct SampleListRowPreviewList: View {
             SampleListRow(code: "260519/2", placeName: nil, pendingPlaceText: "Ortsangaben ausstehend",
                           syncStatus: .pending)
             SampleListRow(code: "260519/3", placeName: "Garafía", isMarked: true, syncStatus: .failed)
+            SampleListRow(code: "260519/1 (2)", placeName: "Ochsenfurt", hasIdConflict: true)
         }
         .listStyle(.plain)
     }

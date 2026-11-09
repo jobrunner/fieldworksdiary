@@ -227,8 +227,9 @@ private struct DaySamplesScreen: View {
                         SampleEditorView(sampleID: sample.id)
                     } label: {
                         SampleListRow(
-                            code: sample.backendCode ?? sample.sampleID,
-                            placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place)
+                            code: sample.sampleID,
+                            placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place),
+                            hasIdConflict: sample.hasIdConflict
                         )
                     }
                 }

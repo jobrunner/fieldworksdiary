@@ -29,6 +29,13 @@ struct PlaceEditorView: View {
                 Section {
                     TextField("Höhe in Metern", text: $viewModel.elevationText)
                         .keyboardType(.decimalPad)
+                    TextField("Fehler (m), optional", text: $viewModel.accuracyText)
+                        .keyboardType(.decimalPad)
+                    if let error = viewModel.accuracyError {
+                        Text(error)
+                            .font(AppFont.footnote)
+                            .foregroundStyle(AppColor.danger)
+                    }
                     if let error = viewModel.elevationError {
                         Text(error)
                             .font(AppFont.footnote)

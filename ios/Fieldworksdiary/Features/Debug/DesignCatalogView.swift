@@ -74,6 +74,8 @@
                                 SampleListRow(code: "260519/2", placeName: nil,
                                               pendingPlaceText: "Ortsangaben ausstehend", syncStatus: .pending)
                                 SampleListRow(code: "260519/3", placeName: "Garafía", isMarked: true)
+                                SampleListRow(code: "260519/1 (2)", placeName: "Ochsenfurt", hasIdConflict: true)
+                                IdConflictHint()
                             }
                         }
                     }

@@ -101,7 +101,9 @@ struct Sample: Decodable, Identifiable, Equatable {
         let rawElevation = try? c.decode(Double.self, forKey: .elevation)
         elevation = (rawElevation == 0 && elevationSource == nil) ? nil : rawElevation
         horizontalAccuracy = try? c.decode(Double.self, forKey: .horizontalAccuracy)
-        verticalAccuracy = try? c.decode(Double.self, forKey: .verticalAccuracy)
+        // 0 is how the app clears the field on the server.
+        let vAcc = try? c.decode(Double.self, forKey: .verticalAccuracy)
+        verticalAccuracy = vAcc == 0 ? nil : vAcc
         locationSource = LocationSource(wire: try? c.decode(String.self, forKey: .locationSource))
         locationStatus = decodeNonEmpty(c, .locationStatus).flatMap(LocationStatus.init(rawValue:))
         placemark = decodeNonEmpty(c, .placemark)

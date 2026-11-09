@@ -285,18 +285,9 @@ private struct SampleEditorContent: View {
                     .accessibilityLabel("Fehler im Code-Feld: \(codeError)")
             }
 
-            // Server reassigned the tube label on collision; surface
-            // the audit trail (mirrors the old SampleDetailView hint).
-            if let sample = viewModel.savedSample,
-               let backendCode = sample.backendCode,
-               backendCode != sample.sampleID
-            {
-                Text("Server: \(backendCode) — Original: \(sample.sampleID)")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-                    .accessibilityLabel(
-                        "Hinweis: Server hat den Code zu \(backendCode) umbenannt. Original auf dem Röhrchen: \(sample.sampleID)."
-                    )
+            // The server appended a conflict suffix to the sent ID.
+            if viewModel.savedSample?.hasIdConflict == true {
+                IdConflictHint()
             }
 
             Divider()
@@ -495,8 +486,8 @@ private struct SampleEditorContent: View {
                 .foregroundStyle(.secondary)
             Text(altitudeText)
                 .font(.body.monospacedDigit())
-            if let source = elevationSourceText {
-                Text(source)
+            if let acc = viewModel.savedSample?.verticalAccuracy {
+                Text(String(format: "± %.0f m", acc))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -844,17 +835,6 @@ private struct SampleEditorContent: View {
         return "—"
     }
 
-    /// Where the height comes from, shown under it.
-    private var elevationSourceText: String? {
-        guard viewModel.altitudeM != nil else { return nil }
-        switch viewModel.savedSample?.elevationSource {
-        case .manual: return "manuell"
-        case .backendService: return "Geländemodell"
-        case .locationService: return "GPS"
-        case nil: return nil
-        }
-    }
-
     /// Human-readable fieldtrip title or nil. The previous code
     /// returned the literal string "Sammeltag" as a fallback when
     /// only the fieldtrip id was known — that produced the
@@ -937,6 +917,9 @@ private struct SampleEditorContent: View {
         }
         if let alt = viewModel.altitudeM {
             parts.append(String(format: "Höhe %.0f Meter", alt))
+            if let acc = viewModel.savedSample?.verticalAccuracy {
+                parts.append(String(format: "Fehler etwa %.0f Meter", acc))
+            }
         }
         return parts.joined(separator: ", ")
     }

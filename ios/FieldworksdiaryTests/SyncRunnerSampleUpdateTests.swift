@@ -83,8 +83,28 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         await runUntilQuiescent(runner)
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.backendCode, "260605/12")
+        XCTAssertEqual(stored.sampleID, "260605/12")
         XCTAssertEqual(stored.originalCode, "260605/9")
+        XCTAssertTrue(stored.hasIdConflict)
+    }
+
+    func testEditingIdClearsConflictMarkerAndSendsEmptyOriginalCode() async throws {
+        var local = try seedSyncedSample(backendID: "backend-1", code: "260605/1 (2)", version: 1)
+        local.originalCode = "260605/1"
+        try store.update(local)
+        var edited = local
+        edited.sampleID = "260605/5"
+        try store.saveEdits(edited, mutationsStore: mutations)
+        XCTAssertNil(try store.fetchById(local.id)?.originalCode)
+
+        let mock = MockUpdateClient()
+        mock.updateResponse = remoteSample(id: "backend-1", code: "260605/5", version: 2)
+        let runner = makeRunner(mock: mock)
+        await runUntilQuiescent(runner)
+
+        let input = try XCTUnwrap(mock.lastUpdateInput)
+        XCTAssertEqual(SampleClient.updateBody(input)["original_code"] as? String, "")
+        XCTAssertFalse(try XCTUnwrap(store.fetchById(local.id)).hasIdConflict)
     }
 
     func testUpdate_409_AdoptsServerVersionAndRetriesWithUserEdit() async throws {

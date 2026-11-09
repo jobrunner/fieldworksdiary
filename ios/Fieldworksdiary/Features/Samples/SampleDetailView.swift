@@ -109,10 +109,8 @@ struct SampleDetailView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(sample.sampleID)
                     .font(AppFont.codeLarge)
-                if let backendCode = sample.backendCode, backendCode != sample.sampleID {
-                    Text("Server: \(backendCode) — Original \(sample.sampleID)")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                if sample.hasIdConflict {
+                    IdConflictHint()
                 }
             }
         }

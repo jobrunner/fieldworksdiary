@@ -140,6 +140,7 @@ struct SampleClient {
     static func updateBody(_ input: SampleUpdateInput) -> [String: Any] {
         var body = input.location.wireBody
         body["sample_id"] = input.code
+        body["original_code"] = input.originalCode
         body["timezone"] = input.timezone
         if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
         if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }
