@@ -39,4 +39,35 @@ final class SampleClientErrorFormatTests: XCTestCase {
             "HTTP 401 — The request requires valid record authorization token to be set."
         )
     }
+
+    // MARK: - M-3: "Placemark" never reaches the user
+
+    func testPlacemarkRefRejection_UsesUITerms() {
+        // Body of the backend's placemark_refs hook.
+        let body = #"""
+        {"code":400,"message":"Invalid placemark reference.","data":{"placemark":{"code":"validation_invalid_placemark","message":"Placemark is not accessible."}}}
+        """#
+        let out = SampleClientError.formatPocketBaseError(status: 400, body: body)
+        XCTAssertEqual(out, "HTTP 400 — Ortsangaben ungültig. (Ortsangaben: nicht zugänglich)")
+        XCTAssertNil(out.range(of: "placemark", options: .caseInsensitive))
+    }
+
+    func testSuggestionFieldKeyIsMapped() {
+        let body = #"""
+        {"code":400,"message":"x","data":{"placemark_suggestion":{"code":"validation_other","message":"Placemark missing."}}}
+        """#
+        let out = SampleClientError.formatPocketBaseError(status: 400, body: body)
+        XCTAssertEqual(out, "HTTP 400 — x (Ortsvorschlag: Ortsangaben missing.)")
+    }
+
+    func testRawBodyMentioningPlacemarkIsSanitized() {
+        let out = SampleClientError.formatPocketBaseError(status: 500, body: "placemarks table locked")
+        XCTAssertNil(out.range(of: "placemark", options: .caseInsensitive), out)
+        XCTAssertEqual(out, "HTTP 500: Ortsangaben table locked")
+    }
+
+    func testDecodingErrorIsSanitized() {
+        let out = SampleClientError.decoding("keyNotFound placemark_suggestion").errorDescription ?? ""
+        XCTAssertNil(out.range(of: "placemark", options: .caseInsensitive), out)
+    }
 }

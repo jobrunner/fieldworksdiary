@@ -17,7 +17,7 @@ enum SampleClientError: LocalizedError {
         case let .http(status, body): Self.formatPocketBaseError(status: status, body: body)
         case let .conflict(version, _):
             "Konflikt: serverseitige Version ist \(version). Bitte neu laden."
-        case let .decoding(message): "Antwort konnte nicht gelesen werden: \(message)"
+        case let .decoding(message): "Antwort konnte nicht gelesen werden: \(Self.userFacing(message))"
         }
     }
 
@@ -30,25 +30,53 @@ enum SampleClientError: LocalizedError {
         guard let data = body.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return "HTTP \(status): \(body)"
+            return "HTTP \(status): \(userFacing(body))"
         }
-        let top = (json["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var top = (json["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if top.range(of: "placemark", options: .caseInsensitive) != nil {
+            top = "Ortsangaben ungültig."
+        }
         var fields: [String] = []
         if let payload = json["data"] as? [String: Any] {
             for key in payload.keys.sorted() {
                 if let entry = payload[key] as? [String: Any],
                    let msg = entry["message"] as? String, !msg.isEmpty
                 {
-                    fields.append("\(key): \(msg)")
+                    let label = fieldLabels[key] ?? userFacing(key)
+                    let text = fieldMessages[entry["code"] as? String ?? ""] ?? userFacing(msg)
+                    fields.append("\(label): \(text)")
                 }
             }
         }
         switch (top.isEmpty, fields.isEmpty) {
-        case (true, true): return "HTTP \(status): \(body)"
+        case (true, true): return "HTTP \(status): \(userFacing(body))"
         case (false, true): return "HTTP \(status) — \(top)"
         case (true, false): return "HTTP \(status) — \(fields.joined(separator: " · "))"
         case (false, false): return "HTTP \(status) — \(top) (\(fields.joined(separator: " · ")))"
         }
+    }
+}
+
+extension SampleClientError {
+    /// Server field names shown with their UI term. "Placemark" is an
+    /// internal word and must never be user-visible (spec §4.9).
+    static let fieldLabels = [
+        "placemark": "Ortsangaben",
+        "placemark_suggestion": "Ortsvorschlag"
+    ]
+
+    /// Known server validation codes with a German message.
+    static let fieldMessages = [
+        "validation_invalid_placemark": "nicht zugänglich"
+    ]
+
+    /// Replaces internal place-data terms in free server text.
+    static func userFacing(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "placemark_suggestion", with: "Ortsvorschlag",
+                                  options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: "placemarks?", with: "Ortsangaben",
+                                  options: [.regularExpression, .caseInsensitive])
     }
 }
 
