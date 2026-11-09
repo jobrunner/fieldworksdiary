@@ -1,0 +1,2451 @@
+{
+  "version": 1,
+  "countries": {
+    "AD": {
+      "name": "Andorra",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Andorra"
+        },
+        "7": {
+          "column": "admin_parish",
+          "term": "Parròquies"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipality borders"
+        }
+      }
+    },
+    "AE": {
+      "name": "United Arab Emirates",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Suburbs / Quarters / Villages"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "United Arab Emirates"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Emirates (إمارة)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Capital Abu Dhabi (أبو ظبي)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Region / District (منطقة, ولاية)"
+        },
+        "7": {
+          "column": "admin_other",
+          "term": "Locality / Sub-district (in use, fixme)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities"
+        }
+      }
+    },
+    "AL": {
+      "name": "Albania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Neighbourhoods (lagje)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Shqipëria (Albania)"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Statistical regions (Northern/Central/Southern Albania)"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Counties (qark)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Municipalities (bashkia)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Administrative unit (njësia administrative)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Subdistricts (njësi bashkiake)"
+        }
+      }
+    },
+    "AM": {
+      "name": "Armenia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Village / settlement (data-derived; n/a in wiki)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Armenia"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Marz (Province) / Yerevan"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Municipality / Yerevan districts"
+        },
+        "6": {
+          "column": null,
+          "term": "City/Town"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Village"
+        },
+        "8": {
+          "column": null,
+          "term": "Neighbourhood"
+        }
+      }
+    },
+    "AT": {
+      "name": "Austria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Stadtteile / Katastralgemeinde"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Österreich"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Bundesland"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Politischer Bezirk"
+        },
+        "7": {
+          "column": null,
+          "term": "Politische Expositur"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadt-/Gemeindebezirk"
+        }
+      }
+    },
+    "AX": {
+      "name": "Åland Islands",
+      "reviewed": false,
+      "levels": {
+        "3": {
+          "column": "admin_region",
+          "term": "Åland (autonomous territory)"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Landskapet Åland (landskap / maakunta)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Seutukunta / Ekonomisk region (sub-region)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Kommun / Kunta (municipality)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Stadsdel / Kaupunginosa (district / neighbourhood)"
+        }
+      }
+    },
+    "AZ": {
+      "name": "Azerbaijan",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Azerbaijan"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Economic Regions / Autonomous republic (Nakhchivan Autonomous Republic)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Regions (rayons) and cities with authority of republic level (şəhərlər)"
+        },
+        "6": {
+          "column": null,
+          "term": "Rayon (rayonu)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (bələdiyyələr)"
+        }
+      }
+    },
+    "BA": {
+      "name": "Bosnia and Herzegovina",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "mjesna zajednica / мјесна заједница (local community)"
+        },
+        "11": {
+          "column": null,
+          "term": "mjesna zajednica / мјесна заједница (local community)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Bosna i Hercegovina / Босна и Херцеговина (Bosnia and Herzegovina)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "entitet / ентитет (entity); distrikt / дистрикт (district)"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "kanton (FBiH) / županija (FBiH) / кантон (canton, FBiH)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "grad / град (city)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "općina / opština / општина (municipality)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "mjesna zajednica / мјесна заједница (local committee)"
+        },
+        "9": {
+          "column": null,
+          "term": "naselje / насеље (settlement)"
+        }
+      }
+    },
+    "BE": {
+      "name": "Belgium",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Wijken / quartiers"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-quarters / neighbourhoods"
+        },
+        "12": {
+          "column": null,
+          "term": "Micro-neighbourhood / street-level"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Belgium"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Regions"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provinces"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Administrative arrondissements"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Deelgemeenten / sections"
+        }
+      }
+    },
+    "BG": {
+      "name": "Bulgaria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Части от квартали, махали (Suburb parts, neighborhoods)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "България (Bulgaria)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Области (Regions/oblasti)"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Общини (Municipalities/obshtini)"
+        },
+        "6": {
+          "column": "admin_borough",
+          "term": "Райони (City Districts in Sofia, Plovdiv and Varna)"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Кметства (Borders of mayoralties)"
+        },
+        "8": {
+          "column": "admin_other",
+          "term": "Землища (Borders of cities, towns and villages)"
+        },
+        "9": {
+          "column": null,
+          "term": "Квартали и предградия (Districts and suburbs)"
+        }
+      }
+    },
+    "BH": {
+      "name": "Bahrain",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Block"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Bahrain"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorate"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Municipality"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Neighbourhood"
+        }
+      }
+    },
+    "BY": {
+      "name": "Belarus",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Municipalities (населены пункт / населённый пункт)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Belarus"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Oblasts (вобласьць / область)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Regions (раён / район)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Soviets of settlement (сельсавет / cельсовет)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Suburbs (раён гораду / район города)"
+        }
+      }
+    },
+    "CH": {
+      "name": "Switzerland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Quartiere / Quartiers (Quarters)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Switzerland"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Kantone (Cantons)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Verwaltungsregionen (Régions administratives)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Bezirke / Districts (districts)"
+        },
+        "7": {
+          "column": null,
+          "term": "Kreise / Circoli (Circles)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinden / Communes (Municipalities)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadtkreise / Stadtteile / Secteurs (Suburbs)"
+        }
+      }
+    },
+    "CY": {
+      "name": "Cyprus",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Settlement"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Cyprus / Κύπρος / Kıbrıs"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "De facto partitions (Republic of Cyprus / TRNC / UN buffer zone)"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "The 6 de jure Districts"
+        },
+        "5": {
+          "column": null,
+          "term": "Districts of RoC and TRNC (5 + 6, LAU 1)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Municipalities & Community Clusters (LAU 2)"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Municipal Quarters"
+        },
+        "8": {
+          "column": null,
+          "term": "Communities"
+        },
+        "9": {
+          "column": null,
+          "term": "Municipality Districts / Parishes"
+        }
+      }
+    },
+    "CZ": {
+      "name": "Czechia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Místní výbory (Local committees) / Místní komise (Local commissions)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Česko (Czechia)"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Regiony soudržnosti (Cohesion Regions, NUTS 2)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Kraje (Regions, NUTS 3)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Okresy (Districts, LAU 1) / Prague municipal districts (obvody Prahy)"
+        },
+        "6": {
+          "column": null,
+          "term": "Správní obvody obcí s rozšířenou působností (SO ORP, administrative districts of a municipality with extended powers) / Prague administrative districts (SO Prahy)"
+        },
+        "7": {
+          "column": null,
+          "term": "Správní obvody obce s pověřeným obecním úřadem (SO POÚ, administrative districts of a municipality with an authorized municipal authority)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Obce (Municipalities, LAU 2) / Vojenské újezdy (Military areas)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Městské části / městské obvody (Municipal boroughs of statutory cities)"
+        }
+      }
+    },
+    "DE": {
+      "name": "Germany",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Stadtteil / Gemeindeteil ohne Selbstverwaltung / Gemarkung"
+        },
+        "11": {
+          "column": null,
+          "term": "Flur"
+        },
+        "12": {
+          "column": null,
+          "term": "Gemarkung-/Flur-Untergliederung (Straße/Block)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Deutschland"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Bundesland"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Regierungsbezirk"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Landkreis / Kreis / kreisfreie Stadt"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Amt / Samtgemeinde / Verwaltungsgemeinschaft"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Stadt / Gemeinde"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadtbezirk / Gemeindeteil mit Selbstverwaltung"
+        }
+      }
+    },
+    "DK": {
+      "name": "Denmark",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Stadtteil/Ortsteil (cross-border artifact)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Danmark"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Regioner"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommune"
+        },
+        "8": {
+          "column": null,
+          "term": "Kommune/Gemeinde (cross-border artifact)"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Christiansø Administration"
+        }
+      }
+    },
+    "DZ": {
+      "name": "Algeria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Neighbourhood (Hayy)"
+        },
+        "11": {
+          "column": null,
+          "term": "Locality / sub-neighbourhood"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Algeria"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Wilayah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Daïra"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "EE": {
+      "name": "Estonia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Asumid (subdistricts, in Tallinn)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Eesti"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Maakonnad (counties)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Vallad, omavalitsuslikud linnad (municipalities)"
+        },
+        "8": {
+          "column": null,
+          "term": "Tallinn and Kohtla-Järve (as settlement units)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Asustusüksused (settlement units: külad, alevikud, alevid, vallasisesed linnad); linnaosad (city districts in Tallinn and Kohtla-Järve)"
+        }
+      }
+    },
+    "EG": {
+      "name": "Egypt",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Neighbourhood / Compound (local subdivision)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Egypt"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorate (Muhafazah محافظة)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Markaz / Qism (district within governorate)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Municipal division"
+        },
+        "8": {
+          "column": null,
+          "term": "City / Town (madinah)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Village / Sub-district unit (qaryah)"
+        }
+      }
+    },
+    "EH": {
+      "name": "Western Sahara",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "República Árabe Saharaui Democrática / الجمهورية العربية الصحراوية الديمقراطية"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Province / Préfecture (إقليم)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Cercle (دائرة)"
+        },
+        "7": {
+          "column": null,
+          "term": "Caïdat / Caidats (القيادة)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (الجماعات الحضرية)"
+        }
+      }
+    },
+    "ES": {
+      "name": "Spain",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Wards (barrios / neighbourhood subdivisions)"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-ward / neighbourhood unit (not defined in wiki; derived from data)"
+        },
+        "12": {
+          "column": "admin_other",
+          "term": "Local locality/island unit (not defined in wiki; derived from data)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Frontera nacional (national border)"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Groups of Spanish autonomous communities (NUTS 1)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Comunidades autónomas (Autonomous communities, NUTS 2)"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provincias (Provinces; insular councils/cabildos via boundary=political, NUTS 3)"
+        },
+        "7": {
+          "column": "admin_county",
+          "term": "Partidos judiciales / comarcas / cuadrillas (Judicial districts, comarcas/counties, cuadrillas)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipios (Municipalities, equivalent to townships/communes)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Distritos / parroquias (Districts, parishes)"
+        }
+      }
+    },
+    "FI": {
+      "name": "Finland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "City/municipal districts (kaupunginosat / kunnanosat)"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-districts / quarters (neighbourhoods)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Finland (Suomi)"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Main areas (Pääalueet, NUTS 1)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Regions (Maakunnat, NUTS 3)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Sub-regions (Seutukunnat, LAU 1)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (Kunnat / Kaupungit, LAU 2)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Villages (kylät) / large sub-areas of city districts (kaupunginosien/kunnanosien suuralueet)"
+        }
+      }
+    },
+    "FO": {
+      "name": "Faroe Islands",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Føroyar"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "sýsla"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "kommuna"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "bygd"
+        }
+      }
+    },
+    "FR": {
+      "name": "France",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Quartiers"
+        },
+        "11": {
+          "column": null,
+          "term": "Micro-quartiers"
+        },
+        "12": {
+          "column": null,
+          "term": "Sub-quartier / local sublocality"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "France"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Territorial areas / Overseas collectivities"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Régions"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Circonscription départementale"
+        },
+        "6": {
+          "column": null,
+          "term": "Départements"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Arrondissements"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Communes"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Arrondissements municipaux / communes associées / communes déléguées"
+        }
+      }
+    },
+    "GB": {
+      "name": "United Kingdom",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_parish",
+          "term": "Civil parishes / Communities (Cymunedau) / Community councils / Townlands"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-parish / sub-community units"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "United Kingdom"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Countries (England, Scotland, Wales / Cymru, Northern Ireland)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Combined Authorities and Greater London"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Counties / Metropolitan counties / Unitary authorities / Council areas / Principal areas (Awdurdodau unedol)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Local government district (Northern Ireland)"
+        },
+        "8": {
+          "column": null,
+          "term": "Metropolitan districts, non-metropolitan districts, London boroughs"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Electoral Division (Northern Ireland)"
+        }
+      }
+    },
+    "GE": {
+      "name": "Georgia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "City administrative district (რაიონი, raioni)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "საქართველო (Georgia)"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Disputed/autonomous territory (Abkhazia, South Ossetia/Samachablo)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Autonomous republic / region (მხარე, mkhare) / Tbilisi"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Municipality (მუნიციპალიტეტი, munitsipaliteti)"
+        },
+        "7": {
+          "column": null,
+          "term": "Undocumented (level n/a in wiki; single data feature)"
+        },
+        "8": {
+          "column": null,
+          "term": "City limits (settlement boundary)"
+        }
+      }
+    },
+    "GG": {
+      "name": "Guernsey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Cantons"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Guernsey"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Islands with separate jurisdictions"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parishes"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Subdivisions of Vale (Vingtaines)"
+        }
+      }
+    },
+    "GI": {
+      "name": "Gibraltar",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Gibraltar"
+        },
+        "4": {
+          "column": "admin_other",
+          "term": "Gibraltar"
+        }
+      }
+    },
+    "GR": {
+      "name": "Greece",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Κοινότητες (Communities / sub-community settlement units)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ελλάς (Greece)"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Αυτόνομη Μοναστική Πολιτεία Αγίου Όρους (Autonomous Monastic State of Mount Athos)"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Αποκεντρωμένες διοικήσεις (Decentralized Administrations)"
+        },
+        "5": {
+          "column": "admin_state",
+          "term": "Περιφέρειες (Regions, NUTS 2)"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Περιφερειακές ενότητες (Regional units, NUTS 3)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Δήμοι (Municipalities)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Δημοτικές ενότητες (Municipal units)"
+        },
+        "9": {
+          "column": null,
+          "term": "Δημοτικές/Τοπικές κοινότητες (Municipal/local communities, LAU)"
+        }
+      }
+    },
+    "HR": {
+      "name": "Croatia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "local committees of Zagreb (mjesni odbori Zagreba)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Croatia (Hrvatska)"
+        },
+        "4": {
+          "column": "admin_county",
+          "term": "counties (županije)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "cities/towns or municipalities (gradovi ili općine)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "settlements (naselja)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "city districts or local committees (gradske četvrti/kotari ili mjesni odbori)"
+        }
+      }
+    },
+    "HU": {
+      "name": "Hungary",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "City quarters / neighbourhoods (városrész)"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-neighbourhoods / housing estates (lakótelep)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Magyarország (Hungary, country)"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Országrészek (Groups of Regions, NUTS 1)"
+        },
+        "5": {
+          "column": null,
+          "term": "Régiók (Regions, NUTS 2)"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Megyék / főváros (Counties / capital city, NUTS 3)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Járások (LAU 1)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Települések (LAU 2)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Kerületek (Districts of cities)"
+        }
+      }
+    },
+    "IE": {
+      "name": "Ireland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Townland"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ireland"
+        },
+        "4": {
+          "column": "admin_other",
+          "term": "Reserved for compatibility with UK states (eg Northern Ireland)"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Province"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "County"
+        },
+        "7": {
+          "column": null,
+          "term": "Administrative County, County City"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Borough & Town council, Dublin Postal Districts"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Electoral Division"
+        }
+      }
+    },
+    "IL": {
+      "name": "Israel",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "שכונה / Neighborhood"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-neighborhood"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Israel / Palestine"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "מחוז / District (including West Bank and Gaza Strip)"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "נפה / Subdistrict (West Bank: Areas A, B, C)"
+        },
+        "6": {
+          "column": "admin_region",
+          "term": "אזור טבעי / Natural Region (in Palestinian Territory: נפה / Subdistrict)"
+        },
+        "7": {
+          "column": null,
+          "term": "מטרופולין / Metropolitan area"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "עיר, מועצה מקומית, מועצה אזורית / City, Local council, Regional council (in Palestinian Territory: Municipality grade 1, 2)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "רובע / Borough (under regional council: יישוב / Village; in Palestinian Territory: Municipality grade 3, 4)"
+        }
+      }
+    },
+    "IM": {
+      "name": "Isle of Man",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Isle of Man"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Sheading"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parish / Town"
+        }
+      }
+    },
+    "IQ": {
+      "name": "Iraq",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Iraq"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Iraqi Kurdistan region"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorate (muḥāfażah)"
+        },
+        "5": {
+          "column": "admin_other",
+          "term": "Baghdad city / governorate-internal division"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "District (qadha)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Subdistrict (nahya)"
+        },
+        "8": {
+          "column": "admin_borough",
+          "term": "Borough (hay, urban) / County (mukataa, rural)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Neighbourhood (mahalla, urban) / Village (qarya, rural)"
+        }
+      }
+    },
+    "IR": {
+      "name": "Iran",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Urban Area (ناحیه شهری)"
+        },
+        "11": {
+          "column": null,
+          "term": "Neighborhood (محله / Mahaleh)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Iran (country)"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Province (استان / Ostan)"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "County (شهرستان / Shahrestan)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "District (بخش / Bakhsh)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "City (شهر / Shahr) / Municipality or rural agglomeration (دهستان / Dehestan)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Village (روستا / Rousta)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Urban District (منطقه شهری)"
+        }
+      }
+    },
+    "IS": {
+      "name": "Iceland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Hverfahlutar (Neighbourhoods)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ísland (Iceland)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Landshlutar (Regions)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Sveitarfélög (Municipalities)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Álftanes (sub-municipal locality)"
+        },
+        "9": {
+          "column": "admin_district",
+          "term": "Hverfi (Districts)"
+        }
+      }
+    },
+    "IT": {
+      "name": "Italy",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Circoscrizioni / Località"
+        },
+        "11": {
+          "column": null,
+          "term": "Frazioni / sub-circoscrizioni (sub-municipal; wiki n/a)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Italia"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Regioni"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Province"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Comunità montane / Unioni di comuni"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Comuni"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Zone / Castelli (sub-municipal; wiki n/a)"
+        }
+      }
+    },
+    "JE": {
+      "name": "Jersey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Cantons"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Jersey"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parishes"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Vingtaines"
+        }
+      }
+    },
+    "JO": {
+      "name": "Jordan",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Jordan"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorate (muhafazah)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "District (liwa')"
+        },
+        "6": {
+          "column": null,
+          "term": "District / Subdistrict (qada'/nahiya)"
+        },
+        "7": {
+          "column": null,
+          "term": "Subdistrict (nahiyah)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Locality / municipal area"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Subdivision (uncertain)"
+        }
+      }
+    },
+    "KW": {
+      "name": "Kuwait",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Kuwait"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorates (Mouhafazah محافظة)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Cities / Towns"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "City blocks / Towns blocks (Qit'a قطعة)"
+        }
+      }
+    },
+    "LI": {
+      "name": "Liechtenstein",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Liechtenstein"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Wahlkreis (Electoral district)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde (Municipality)"
+        }
+      }
+    },
+    "LT": {
+      "name": "Lithuania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Miesto / miestelio dalys / miesto seniūnijos (City/town suburbs)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Lietuva (Lithuania)"
+        },
+        "4": {
+          "column": "admin_county",
+          "term": "Apskritys (Counties)"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Savivaldybės / Rajonai (Municipalities)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Seniūnijos (Elderships)"
+        },
+        "8": {
+          "column": null,
+          "term": "Miestai / miesteliai / kaimai (Cities / towns / villages)"
+        }
+      }
+    },
+    "LU": {
+      "name": "Luxembourg",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Locality / quarter"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Luxembourg"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Cantons"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Communes"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Sections / Villages / Neighbourhoods"
+        }
+      }
+    },
+    "LV": {
+      "name": "Latvia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Suburbs (Priekšpilsētas)"
+        },
+        "11": {
+          "column": null,
+          "term": "Villages / sub-village localities (Ciemi)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Latvija"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Municipalities (Novadi), Cities (Valstspilsētas)"
+        },
+        "7": {
+          "column": null,
+          "term": "Towns (Pilsētas)"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Rural territories (Pagasti)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Villages (Ciemi)"
+        }
+      }
+    },
+    "LY": {
+      "name": "Libya",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Libya"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "District (Shabiya)"
+        }
+      }
+    },
+    "MA": {
+      "name": "Morocco",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Arrondissement"
+        },
+        "11": {
+          "column": "admin_submunicipality",
+          "term": "Hay / quartier (neighbourhood)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Maroc (country)"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Région"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Préfecture / Province"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Cercle"
+        },
+        "7": {
+          "column": null,
+          "term": "Caïdat"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        },
+        "9": {
+          "column": null,
+          "term": "Préfecture d'arrondissements"
+        }
+      }
+    },
+    "MC": {
+      "name": "Monaco",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Quartiers administratifs"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Monaco"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "MD": {
+      "name": "Moldova",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Quarters (Cartiere)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Republic of Moldova"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Disputed territory - unrecognized state (Transnistria)"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "Raions / Municipalities (raioane, municipii, autonomous unit)"
+        },
+        "5": {
+          "column": null,
+          "term": "Transnistrian raions / cities (left-bank districts)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "First level Municipalities (Municipiile de nivelul I)"
+        },
+        "7": {
+          "column": "admin_borough",
+          "term": "Chișinău Municipality's sectors (Sectoarele Municipiului Chișinău)"
+        },
+        "8": {
+          "column": null,
+          "term": "Communes / cities / villages (sate, orașe, municipii)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Intravilan limit of villages, towns and cities (Limita intravilana a satelor, orașelor și municipiilor)"
+        }
+      }
+    },
+    "ME": {
+      "name": "Montenegro",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Crna Gora (Montenegro)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "opštine (municipalities)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "naselja (settlements)"
+        },
+        "9": {
+          "column": null,
+          "term": "sub-settlement / local community units (mjesne zajednice or hamlets)"
+        }
+      }
+    },
+    "MK": {
+      "name": "North Macedonia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Маало / Локалитет (neighbourhood / locality)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Северна Македонија (North Macedonia)"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Статистички Региони (Statistical regions)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Град Скопје (City of Skopje)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Општини (Municipalities)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Град/Село (city / town / village)"
+        },
+        "9": {
+          "column": null,
+          "term": "Населби (suburb)"
+        }
+      }
+    },
+    "MT": {
+      "name": "Malta",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Sub-locality / quarter"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Malta"
+        },
+        "6": {
+          "column": "admin_region",
+          "term": "Islands (gżejjer)"
+        },
+        "7": {
+          "column": null,
+          "term": "Regions (reġjuni)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Local councils (kunsilli lokali)"
+        }
+      }
+    },
+    "NE": {
+      "name": "Niger",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Niger"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Régions"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Départements"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Communes"
+        }
+      }
+    },
+    "NL": {
+      "name": "Netherlands",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Settlements (woonplaatsen)"
+        },
+        "12": {
+          "column": null,
+          "term": "Neighbourhoods (buurten)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Kingdom of the Netherlands"
+        },
+        "3": {
+          "column": "admin_state",
+          "term": "Countries (landen / constituent countries)"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Provinces (provincies)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (gemeenten)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Submunicipal / cross-border enclave units"
+        }
+      }
+    },
+    "NO": {
+      "name": "Norway",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Norway"
+        },
+        "4": {
+          "column": "admin_county",
+          "term": "County (Fylke)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Municipality (Kommune)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Bydel"
+        }
+      }
+    },
+    "OM": {
+      "name": "Oman",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Blocks/Subdivisions of Villages and Towns (مجمع او تقسيمات قرى/مدن)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Oman"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorate (محافظة)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Provinces (ولاية)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Villages/Towns (قرية أو مدينة)"
+        }
+      }
+    },
+    "PL": {
+      "name": "Poland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "przysiółki (isolated parts of villages)"
+        },
+        "11": {
+          "column": null,
+          "term": "osiedla (neighbourhoods)"
+        },
+        "12": {
+          "column": null,
+          "term": "osiedla / sub-neighbourhood units"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Polska"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "województwa (voivodeships)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "metropolis / metropolitan association (e.g. Górnośląsko-Zagłębiowska Metropolia)"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "powiaty (counties)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "gminy (municipalities)"
+        },
+        "8": {
+          "column": null,
+          "term": "miasta, miasteczka i wsie (cities, towns and villages)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "dzielnice (city districts)"
+        }
+      }
+    },
+    "PS": {
+      "name": "Palestinian Territory",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Neighborhood"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Palestine"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "District (including West Bank and Gaza Strip)"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Subdistrict (Areas A, B, C of West Bank)"
+        },
+        "6": {
+          "column": null,
+          "term": "Subdistrict"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipality (grade 1, 2)"
+        },
+        "9": {
+          "column": null,
+          "term": "Municipality (grade 3, 4)"
+        }
+      }
+    },
+    "PT": {
+      "name": "Portugal",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Portugal"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Regiões autónomas (Autonomous Regions)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Distritos (Districts)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Municípios (Municipalities)"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Freguesias (Civil parishes)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Sub-parish / localidade (undocumented sub-freguesia unit)"
+        }
+      }
+    },
+    "QA": {
+      "name": "Qatar",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Districts"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Qatar"
+        },
+        "4": {
+          "column": "admin_municipality",
+          "term": "Municipalities (baladiyah مدينة)"
+        }
+      }
+    },
+    "RO": {
+      "name": "Romania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Neighbourhoods (Cartiere)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "România"
+        },
+        "4": {
+          "column": "admin_county",
+          "term": "Județe (counties) in data; wiki defines L4 as Macroregions (NUTS1)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Regions (NUTS2)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Metropolitan zones (Zone Metropolitane) / inter-municipal associations"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (Comune, Orașe, Municipii); Bucharest's sectors"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Villages, administrative parts of cities / municipalities (incl. Bucharest sectors)"
+        }
+      }
+    },
+    "RS": {
+      "name": "Serbia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "local communities (месне заједнице)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Serbia (Србија)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "autonomous provinces (аутономне покрајине; also Serbia - North / Serbia - South NUTS1 regions)"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "regions (региони, NUTS2)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "administrative districts (управни окрузи / области, NUTS3)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "cities (градови)"
+        },
+        "8": {
+          "column": null,
+          "term": "municipalities and urban municipalities (општине и градске општине)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "settlements (насеља)"
+        }
+      }
+    },
+    "RU": {
+      "name": "Russia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Hamlets / suburbs (under discussion)"
+        },
+        "11": {
+          "column": null,
+          "term": "Okrug (sub-district of city)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Russian Federation"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Federal districts"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Federal subjects"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Groups of municipal districts / urban okrugs, administrative okrugs / districts of federal cities"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Municipal districts and okrugs of federal subjects (except federal cities), urban okrugs, including ZATO and urban okrugs with intracity division"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Urban and rural municipalities, municipal intra-city territories of federal cities, districts of urban okrugs with intracity division"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Districts and other administrative-territorial units of urban and municipal okrugs"
+        }
+      }
+    },
+    "SA": {
+      "name": "Saudi Arabia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Districts / quarters (حي / hayy)"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-district / locality"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Saudi Arabia"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Haram boundary (special religious zone)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Regions (منطقة / mintaqah)"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Governorate (محافظة / muhafazah)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Sub-governorate / local unit"
+        },
+        "8": {
+          "column": null,
+          "term": "Local administrative area (islands/clusters)"
+        },
+        "9": {
+          "column": "admin_municipality",
+          "term": "Municipalities (بلدية / baladiyah)"
+        }
+      }
+    },
+    "SE": {
+      "name": "Sweden",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Stadsdel / Primärområde"
+        },
+        "11": {
+          "column": null,
+          "term": "Stadsdel (sub-area)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Sverige"
+        },
+        "4": {
+          "column": "admin_county",
+          "term": "Län"
+        },
+        "6": {
+          "column": "admin_other",
+          "term": "Sameby"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommun"
+        },
+        "8": {
+          "column": "admin_district",
+          "term": "Distrikt"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadsdelsområde / Stadsdelsnämndsområde"
+        }
+      }
+    },
+    "SI": {
+      "name": "Slovenia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Meje naselij (settlement boundaries; suburbs, hamlets)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Slovenija"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Pokrajine (regions, reserved/not finalized)"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Upravne enote (administrative units, LAU 1)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Občine (municipalities, LAU 2)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Krajevne skupnosti (local communities)"
+        }
+      }
+    },
+    "SJ": {
+      "name": "Svalbard and Jan Mayen",
+      "reviewed": false,
+      "levels": {
+        "4": {
+          "column": "admin_region",
+          "term": "Svalbard"
+        }
+      }
+    },
+    "SK": {
+      "name": "Slovakia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Výbory v mestských častiach (Committees of town parts)"
+        },
+        "11": {
+          "column": null,
+          "term": "Localities / urban quarters (sub-borough units)"
+        },
+        "12": {
+          "column": null,
+          "term": "Sídliská / micro-localities (sub-locality units)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Slovensko"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Oblasti (Groups of Regions, NUTS 2 / RŠÚJ 2)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Samosprávne kraje (Regions, NUTS 3 / RŠÚJ 3)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Bratislava and Košice (city-regions)"
+        },
+        "6": {
+          "column": null,
+          "term": "Okresy (Districts, LAU 1 / RŠÚJ 4)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Obce (Municipalities, LAU 2 / RŠÚJ 5)"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Mestské časti (Municipal boroughs of Bratislava and Košice)"
+        }
+      }
+    },
+    "SM": {
+      "name": "San Marino",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "San Marino"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provincia (Rimini)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipalities (castelli)"
+        }
+      }
+    },
+    "SY": {
+      "name": "Syria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Damascus neighborhoods (hayy / الحي)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Syria"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Governorates (muhafazah / محافظة)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Districts (mintaqah / منطقة)"
+        },
+        "6": {
+          "column": null,
+          "term": "Subdistricts (nahiya / ناحية)"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Cities, towns and villages of subdistrict / Damascus municipalities (baladiyah / بلدية)"
+        }
+      }
+    },
+    "TN": {
+      "name": "Tunisia",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Tunisia"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Gouvernorats (Governorates / ولاية)"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Delegations / Districts (Mu'tamadiyat / معتمدية)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Imadats / Sectors (عمادة)"
+        }
+      }
+    },
+    "TR": {
+      "name": "Turkey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mevki (village subdivision / locality within a village)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Türkiye"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Bölge (geographical/census region, NUTS 1)"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "İl (province, NUTS 3)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "İlçe (district, LAU 1 / NUTS 4)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "İncorporated village / belde (LAU 2 / NUTS 5)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Mahalle / köy (neighbourhoods and unincorporated villages)"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Mezra (hamlet / dependent settlement)"
+        }
+      }
+    },
+    "UA": {
+      "name": "Ukraine",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "City districts (raions in cities) / Райони в містах"
+        },
+        "11": {
+          "column": null,
+          "term": "Sub-district / locality unit (single empirical case)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ukraine / Україна (country)"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Crimea, Oblasts, Kyiv and Sevastopol / АР Крим, області, Київ і Севастополь (oblasts and cities with special status)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Crimea rayons, rayons in oblasts, cities of regional significance / Райони в Криму, райони в областях, міста обласного значення (rayons / regional-significance cities)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Administrative rayons in cities and towns, united territorial communities (hromadas) / Адміністративні райони у містах, об'єднані територіальні громади"
+        },
+        "8": {
+          "column": null,
+          "term": "Local radas (councils) in rayons of Crimea and oblasts / Місцеві ради в районах Криму і областей (міські, селищні, сільські ради)"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Settlements per se / Власне населені пункти"
+        }
+      }
+    },
+    "VA": {
+      "name": "Vatican City",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Holy See (Vatican City)"
+        }
+      }
+    },
+    "XK": {
+      "name": "Kosovo",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "City districts and neighbourhoods (Lagjjet)"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Kosova / Kosovo"
+        },
+        "4": {
+          "column": "admin_district",
+          "term": "Districts (Rajonet e Kosovës)"
+        },
+        "5": {
+          "column": null,
+          "term": "Rajoni / okrug (districts/regions)"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Municipalities (Komunat e Kosovës)"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Settlements / Cadastral zones (Zonat kadastrale)"
+        },
+        "9": {
+          "column": null,
+          "term": "Settlements / sub-cadastral units"
+        }
+      }
+    },
+    "YE": {
+      "name": "Yemen",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Yemen"
+        },
+        "4": {
+          "column": "admin_province",
+          "term": "Governorates (محافظة)"
+        },
+        "5": {
+          "column": "admin_other",
+          "term": "Aden (مدينة عدن)"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Districts (مديرية)"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Villages"
+        }
+      }
+    }
+  }
+}

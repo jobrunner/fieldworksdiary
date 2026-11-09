@@ -9,6 +9,7 @@ require (
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.22.42
 	golang.org/x/text v0.39.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

@@ -1062,7 +1062,7 @@ Aufgaben:
 
 Phase O1 – Backend
 - [x] Task 0: Phasenstatus eintragen
-- [ ] Task 1: Label-Tabelle – Format, Generator, Go-Loader
+- [x] Task 1: Label-Tabelle – Format, Generator, Go-Loader
 - [ ] Task 2: Label-Tabelle – Bereinigungsentwurf aller 77 Länder
 - [ ] Task 3: TK25-Quadrant (Go)
 - [ ] Task 4: Ortus-Wrapper
