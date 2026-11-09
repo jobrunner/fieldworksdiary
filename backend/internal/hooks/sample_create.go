@@ -169,6 +169,11 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 	rec.Set("fieldtrip", ftID)
 	rec.Set("owner", ownerID)
 	rec.Set("sample_id", finalCode)
+	// Without location data from the client the backend enrichment
+	// fills the place after the insert (see internal/enrichment).
+	if strings.TrimSpace(rec.GetString("location_status")) == "" {
+		rec.Set("location_status", "pending")
+	}
 	return nil
 }
 

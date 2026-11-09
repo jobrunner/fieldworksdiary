@@ -5,10 +5,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/adminlabels"
+	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 
@@ -19,44 +24,6 @@ import (
 // ────────────────────────────────────────────────────────────────────
 // Pure-Function-Tests — keine DB, kein Netz
 // ────────────────────────────────────────────────────────────────────
-
-func TestLocalityFromAdminUnits(t *testing.T) {
-	cases := []struct {
-		name string
-		raw  string
-		want string
-	}{
-		{"happy", `{"locality":"Würzburg","country":"DE"}`, "Würzburg"},
-		{"missing field", `{"country":"DE"}`, ""},
-		{"empty json", `{}`, ""},
-		{"malformed", `{not-json`, ""},
-		{"empty string", ``, ""},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := localityFromAdminUnits(c.raw); got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
-			}
-		})
-	}
-}
-
-func TestHasDefaultPrefix(t *testing.T) {
-	cases := map[string]bool{
-		"Sammeltag 19.05.2026": true,
-		"Sammeltag":            false, // ohne trailing-Space → kein Default
-		"Heidehöhe":            false,
-		"":                     false,
-		"Sammeltag X":          true,
-	}
-	for input, want := range cases {
-		t.Run(input, func(t *testing.T) {
-			if got := hasDefaultPrefix(input); got != want {
-				t.Errorf("hasDefaultPrefix(%q) = %v, want %v", input, got, want)
-			}
-		})
-	}
-}
 
 func TestCentroid_EmptyReturnsZero(t *testing.T) {
 	lat, lon := centroid(nil)
@@ -82,35 +49,6 @@ func TestCentroid_AveragesLatLon(t *testing.T) {
 	lat, lon := centroid(samples)
 	if lat != 50.0 || lon != 10.0 {
 		t.Errorf("centroid = (%v, %v), want (50.0, 10.0)", lat, lon)
-	}
-}
-
-func TestDecodeAdminUnits(t *testing.T) {
-	cases := []struct {
-		name      string
-		raw       string
-		wantNil   bool
-		wantField string
-	}{
-		{"happy", `{"locality":"Würzburg","adminArea":"Bayern","country":"DE"}`, false, "Würzburg"},
-		{"empty", ``, true, ""},
-		{"malformed", `[1,2,3]`, true, ""}, // Array statt Object → Unmarshal-Fehler
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := decodeAdminUnits(c.raw)
-			if c.wantNil {
-				if got != nil {
-					t.Errorf("got %v, want nil", got)
-				}
-				return
-			}
-			if got == nil {
-				t.Fatalf("got nil, want non-nil")
-			} else if got.Locality != c.wantField {
-				t.Errorf("Locality = %q, want %q", got.Locality, c.wantField)
-			}
-		})
 	}
 }
 
@@ -145,70 +83,6 @@ func newAppForRecordsOnly(t *testing.T) *tests.TestApp {
 	}
 	t.Cleanup(app.Cleanup)
 	return app
-}
-
-// fakeServices spinnt zwei httptest-Server hoch, die Labelloc- und
-// MTB-Responses simulieren. Beide Behaviors steuerbar via Felder.
-type fakeServices struct {
-	t              *testing.T
-	labelloc       *httptest.Server
-	mtb            *httptest.Server
-	labellocLocale string
-	labellocFail   bool
-	labellocHits   int
-	mtbHits        int
-}
-
-func newFakeServices(t *testing.T) *fakeServices {
-	t.Helper()
-	f := &fakeServices{t: t, labellocLocale: "Würzburg"}
-	f.labelloc = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.labellocHits++
-		if f.labellocFail {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"result": map[string]any{
-				"country":   "Deutschland",
-				"adminArea": "Bayern",
-				"locality":  f.labellocLocale,
-			},
-			"status": map[string]any{"code": 200, "message": "OK"},
-		})
-	}))
-	t.Cleanup(f.labelloc.Close)
-
-	f.mtb = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		f.mtbHits++
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"result": map[string]any{
-				"sheet_number": "6225",
-				"sheet_name":   "Würzburg Nord",
-				"quadrant":     3,
-				"found":        true,
-			},
-			"status": map[string]any{"code": 200, "message": "OK"},
-		})
-	}))
-	t.Cleanup(f.mtb.Close)
-	return f
-}
-
-func (f *fakeServices) labellocClient() *services.Labelloc {
-	return &services.Labelloc{
-		BaseURL:    f.labelloc.URL,
-		HTTPClient: &http.Client{Timeout: 2 * time.Second},
-		MaxRetries: 1,
-	}
-}
-
-func (f *fakeServices) mtbClient() *services.MTB {
-	return &services.MTB{
-		BaseURL:    f.mtb.URL,
-		HTTPClient: &http.Client{Timeout: 2 * time.Second},
-		MaxRetries: 1,
-	}
 }
 
 // createOwnerSampleFieldtrip legt einen User + eine Fieldtrip + ein
@@ -257,126 +131,6 @@ func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float
 	return user.Id, sam.Id, ft.Id
 }
 
-func TestEnricher_Run_PopulatesAdminUnitsAndMTB(t *testing.T) {
-	app := newAppForRecordsOnly(t)
-	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
-
-	fakes := newFakeServices(t)
-	e := &Enricher{
-		App:      app,
-		Labelloc: fakes.labellocClient(),
-		MTB:      fakes.mtbClient(),
-		Timeout:  5 * time.Second,
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	e.run(ctx, sampleID, 49.793, 9.939)
-
-	// admin_units is propagated straight to the fieldtrip (R7.4 dropped
-	// the per-sample column); mtb still lands on the sample.
-	got, err := app.Dao().FindRecordById("samples", sampleID)
-	if err != nil {
-		t.Fatalf("re-fetch sample: %v", err)
-	}
-	if mtb := got.GetString("mtb"); !strings.Contains(mtb, "6225") {
-		t.Errorf("mtb = %q, expected to contain sheet 6225", mtb)
-	}
-	ft, err := app.Dao().FindRecordById("fieldtrips", ftID)
-	if err != nil {
-		t.Fatalf("re-fetch fieldtrip: %v", err)
-	}
-	if au := ft.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
-		t.Errorf("fieldtrip.admin_units = %q, expected to contain Würzburg", au)
-	}
-	if fakes.labellocHits != 1 || fakes.mtbHits != 1 {
-		t.Errorf("hits: labelloc=%d mtb=%d, want 1 each", fakes.labellocHits, fakes.mtbHits)
-	}
-}
-
-func TestEnricher_Run_NilServicesIsNoOp(t *testing.T) {
-	app := newAppForRecordsOnly(t)
-	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
-
-	e := &Enricher{App: app}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	e.run(ctx, sampleID, 49.793, 9.939)
-
-	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	if au := ft.GetString("admin_units"); au != "" {
-		t.Errorf("fieldtrip.admin_units = %q, want empty (no service registered)", au)
-	}
-}
-
-func TestEnricher_Run_LabellocFailureDoesNotBlockMTB(t *testing.T) {
-	app := newAppForRecordsOnly(t)
-	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
-
-	fakes := newFakeServices(t)
-	fakes.labellocFail = true
-	e := &Enricher{
-		App:      app,
-		Labelloc: fakes.labellocClient(),
-		MTB:      fakes.mtbClient(),
-		Timeout:  5 * time.Second,
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	e.run(ctx, sampleID, 49.793, 9.939)
-
-	got, _ := app.Dao().FindRecordById("samples", sampleID)
-	if mtb := got.GetString("mtb"); !strings.Contains(mtb, "6225") {
-		t.Errorf("mtb was not saved despite labelloc failure: %q", mtb)
-	}
-	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	if au := ft.GetString("admin_units"); au != "" {
-		t.Errorf("fieldtrip.admin_units = %q, want empty after labelloc 500", au)
-	}
-}
-
-func TestMaybePropagateToFieldtrip_FillsEmptyFields(t *testing.T) {
-	app := newAppForRecordsOnly(t)
-	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
-
-	// admin_units kommt jetzt als Parameter (R7.4); fieldtrip leer lassen.
-	sample, _ := app.Dao().FindRecordById("samples", sampleID)
-	adminUnits := `{"locality":"Würzburg","country":"DE","adminArea":"Bayern"}`
-
-	e := &Enricher{App: app}
-	e.maybePropagateToFieldtrip(sample, adminUnits)
-
-	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	if au := ft.GetString("admin_units"); !strings.Contains(au, "Würzburg") {
-		t.Errorf("fieldtrip.admin_units = %q, want propagated", au)
-	}
-	// Name war initial leer → auto-name: "Würzburg — 2026-05-19"
-	if name := ft.GetString("title"); !strings.Contains(name, "Würzburg") {
-		t.Errorf("fieldtrip.name = %q, want auto-promoted with locality", name)
-	}
-}
-
-func TestMaybePropagateToFieldtrip_PreservesManualName(t *testing.T) {
-	app := newAppForRecordsOnly(t)
-	_, sampleID, ftID := createOwnerSampleFieldtrip(t, app, 49.793, 9.939)
-
-	// User-vergebener Name → muss erhalten bleiben.
-	ft, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	ft.Set("title", "Heidehöhe Würzburg")
-	if err := app.Dao().SaveRecord(ft); err != nil {
-		t.Fatalf("save fieldtrip: %v", err)
-	}
-
-	sample, _ := app.Dao().FindRecordById("samples", sampleID)
-
-	e := &Enricher{App: app}
-	e.maybePropagateToFieldtrip(sample, `{"locality":"Würzburg"}`)
-
-	ft2, _ := app.Dao().FindRecordById("fieldtrips", ftID)
-	if got := ft2.GetString("title"); got != "Heidehöhe Würzburg" {
-		t.Errorf("title = %q, want 'Heidehöhe Würzburg' (kein Overwrite)", got)
-	}
-}
-
 func TestEnricher_RunSafely_RecoversFromDownstreamPanic(t *testing.T) {
 	app := newAppForRecordsOnly(t)
 
@@ -394,12 +148,472 @@ func TestEnricher_RunSafely_RecoversFromDownstreamPanic(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		e.runSafely("does-not-exist", 0, 0, "")
+		e.runSafely("does-not-exist", "")
 	}()
 	select {
 	case <-done:
 		// gut: kein Panic durchgereicht
 	case <-time.After(5 * time.Second):
 		t.Fatal("runSafely hat nicht innerhalb von 5s zurückgekehrt")
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Ortus-Anreicherung — httptest-Ortus mit den geteilten Testdaten
+// ────────────────────────────────────────────────────────────────────
+
+const ortusTestdata = "../../../shared/testdata/ortus/"
+
+// Ochsenfurt-Koordinate aus query_de_ochsenfurt.json.
+const (
+	deLat = 49.681616
+	deLon = 10.039652
+)
+
+// fakeOrtus serves one of the shared Ortus fixtures (regardless of the
+// queried coordinate) and counts hits.
+type fakeOrtus struct {
+	srv     *httptest.Server
+	fixture atomic.Value // string
+	fail    atomic.Bool
+	hits    atomic.Int64
+}
+
+func newFakeOrtus(t *testing.T, fixture string) *fakeOrtus {
+	t.Helper()
+	f := &fakeOrtus{}
+	f.fixture.Store(fixture)
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.hits.Add(1)
+		if f.fail.Load() {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		raw, err := os.ReadFile(filepath.Join(ortusTestdata, f.fixture.Load().(string)))
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(raw)
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+func (f *fakeOrtus) client() *services.Ortus {
+	return &services.Ortus{
+		BaseURL:    f.srv.URL,
+		HTTPClient: &http.Client{Timeout: 2 * time.Second},
+		MaxRetries: 1,
+	}
+}
+
+func newOrtusEnricher(app *tests.TestApp, f *fakeOrtus) *Enricher {
+	return &Enricher{App: app, Ortus: f.client(), Labels: adminlabels.Default(), Timeout: 5 * time.Second}
+}
+
+func runEnrich(t *testing.T, e *Enricher, sampleID string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	e.run(ctx, sampleID)
+}
+
+// fixturePlace maps a shared fixture onto its Place.
+func fixturePlace(t *testing.T, name string, lat, lon float64) geoplace.Place {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(ortusTestdata, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var r services.OrtusResponse
+	if err := json.Unmarshal(raw, &r); err != nil {
+		t.Fatal(err)
+	}
+	res := geoplace.FromOrtus(&r, lat, lon, adminlabels.Default())
+	if res.Place == nil {
+		t.Fatalf("fixture %s has no place", name)
+	}
+	return *res.Place
+}
+
+func updateSample(t *testing.T, app *tests.TestApp, id string, fields map[string]any) {
+	t.Helper()
+	rec, err := app.Dao().FindRecordById("samples", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range fields {
+		rec.Set(k, v)
+	}
+	if err := app.Dao().SaveRecord(rec); err != nil {
+		t.Fatalf("save sample: %v", err)
+	}
+}
+
+func loadSample(t *testing.T, app *tests.TestApp, id string) *models.Record {
+	t.Helper()
+	rec, err := app.Dao().FindRecordById("samples", id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rec
+}
+
+func sampleFeatures(t *testing.T, app *tests.TestApp, id string) []*models.Record {
+	t.Helper()
+	recs, err := app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0,
+		map[string]any{"s": id})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return recs
+}
+
+func TestEnrich_PendingGetsPlacemarkFeaturesMTB(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{"location_status": "pending"})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	if got := s.GetString("location_status"); got != "backend_service" {
+		t.Errorf("location_status = %q, want backend_service", got)
+	}
+	pmID := s.GetString("placemark")
+	if pmID == "" {
+		t.Fatal("placemark not set")
+	}
+	pm, err := app.Dao().FindRecordById("placemarks", pmID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pm.GetString("admin_municipality"); got != "Ochsenfurt" {
+		t.Errorf("placemark.admin_municipality = %q, want Ochsenfurt", got)
+	}
+	if got := pm.GetString("geocoding_source"); got != "backend_service" {
+		t.Errorf("placemark.geocoding_source = %q, want backend_service", got)
+	}
+	if got := pm.GetString("owner"); got != "" {
+		t.Errorf("placemark.owner = %q, want empty (shared backend_service placemark)", got)
+	}
+	if got := s.GetString("placemark_suggestion"); got != "" {
+		t.Errorf("placemark_suggestion = %q, want empty", got)
+	}
+	if got := s.GetString("mtb_sheet_number"); got != "6326" {
+		t.Errorf("mtb_sheet_number = %q, want 6326", got)
+	}
+	if got := s.GetString("mtb_sheet_name"); got != "Ochsenfurt" {
+		t.Errorf("mtb_sheet_name = %q, want Ochsenfurt", got)
+	}
+	if got := s.GetInt("mtb_quadrant"); got != 1 {
+		t.Errorf("mtb_quadrant = %d, want 1", got)
+	}
+	if got := s.GetString("bearing_label"); got != "2 km WNW Ochsenfurt" {
+		t.Errorf("bearing_label = %q", got)
+	}
+	if got := s.GetFloat("slope_deg"); got != 8.4 {
+		t.Errorf("slope_deg = %v, want 8.4", got)
+	}
+	feats := sampleFeatures(t, app, sampleID)
+	if len(feats) != 2 {
+		t.Fatalf("features = %d, want 2", len(feats))
+	}
+	for _, fr := range feats {
+		if got := fr.GetString("owner"); got != ownerID {
+			t.Errorf("feature owner = %q, want sample owner %q", got, ownerID)
+		}
+	}
+	if f.hits.Load() != 1 {
+		t.Errorf("ortus hits = %d, want 1", f.hits.Load())
+	}
+}
+
+func TestEnrich_EmptyStatusTreatedAsPending(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	if got := s.GetString("location_status"); got != "backend_service" {
+		t.Errorf("location_status = %q, want backend_service", got)
+	}
+	if s.GetString("placemark") == "" {
+		t.Error("placemark not set")
+	}
+}
+
+func TestEnrich_InheritedDifferentPlaceSplits(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+
+	// Placemark A: the inherited one from the previous sample (La Palma).
+	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status":      "inherited",
+		"placemark":            a.Id,
+		"placemark_suggestion": a.Id,
+	})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	b := s.GetString("placemark")
+	if b == "" || b == a.Id {
+		t.Fatalf("placemark = %q, want a new placemark B != A (%q)", b, a.Id)
+	}
+	pm, _ := app.Dao().FindRecordById("placemarks", b)
+	if got := pm.GetString("admin_municipality"); got != "Ochsenfurt" {
+		t.Errorf("placemark B municipality = %q, want Ochsenfurt", got)
+	}
+	if got := s.GetString("location_status"); got != "backend_service" {
+		t.Errorf("location_status = %q, want backend_service", got)
+	}
+	if got := s.GetString("placemark_suggestion"); got != "" {
+		t.Errorf("placemark_suggestion = %q, want empty", got)
+	}
+}
+
+func TestEnrich_ManualOnlySuggestion(t *testing.T) {
+	t.Run("different place gets suggestion", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+			fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "manual", ownerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		updateSample(t, app, sampleID, map[string]any{"location_status": "manual", "placemark": m.Id})
+
+		f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+		runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if got := s.GetString("placemark"); got != m.Id {
+			t.Errorf("placemark = %q, want manual %q unchanged", got, m.Id)
+		}
+		if got := s.GetString("location_status"); got != "manual" {
+			t.Errorf("location_status = %q, want manual", got)
+		}
+		sugID := s.GetString("placemark_suggestion")
+		if sugID == "" || sugID == m.Id {
+			t.Fatalf("placemark_suggestion = %q, want candidate", sugID)
+		}
+		sug, _ := app.Dao().FindRecordById("placemarks", sugID)
+		if got := sug.GetString("admin_municipality"); got != "Ochsenfurt" {
+			t.Errorf("suggestion municipality = %q, want Ochsenfurt", got)
+		}
+		if got := s.GetString("mtb_sheet_number"); got != "6326" {
+			t.Errorf("mtb_sheet_number = %q, want 6326 (geo always written)", got)
+		}
+		if n := len(sampleFeatures(t, app, sampleID)); n != 2 {
+			t.Errorf("features = %d, want 2", n)
+		}
+	})
+
+	t.Run("same place clears suggestion", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+			fixturePlace(t, "query_de_ochsenfurt.json", deLat, deLon), "manual", ownerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stale, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+			fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status":      "manual",
+			"placemark":            m.Id,
+			"placemark_suggestion": stale.Id,
+		})
+
+		f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+		runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if got := s.GetString("placemark"); got != m.Id {
+			t.Errorf("placemark = %q, want %q", got, m.Id)
+		}
+		if got := s.GetString("placemark_suggestion"); got != "" {
+			t.Errorf("placemark_suggestion = %q, want empty", got)
+		}
+	})
+}
+
+func TestEnrich_BackendServiceSkipped(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{"location_status": "backend_service"})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	if n := f.hits.Load(); n != 0 {
+		t.Errorf("ortus hits = %d, want 0", n)
+	}
+	s := loadSample(t, app, sampleID)
+	if s.GetString("placemark") != "" || s.GetString("mtb_sheet_number") != "" {
+		t.Error("sample was modified although status is backend_service")
+	}
+}
+
+func TestEnrich_NoCoordinateSkipped(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 0, 0)
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	if n := f.hits.Load(); n != 0 {
+		t.Errorf("ortus hits = %d, want 0", n)
+	}
+}
+
+func TestEnrich_OrtusDownLeavesSample(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{"location_status": "pending"})
+
+	f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+	f.fail.Store(true)
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	if f.hits.Load() == 0 {
+		t.Fatal("ortus was not called")
+	}
+	s := loadSample(t, app, sampleID)
+	if got := s.GetString("location_status"); got != "pending" {
+		t.Errorf("location_status = %q, want pending", got)
+	}
+	if s.GetString("placemark") != "" || s.GetString("mtb_sheet_number") != "" {
+		t.Error("sample was modified after Ortus failure")
+	}
+	if n := len(sampleFeatures(t, app, sampleID)); n != 0 {
+		t.Errorf("features = %d, want 0", n)
+	}
+}
+
+func TestEnrich_SeaKeepsStatusWritesGeo(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 40.0, -25.0)
+	// Stale geo + features from an earlier coordinate must be replaced.
+	updateSample(t, app, sampleID, map[string]any{"location_status": "pending", "mtb_sheet_number": "6326"})
+	if err := geoplace.ReplaceFeatures(app.Dao(), sampleID, ownerID,
+		[]geoplace.Feature{{SourceID: "old", Layer: "old", FeatureID: "1"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	f := newFakeOrtus(t, "query_sea.json")
+	runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+	s := loadSample(t, app, sampleID)
+	if got := s.GetString("location_status"); got != "pending" {
+		t.Errorf("location_status = %q, want pending (no place at sea)", got)
+	}
+	if got := s.GetString("placemark"); got != "" {
+		t.Errorf("placemark = %q, want empty", got)
+	}
+	if got := s.GetString("mtb_sheet_number"); got != "" {
+		t.Errorf("mtb_sheet_number = %q, want cleared", got)
+	}
+	if n := len(sampleFeatures(t, app, sampleID)); n != 0 {
+		t.Errorf("features = %d, want 0 (replaced by empty set)", n)
+	}
+}
+
+func TestEnrich_DEMOnlyWhenNoElevationSource(t *testing.T) {
+	t.Run("GPS height 0 m stays", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status":   "pending",
+			"elevation":         0,
+			"elevation_source":  "location_service",
+			"vertical_accuracy": 7,
+		})
+
+		f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+		runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if got := s.GetFloat("elevation"); got != 0 {
+			t.Errorf("elevation = %v, want 0 (GPS height kept)", got)
+		}
+		if got := s.GetString("elevation_source"); got != "location_service" {
+			t.Errorf("elevation_source = %q, want location_service", got)
+		}
+		if got := s.GetFloat("vertical_accuracy"); got != 7 {
+			t.Errorf("vertical_accuracy = %v, want 7", got)
+		}
+		if got := s.GetFloat("elevation_dem"); got != 236 {
+			t.Errorf("elevation_dem = %v, want 236 (reference value stored)", got)
+		}
+	})
+
+	t.Run("empty source takes DEM", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		updateSample(t, app, sampleID, map[string]any{"location_status": "pending"})
+
+		f := newFakeOrtus(t, "query_de_ochsenfurt.json")
+		runEnrich(t, newOrtusEnricher(app, f), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		if got := s.GetFloat("elevation"); got != 236 {
+			t.Errorf("elevation = %v, want 236", got)
+		}
+		if got := s.GetString("elevation_source"); got != "backend_service" {
+			t.Errorf("elevation_source = %q, want backend_service", got)
+		}
+		if got := s.GetFloat("vertical_accuracy"); got != 4 {
+			t.Errorf("vertical_accuracy = %v, want 4", got)
+		}
+	})
+}
+
+func TestEnrich_CoordUpdateRetriggers(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+
+	rec := loadSample(t, app, sampleID) // OriginalCopy = DB state
+	rec.Set("latitude", deLat+0.001)
+	if !coordChanged(rec) {
+		t.Error("latitude change by 0.001 must re-trigger enrichment")
+	}
+
+	rec = loadSample(t, app, sampleID)
+	rec.Set("longitude", deLon-0.000001)
+	if !coordChanged(rec) {
+		t.Error("longitude change by 1e-6 must re-trigger enrichment")
+	}
+
+	rec = loadSample(t, app, sampleID)
+	rec.Set("latitude", deLat+0.00000001)
+	if coordChanged(rec) {
+		t.Error("float noise below 1e-7 must not re-trigger enrichment")
+	}
+}
+
+func TestEnrich_NotesUpdateDoesNotRetrigger(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+
+	rec := loadSample(t, app, sampleID)
+	rec.Set("notes", "Unter Steinen")
+	if coordChanged(rec) {
+		t.Error("notes-only update must not re-trigger enrichment")
 	}
 }

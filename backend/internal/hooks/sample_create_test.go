@@ -443,3 +443,27 @@ func TestWriteFieldtrip_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 		t.Errorf("title (user-set case) = %q, want Heidehöhe (kein Overwrite)", got)
 	}
 }
+
+func TestProcessSample_DefaultsLocationStatusToPending(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "lsp@example.com")
+
+	rec := newSampleRecord(t, app)
+	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
+	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
+		t.Fatalf("processSample: %v", err)
+	}
+	if got := rec.GetString("location_status"); got != "pending" {
+		t.Errorf("location_status = %q, want pending", got)
+	}
+
+	rec2 := newSampleRecord(t, app)
+	rec2.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, berlin))
+	rec2.Set("location_status", "inherited")
+	if err := processSample(app.Dao(), rec2, owner.Id); err != nil {
+		t.Fatalf("processSample: %v", err)
+	}
+	if got := rec2.GetString("location_status"); got != "inherited" {
+		t.Errorf("location_status = %q, want client value inherited", got)
+	}
+}

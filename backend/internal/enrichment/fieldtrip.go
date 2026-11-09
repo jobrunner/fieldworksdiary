@@ -7,14 +7,14 @@ import (
 
 	"go.mett.io/fwd-backend/internal/astro"
 	"go.mett.io/fwd-backend/internal/grouping"
-	"go.mett.io/fwd-backend/internal/services"
 
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
 )
 
 // recomputeFieldtripDerived loads all samples for the given fieldtrip,
-// updates the centroid, and recomputes the astro snapshot. Best-effort
+// updates the centroid, recomputes the astro snapshot and the locality
+// suggestion. Best-effort
 // — never crashes the enclosing goroutine, just logs and moves on.
 func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 	dao := e.App.Dao()
@@ -50,16 +50,9 @@ func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 	}
 	ft.Set("astro", string(raw))
 
-	// Phase-5 denormalised columns for fast filtering. day_of_year
-	// always reflects collecting_day; country / admin_area mirror
-	// whatever admin_units currently has (may be empty if the
-	// labelloc enrichment hasn't landed yet — they get filled the
-	// next time this hook runs).
+	// Phase-5 denormalised column for fast filtering; always reflects
+	// collecting_day. Place filters run over the samples' placemarks.
 	ft.Set("day_of_year", day.YearDay())
-	if au := decodeAdminUnits(ft.GetString("admin_units")); au != nil {
-		ft.Set("country", au.Country)
-		ft.Set("admin_area", au.AdminArea)
-	}
 
 	// Locality suggestion: only when the user hasn't already chosen
 	// one. We never overwrite a manual assignment. Suggestions are
@@ -130,20 +123,6 @@ func centroid(samples []*models.Record) (lat, lon float64) {
 	}
 	n := float64(len(samples))
 	return lat / n, lon / n
-}
-
-// decodeAdminUnits parses the JSON we stored on the fieldtrip (which
-// is the trimmed labelloc payload). Returns nil if the field is empty
-// or malformed.
-func decodeAdminUnits(raw string) *services.LabellocResult {
-	if raw == "" {
-		return nil
-	}
-	var v services.LabellocResult
-	if err := json.Unmarshal([]byte(raw), &v); err != nil {
-		return nil
-	}
-	return &v
 }
 
 func parseCollectingDay(s string, loc *time.Location) time.Time {

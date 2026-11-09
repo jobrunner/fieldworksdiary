@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/api"
 	"go.mett.io/fwd-backend/internal/enrichment"
 	"go.mett.io/fwd-backend/internal/fusion"
@@ -21,10 +22,9 @@ import (
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
 )
 
-const (
-	labellocBaseURL = "https://labelloc.example.org"
-	mtbBaseURL      = "https://coordstomtb.example.org"
-)
+// labellocBaseURL serves the locality placemark enricher until it moves
+// to Ortus as well.
+const labellocBaseURL = "https://labelloc.example.org"
 
 // defaultAppleAudiences are the iOS bundle ids the native Sign in
 // with Apple flow may legitimately produce identityTokens for. The
@@ -122,9 +122,11 @@ func main() {
 	// shape as the other auth endpoints.
 	api.RegisterAppleNativeSignIn(app, services.NewAppleVerifier(resolveAppleAudiences()))
 
-	// Phase 2 + R7.1: async enrichment. Sample-side fills
-	// admin_units / mtb / astro on insert; locality-side reverse-
-	// geocodes the coordinate into a Placemark row.
+	// Phase 2 + R7.1 + O: async enrichment. Sample-side queries Ortus
+	// for placemark / features / MTB / terrain on insert and coordinate
+	// change (ORTUS_BASE_URL; empty disables it) and recomputes the
+	// fieldtrip astro; locality-side reverse-geocodes the coordinate
+	// into a Placemark row.
 	//
 	// The cache lives in the `geocache` collection; we hand each
 	// enricher a function-bound dao reference because app.Dao() at
@@ -140,15 +142,21 @@ func main() {
 			MaxRetries: 3,
 		}
 		enr := &enrichment.Enricher{
-			App:      app,
-			Labelloc: labelloc,
-			MTB: &services.MTB{
-				BaseURL:    mtbBaseURL,
+			App:     app,
+			Labels:  adminlabels.Default(),
+			Logger:  slog.Default(),
+			Timeout: 15 * time.Second,
+		}
+		if ortusBaseURL := strings.TrimSpace(os.Getenv("ORTUS_BASE_URL")); ortusBaseURL != "" {
+			enr.Ortus = &services.Ortus{
+				BaseURL:    ortusBaseURL,
 				HTTPClient: httpClient,
 				Cache:      cache,
 				MaxRetries: 3,
-			},
-			Timeout: 15 * time.Second,
+				Logger:     slog.Default(),
+			}
+		} else {
+			slog.Warn("ortus: ORTUS_BASE_URL leer, Anreicherung deaktiviert")
 		}
 		enr.Register()
 
