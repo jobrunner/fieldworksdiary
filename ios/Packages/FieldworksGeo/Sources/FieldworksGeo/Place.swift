@@ -80,6 +80,9 @@ public struct SampleGeo: Equatable, Sendable {
     /// 0 means none.
     public var mtbQuadrant: Int = 0
 
+    /// IANA zone id from the Ortus `timezones-2026a` source; nil if unknown.
+    public var timezone: String?
+
     public init() {}
 }
 

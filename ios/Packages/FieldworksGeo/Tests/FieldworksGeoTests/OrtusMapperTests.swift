@@ -19,6 +19,8 @@ final class OrtusMapperTests: XCTestCase {
         let res = OrtusMapper.map(q, lat: q.wgs84!.lat, lon: q.wgs84!.lon)
         let p = try XCTUnwrap(res.place)
         XCTAssertEqual(p.countryISO, "DE")
+        XCTAssertEqual(res.geo.timezone, "Europe/Berlin")
+        XCTAssertFalse(res.features.contains { $0.sourceID == "timezones-2026a" })
         let admin = exp["admin"] as! [String: [String: Any]]
         XCTAssertEqual(p.admin.count, admin.count)
         for (k, v) in admin {

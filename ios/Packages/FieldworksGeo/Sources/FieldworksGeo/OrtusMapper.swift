@@ -4,6 +4,7 @@ import Foundation
 /// `geoplace.FromOrtus`; shared fixtures in `shared/testdata/ortus/`.
 public enum OrtusMapper {
     private static let tk25Source = "tk25-blattschnitt-de"
+    private static let timezoneSource = "timezones-2026a"
 
     public static func map(_ r: OrtusResponse, lat: Double, lon: Double,
                            table: AdminLabelTable = .shared) -> OrtusResult {
@@ -15,6 +16,7 @@ public enum OrtusMapper {
         }
         let results = r.results ?? []
         let features = mapFeatures(results)
+        mapTimezone(results, &geo)
         if place?.countryISO == "DE" { mapMTB(results, lat: lat, lon: lon, &geo) }
         return OrtusResult(place: place, geo: geo, features: features)
     }
@@ -65,7 +67,7 @@ public enum OrtusMapper {
 
     private static func mapFeatures(_ results: [OrtusResponse.SourceResult]) -> [OrtusFeature] {
         var out: [OrtusFeature] = []
-        for sr in results {
+        for sr in results where sr.sourceID != timezoneSource {
             for f in sr.features ?? [] {
                 var license: String?
                 if let l = sr.license, l != .null { license = l.jsonString }
@@ -77,6 +79,17 @@ public enum OrtusMapper {
             }
         }
         return out
+    }
+
+    private static func mapTimezone(_ results: [OrtusResponse.SourceResult], _ out: inout SampleGeo) {
+        for sr in results where sr.sourceID == timezoneSource {
+            guard let f = sr.features?.first else { continue }
+            if case .string(let tz)? = f.properties?["tzid"] {
+                let t = tz.trimmingCharacters(in: .whitespacesAndNewlines)
+                out.timezone = t.isEmpty ? nil : t
+            }
+            return
+        }
     }
 
     private static func idString(_ v: JSONValue?) -> String {
