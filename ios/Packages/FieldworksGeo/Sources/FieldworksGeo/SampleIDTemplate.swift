@@ -56,7 +56,8 @@ public struct SampleIDTemplate: Equatable, Sendable {
                 rest = rest.dropFirst(tok.count)
                 continue outer
             }
-            out += escape(String(rest.first!))
+            guard let ch = rest.first else { break }
+            out += escape(String(ch))
             rest = rest.dropFirst()
         }
         return out

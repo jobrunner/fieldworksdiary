@@ -25,6 +25,12 @@ final class SampleTimeTests: XCTestCase {
         XCTAssertEqual([c.hour, c.minute], [12, 0])
     }
 
+    func testRoundedDownRepeatedHourDST() {
+        // 02:07:30 CET, second occurrence of the 02:00 hour.
+        let r = SampleTime.roundedDown(date("2026-10-25T01:07:30Z"), in: tz("Europe/Berlin"))
+        XCTAssertEqual(r, date("2026-10-25T01:00:00Z"))
+    }
+
     func testDefaultWindow() {
         let w = SampleTime.defaultWindow(createdAt: date("2026-06-10T10:03:43Z"), in: tz("Europe/Berlin"))
         XCTAssertEqual(w.end.timeIntervalSince(w.begin), 900)

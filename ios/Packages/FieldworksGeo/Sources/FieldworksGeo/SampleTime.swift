@@ -10,13 +10,13 @@ public enum SampleTime {
 
     /// Rounds down to a multiple of `toMinutes` on the local wall clock of `tz`.
     public static func roundedDown(_ date: Date, toMinutes: Int = 15, in tz: TimeZone) -> Date {
-        let cal = calendar(tz)
-        let c = cal.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        var r = c
-        r.minute = (c.minute ?? 0) / toMinutes * toMinutes
-        r.second = 0
-        r.nanosecond = 0
-        return cal.date(from: r) ?? date
+        // Subtract the local remainder from the Date itself: DST-safe, since
+        // rebuilding from components is ambiguous in a repeated hour.
+        let c = calendar(tz).dateComponents([.minute, .second, .nanosecond], from: date)
+        let step = max(toMinutes, 1)
+        let remainder = TimeInterval(((c.minute ?? 0) % step) * 60 + (c.second ?? 0))
+            + TimeInterval(c.nanosecond ?? 0) / 1_000_000_000
+        return date.addingTimeInterval(-remainder)
     }
 
     /// Default time window: rounded-down creation time plus 15 minutes.
