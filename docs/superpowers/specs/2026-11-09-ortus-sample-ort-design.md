@@ -112,7 +112,7 @@ Gründe:
 | `placemark` *(neu)* | Relation → `placemarks` |
 | `location_status` *(neu)* | `backend_service` (vom Ortus bestätigt) · `inherited` (offline vom vorigen Sample übernommen, noch unbestätigt) · `manual` · `pending` (noch keine Ortsdaten) |
 | `mtb_sheet_number`, `mtb_sheet_name` *(neu, flach)* | Aus `tk25-blattschnitt-de`; nur bei Land = DE gefüllt, sonst leer (kein Fehler) |
-| `mtb_quadrant`, `mtb_quadrant_row`, `mtb_quadrant_column` *(neu)* | **Selbst berechnet** aus Koordinate und TK25-Blattraster (regelmäßiges Raster: 10′ Länge × 6′ Breite je Blatt, Quadranten 1–4 als Viertel). Reine Funktion in Backend (`internal/`, mit Tests) und iOS (`Core/Geo/`), gleiche Testfälle; Abgleich gegen Bestandsdaten des alten MTB-Dienstes (`samples.mtb` enthält `quadrant`/`quadrant_row`/`quadrant_column`, z. B. in der Dev-DB `backend/pb_data/data.db`) als Testfälle |
+| `mtb_quadrant` *(neu)* | **Selbst berechnet** (1 = NW, 2 = NO, 3 = SW, 4 = SO) aus der Koordinate im TK25-Raster: Blattzeilen ab 55°54′ N in 6′-Schritten nach Süden, Blattspalten ab 5°50′ O in 10′-Schritten nach Osten (an der Dev-DB verifiziert: 49.6623, 10.0716 → 6326/1). Reine Funktion in Backend und iOS mit gleichen Testfällen. `quadrant_row`/`quadrant_column` des alten Dienstes werden nicht übernommen — ihre Semantik lässt sich aus den Bestandsdaten nicht eindeutig ableiten *(Entscheidung Claude)* |
 | `mtb` (JSON) | **entfällt** |
 
 Zusätzlich aus dem Ortus-Gazetteer, flach am Sample (nicht im geteilten
