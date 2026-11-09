@@ -20,7 +20,7 @@
 - Backend-Kernlogik (`adminlabels`, `geoplace`, `mtb`) > 80 % Coverage; `cd backend && go test ./...` bleibt grün.
 - iOS: `xcodebuild build` schlägt lokal auf macOS Tahoe fehl (Apple-ld-Bug, verifiziert 2026-11-09). Reine Logik deshalb im Package, getestet mit `cd ios/Packages/FieldworksGeo && swift test`. App-Target-Tests werden geschrieben und von Jo per Xcode `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` am Phasenende ausgeführt.
 - UI-Arbeit folgt `.claude/rules/ACCESSIBILITY-IOS.md` und `DESIGN-SYSTEM.md` (Tokens, Atoms, AX5, VoiceOver-Labels).
-- Ortus-Endpoint konfigurierbar: Backend `ORTUS_BASE_URL` (leer ⇒ Anreicherung aus, ein Warn-Log beim Start), App `AppConfig.ortusEndpointURL` (leer ⇒ keine Online-Abfrage, Verhalten wie offline).
+- Ortus-Endpoint konfigurierbar: Backend `ORTUS_BASE_URL` (leer ⇒ Anreicherung aus, ein Warn-Log beim Start), App `AppConfig.ortusEndpointURL` (leer ⇒ keine Online-Abfrage, Verhalten wie offline). Default in Compose und App: `https://ortus.fieldworksdiary.org` (dort liegt immer der aktuelle Feature-Stand; keine lokale Ortus-Instanz verwenden).
 - Ortus-Referenz: `../ortus/docs/reference/http-api.md`; Admin-Level-YAML: `../geopackages/osm-data/admin_levels_west_palearctic.yaml`.
 
 ## Review Focus
@@ -321,7 +321,7 @@ Label-Fallback: Tabelle(Land, Level) → `rawLocalTerm` → `term = nil` (nur ge
 
 ### Task 15: Ortus-Client und Ortsauflösung beim Anlegen
 
-**Files:** Create: `ios/Fieldworksdiary/Core/Ortus/OrtusClient.swift`, `ios/Fieldworksdiary/Core/Geo/SampleLocationResolver.swift`; Modify: `Core/Config/AppConfig.swift` (`@Published var ortusEndpointURL: String`, UserDefaults-Key `ortusEndpointURL`), Settings-Screen (Feld „Ortus-Endpoint“), `Features/SampleEditor/SampleEditorViewModel.swift`, `Core/Location/LocationProvider.swift` (vertikale Genauigkeit durchreichen); Tests `FieldworksdiaryTests/SampleLocationResolverTests.swift`.
+**Files:** Create: `ios/Fieldworksdiary/Core/Ortus/OrtusClient.swift`, `ios/Fieldworksdiary/Core/Geo/SampleLocationResolver.swift`; Modify: `Core/Config/AppConfig.swift` (`@Published var ortusEndpointURL: String`, UserDefaults-Key `ortusEndpointURL`, Default `https://ortus.fieldworksdiary.org`), Settings-Screen (Feld „Ortus-Endpoint“), `Features/SampleEditor/SampleEditorViewModel.swift`, `Core/Location/LocationProvider.swift` (vertikale Genauigkeit durchreichen); Tests `FieldworksdiaryTests/SampleLocationResolverTests.swift`.
 
 **Interfaces:**
 ```swift
