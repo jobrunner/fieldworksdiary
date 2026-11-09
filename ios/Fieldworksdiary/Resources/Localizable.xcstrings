@@ -465,6 +465,105 @@
           }
         }
       }
+    },
+    "Sample-ID": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sample-ID"
+          }
+        }
+      }
+    },
+    "Format": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Format"
+          }
+        }
+      }
+    },
+    "Präfix": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Präfix"
+          }
+        }
+      }
+    },
+    "Offset": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offset"
+          }
+        }
+      }
+    },
+    "Nächster Vorschlag": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nächster Vorschlag"
+          }
+        }
+      }
+    },
+    "– (leer lassen)": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "– (leer lassen)"
+          }
+        }
+      }
+    },
+    "Tagesrollover": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tagesrollover"
+          }
+        }
+      }
+    },
+    "Gilt in der Ortszeit des Samples.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gilt in der Ortszeit des Samples."
+          }
+        }
+      }
+    },
+    "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist.": {
+      "extractionState": "manual",
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

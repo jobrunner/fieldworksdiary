@@ -1,3 +1,4 @@
+import FieldworksGeo
 import SwiftUI
 
 struct SettingsView: View {
@@ -31,7 +32,8 @@ struct SettingsScreen: View {
         Form {
             accountSection
             dataSection
-            sampleCodeSection
+            sampleIDSection
+            rolloverSection
             endpointSection
             ortusEndpointSection
             aboutSection
@@ -48,6 +50,10 @@ struct SettingsScreen: View {
         }
         .onChange(of: draft) { _, _ in savedHint = false }
         .onChange(of: ortusDraft) { _, _ in ortusSavedHint = false }
+        .onChange(of: config.sampleIDFormat) { _, _ in pushUserSettings() }
+        .onChange(of: config.sampleIDPrefix) { _, _ in pushUserSettings() }
+        .onChange(of: config.sampleIDOffset) { _, _ in pushUserSettings() }
+        .onChange(of: config.dayCutoffHour) { _, _ in pushUserSettings() }
         .confirmationDialog("Wirklich abmelden?",
                             isPresented: $confirmSignOut,
                             titleVisibility: .visible)
@@ -132,32 +138,86 @@ struct SettingsScreen: View {
         }
     }
 
-    private var sampleCodeSection: some View {
+    private var sampleIDSection: some View {
         Section {
-            Picker("Format", selection: $config.sampleCodeTemplate) {
-                ForEach(SampleCodeTemplate.presets, id: \.raw) { preset in
-                    Text(preset.raw).monospaced().tag(preset.raw)
+            Picker("Format", selection: $config.sampleIDFormat) {
+                ForEach(SampleIDTemplate.presets, id: \.raw) { preset in
+                    Text(Self.presetLabel(preset)).monospaced().tag(preset.raw)
                 }
             }
-            LabeledContent("Beispiel") {
-                Text(sampleCodePreview)
+            TextField("Präfix", text: $config.sampleIDPrefix)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if currentTemplate.counter == .running {
+                Stepper(value: $config.sampleIDOffset, in: 0 ... Int.max) {
+                    LabeledContent("Offset", value: "\(config.sampleIDOffset)")
+                }
+            }
+            LabeledContent("Nächster Vorschlag") {
+                Text(sampleIDPreview)
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Sample-ID-Format")
+            Text("Sample-ID")
         } footer: {
             Text(
-                "Provisorisches Format für neue Proben. Tokens: <YY>/<YYYY>, <MM>, <DD>, <seq>. Das Backend kann die ID beim Sync neu vergeben."
+                "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist."
             )
         }
     }
 
-    /// Renders today's first sample id under the selected template, so
-    /// the user sees the effect before creating a sample.
-    private var sampleCodePreview: String {
-        SampleCodeTemplate(raw: config.sampleCodeTemplate)
-            .format(day: Date(), sequence: 1, timeZone: TimeZone(identifier: "Europe/Berlin") ?? .current)
+    private var rolloverSection: some View {
+        Section {
+            Picker("Tagesrollover", selection: $config.dayCutoffHour) {
+                ForEach(0 ..< 24, id: \.self) { hour in
+                    Text("\(hour):00").tag(hour)
+                }
+            }
+        } footer: {
+            Text("Gilt in der Ortszeit des Samples.")
+        }
+    }
+
+    private var currentTemplate: SampleIDTemplate {
+        SampleIDTemplate(raw: config.sampleIDFormat)
+    }
+
+    private static func presetLabel(_ preset: SampleIDTemplate) -> String {
+        preset == .empty ? "– (leer lassen)" : preset.raw
+    }
+
+    /// Next suggestion for today's collecting day, so the user sees the
+    /// effect of format, prefix and offset before creating a sample.
+    private var sampleIDPreview: String {
+        let day = SampleTime.collectingDay(Date(), cutoffHour: config.dayCutoffHour, in: .current)
+        let suggestion = SampleIDTemplate.nextSuggestion(
+            template: currentTemplate,
+            prefix: config.sampleIDPrefix,
+            day: day,
+            existingIDs: [],
+            lastRunning: config.lastRunningNumber,
+            offset: config.sampleIDOffset
+        )
+        return suggestion.id.isEmpty ? "–" : suggestion.id
+    }
+
+    /// Best-effort sync to the users record. Skipped when the record
+    /// already holds these values (e.g. after taking them from it).
+    private func pushUserSettings() {
+        let format = config.sampleIDFormat
+        let prefix = config.sampleIDPrefix
+        let offset = config.sampleIDOffset
+        let cutoff = config.dayCutoffHour
+        if let user = auth.currentUser,
+           (user.sampleIDFormat ?? SampleIDTemplate.default.raw) == format,
+           (user.sampleIDPrefix ?? "") == prefix,
+           (user.sampleIDOffset ?? 0) == offset,
+           user.dayCutoffHour == cutoff
+        { return }
+        Task {
+            await auth.pushUserSettings(format: format, prefix: prefix, offset: offset, dayCutoffHour: cutoff)
+        }
     }
 
     private var endpointSection: some View {

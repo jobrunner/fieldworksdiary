@@ -33,6 +33,7 @@ final class AppContainer: ObservableObject {
     /// restored / same user" and only wipe when needed.
     private var lastSeenUserID: String?
     private var authObservation: AnyCancellable?
+    private var settingsObservation: AnyCancellable?
 
     init() {
         let config = AppConfig()
@@ -143,6 +144,7 @@ final class AppContainer: ObservableObject {
     func bootstrap() async {
         MetricsReporter.shared.register()
         startObservingAuth()
+        startObservingUserSettings()
         await auth.restoreOnLaunch()
     }
 
@@ -158,6 +160,17 @@ final class AppContainer: ObservableObject {
             .sink { [weak self] newID in
                 guard let self else { return }
                 Task { await self.handleAuthChange(to: newID) }
+            }
+    }
+
+    /// Mirrors the sample-id settings of every login / token refresh
+    /// (and of the cached user after an offline start) into `config`.
+    private func startObservingUserSettings() {
+        settingsObservation = auth.$currentUser
+            .compactMap { $0 }
+            .removeDuplicates()
+            .sink { [weak self] user in
+                self?.config.apply(user: user)
             }
     }
 

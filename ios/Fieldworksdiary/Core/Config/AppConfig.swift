@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 
 /// In welchem Build-Channel die App läuft. Wird beim Bootstrap aus
@@ -55,13 +56,67 @@ final class AppConfig: ObservableObject {
 
     static let defaultOrtusEndpointURL = "https://ortus.fieldworksdiary.org"
 
-    /// User-chosen provisional sample-id format (R8e). Persisted so
-    /// the offline code generator (`SampleCodeTemplate.current`) picks
-    /// it up on the next sample.
-    @Published var sampleCodeTemplate: String {
+    /// Sample-ID template (Phase Z). Mirrored from the users record
+    /// (`sample_id_format`) and cached here so the offline generator
+    /// works without a network. Invalid templates (both counters) are
+    /// rejected and the previous value stays. Same UserDefaults key as
+    /// the old provisional-code template.
+    @Published var sampleIDFormat: String {
         didSet {
-            UserDefaults.standard.set(sampleCodeTemplate, forKey: SampleCodeTemplate.userDefaultsKey)
+            guard Self.isValidFormat(sampleIDFormat) else {
+                sampleIDFormat = oldValue
+                return
+            }
+            UserDefaults.standard.set(sampleIDFormat, forKey: SampleCodeTemplate.userDefaultsKey)
         }
+    }
+
+    /// Text for the `<PREFIX>` token.
+    @Published var sampleIDPrefix: String {
+        didSet { UserDefaults.standard.set(sampleIDPrefix, forKey: Keys.sampleIDPrefix) }
+    }
+
+    /// Start offset for the running counter `<n>` (never negative).
+    @Published var sampleIDOffset: Int {
+        didSet {
+            if sampleIDOffset < 0 { sampleIDOffset = 0; return }
+            UserDefaults.standard.set(sampleIDOffset, forKey: Keys.sampleIDOffset)
+        }
+    }
+
+    /// Hour (0...23, local time of the sample) at which a new
+    /// collecting day starts.
+    @Published var dayCutoffHour: Int {
+        didSet {
+            let clamped = min(max(dayCutoffHour, 0), 23)
+            if clamped != dayCutoffHour { dayCutoffHour = clamped; return }
+            UserDefaults.standard.set(dayCutoffHour, forKey: Keys.dayCutoffHour)
+        }
+    }
+
+    /// Last handed-out number of the running counter. Local only.
+    var lastRunningNumber: Int {
+        get { UserDefaults.standard.integer(forKey: Keys.lastRunningNumber) }
+        set { UserDefaults.standard.set(newValue, forKey: Keys.lastRunningNumber) }
+    }
+
+    /// `true` for a non-empty template that does not mix `<seq>` and `<n>`.
+    static func isValidFormat(_ raw: String) -> Bool {
+        !raw.isEmpty && SampleIDTemplate(raw: raw).isValid
+    }
+
+    /// Takes the sample-id settings from the users record. Empty or
+    /// missing values fall back to the defaults; an invalid format
+    /// keeps the default.
+    func apply(user: AuthUser) {
+        if let format = user.sampleIDFormat, Self.isValidFormat(format) {
+            sampleIDFormat = format
+        } else {
+            sampleIDFormat = SampleIDTemplate.default.raw
+        }
+        sampleIDPrefix = user.sampleIDPrefix ?? ""
+        sampleIDOffset = max(user.sampleIDOffset ?? 0, 0)
+        dayCutoffHour = user.dayCutoffHour
     }
 
     /// Build-Channel — fix pro Build-Konfiguration (Debug/Staging/Release).
@@ -94,14 +149,20 @@ final class AppConfig: ObservableObject {
         ortusEndpointURL = UserDefaults.standard.string(forKey: Self.Keys.ortusEndpointURL)
             ?? Self.defaultOrtusEndpointURL
 
-        let storedTemplate = UserDefaults.standard.string(forKey: SampleCodeTemplate.userDefaultsKey)
-        sampleCodeTemplate = (storedTemplate?.isEmpty == false)
-            ? storedTemplate! // swiftlint:disable:this force_unwrapping
-            : SampleCodeTemplate.default.raw
+        let defaults = UserDefaults.standard
+        let storedTemplate = defaults.string(forKey: SampleCodeTemplate.userDefaultsKey) ?? ""
+        sampleIDFormat = Self.isValidFormat(storedTemplate) ? storedTemplate : SampleIDTemplate.default.raw
+        sampleIDPrefix = defaults.string(forKey: Keys.sampleIDPrefix) ?? ""
+        sampleIDOffset = max(defaults.integer(forKey: Keys.sampleIDOffset), 0)
+        dayCutoffHour = min(max(defaults.integer(forKey: Keys.dayCutoffHour), 0), 23)
     }
 
     fileprivate enum Keys {
         static let endpointURL = "AppConfig.endpointURL"
         static let ortusEndpointURL = "ortusEndpointURL"
+        static let sampleIDPrefix = "AppConfig.sampleIDPrefix"
+        static let sampleIDOffset = "AppConfig.sampleIDOffset"
+        static let dayCutoffHour = "AppConfig.dayCutoffHour"
+        static let lastRunningNumber = "AppConfig.lastRunningNumber"
     }
 }

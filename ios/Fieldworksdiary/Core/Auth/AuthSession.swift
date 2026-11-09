@@ -123,6 +123,28 @@ final class AuthSession: ObservableObject {
         clearLocal()
     }
 
+    /// Best-effort push of the sample-id settings to the users record.
+    /// Offline / signed out: no-op (the local value still applies).
+    /// Failures are only logged.
+    func pushUserSettings(format: String, prefix: String, offset: Int, dayCutoffHour: Int) async {
+        guard let user = currentUser, let token = currentToken else { return }
+        do {
+            let updated = try await AuthClient(endpoint: endpointProvider()).updateUserSettings(
+                userID: user.id,
+                token: token,
+                body: [
+                    "sample_id_format": format,
+                    "sample_id_prefix": prefix,
+                    "sample_id_offset": offset,
+                    "day_cutoff_hour": dayCutoffHour
+                ]
+            )
+            persist(token: token, user: updated)
+        } catch {
+            Log.auth.warning("user settings push failed for user \(user.id, privacy: .public): \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - private
 
     private func persist(token: String, user: AuthUser) {

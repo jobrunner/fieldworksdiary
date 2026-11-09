@@ -72,6 +72,32 @@ struct AuthClient {
         }
     }
 
+    /// Writes the sample-id settings to the user's own record and
+    /// returns the updated record.
+    func updateUserSettings(userID: String, token: String, body: [String: Any]) async throws -> AuthUser {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
+        guard let url = URL(string: trimmed.appending("/api/collections/users/records/\(userID)")) else {
+            throw SampleClientError.invalidEndpoint
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PATCH"
+        req.timeoutInterval = 10
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(token, forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: req)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200 ..< 300).contains(status) else {
+            throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        do {
+            return try JSONDecoder.fieldworks.decode(AuthUser.self, from: data)
+        } catch {
+            throw SampleClientError.decoding(error.localizedDescription)
+        }
+    }
+
     // MARK: - HTTP plumbing
 
     private func post(_ path: String, body: [String: Any], extraHeaders: [String: String] = [:]) async throws -> AuthResponse {
