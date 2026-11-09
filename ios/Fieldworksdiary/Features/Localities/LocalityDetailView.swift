@@ -62,7 +62,7 @@ struct LocalityDetailView: View {
         try? container.placemarksStore.upsert(pm)
         try? container.localitiesStore.setPlacemark(localityID: localityID, placemarkID: pm.id)
         reload()
-        placemark = try? container.placemarksStore.fetchById(pm.id)
+        placemark = try? container.placemarksStore.fetch(backendID: pm.id)
     }
 
     /// Override cleared: detach locally. The backend's auto-geocode
@@ -231,7 +231,7 @@ struct LocalityDetailView: View {
             placemark = nil
             return
         }
-        if let cached = try? container.placemarksStore.fetchById(pmID) {
+        if let cached = try? container.placemarksStore.fetch(backendID: pmID) {
             placemark = cached
             return
         }
@@ -241,7 +241,7 @@ struct LocalityDetailView: View {
             let client = PlacemarkClient(endpoint: endpoint, auth: container.auth)
             let remote = try await client.fetch(id: pmID)
             try? container.placemarksStore.upsert(remote)
-            placemark = try? container.placemarksStore.fetchById(pmID)
+            placemark = try? container.placemarksStore.fetch(backendID: pmID)
         } catch {
             Log.network.error("placemark fetch failed: \(error.localizedDescription)")
         }

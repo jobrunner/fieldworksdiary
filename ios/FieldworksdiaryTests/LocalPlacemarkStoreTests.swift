@@ -113,6 +113,36 @@ final class LocalPlacemarkStoreTests: XCTestCase {
         XCTAssertEqual(local.geocodingSource, "backend_service")
     }
 
+    /// I-1: a server copy merged onto a locally created (UUID) row is
+    /// found by its backend id — `fetchById(backendID)` alone misses it.
+    func testFetchByBackendID_FindsServerCopyMergedOntoLocalRow() throws {
+        let local = try store.lookupOrCreate(place: wuerzburg(), source: .backendService)
+        try store.setBackend(localID: local.id, backendID: "pbShared", owner: nil)
+        let json = """
+        {"id": "pbShared", "country": "DE", "geocoding_source": "backend_service", "dedup_hash": "h"}
+        """
+        let remote = try JSONDecoder.fieldworks.decode(Placemark.self, from: Data(json.utf8))
+
+        try store.upsert(remote)
+
+        XCTAssertNil(try store.fetchById("pbShared"))
+        let found = try XCTUnwrap(store.fetch(backendID: "pbShared"))
+        XCTAssertEqual(found.id, local.id)
+        XCTAssertEqual(found.backendId, "pbShared")
+        XCTAssertEqual(try store.count(), 1)
+    }
+
+    func testFetchByBackendID_FindsRowStoredUnderBackendID() throws {
+        let json = """
+        {"id": "pb2", "country": "DE", "geocoding_source": "backend_service", "dedup_hash": "h2"}
+        """
+        try store.upsert(JSONDecoder.fieldworks.decode(Placemark.self, from: Data(json.utf8)))
+
+        XCTAssertEqual(try store.fetch(backendID: "pb2")?.id, "pb2")
+        XCTAssertNil(try store.fetch(backendID: "unknown"))
+        XCTAssertNil(try store.fetch(backendID: ""))
+    }
+
     func testGeocodingSource_DecodesBothSpellingsAndWritesSnakeCase() throws {
         let decoder = JSONDecoder()
         let legacy = try decoder.decode([Placemark.GeocodingSource].self, from: Data(#"["backend-service"]"#.utf8))

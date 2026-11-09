@@ -130,6 +130,18 @@ final class LocalPlacemarkStore {
         }
     }
 
+    /// The local row for a backend placemark id — either stored under
+    /// that id or a locally created row mapped to it via `backend_id`
+    /// (see `localID(forBackendID:)`). Use this, not `fetchById`, for
+    /// ids that come from the server (e.g. `localities.placemark`).
+    func fetch(backendID: String) throws -> LocalPlacemark? {
+        guard !backendID.isEmpty else { return nil }
+        return try database.reader.read { db in
+            guard let id = try Self.localID(forBackendID: backendID, in: db) else { return nil }
+            return try LocalPlacemark.fetchOne(db, key: id)
+        }
+    }
+
     /// Every cached placemark keyed by its local row id. Backs list
     /// rows and the fieldtrip place filter (one read instead of one
     /// per row; the table holds one user's places only).
