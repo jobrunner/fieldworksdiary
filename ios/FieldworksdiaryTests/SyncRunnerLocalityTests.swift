@@ -103,7 +103,7 @@ final class SyncRunnerLocalityTests: XCTestCase {
                            INSERT INTO local_samples (
                                id, sample_id, user_id, collecting_day,
                                latitude, longitude, begin_date,
-                               is_all_day, time_zone, version,
+                               is_all_day, timezone, version,
                                notes, marked, locality, location_source,
                                sync_status, created_at, updated_at
                            ) VALUES (?, ?, 'u1', '2026-05-19',

@@ -304,10 +304,11 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
 }
 
 // Test-Hook: erlaubt zu prüfen, ob ein laufender Pass abgeschlossen
-// ist, ohne private Internals offenzulegen.
+// ist. `inFlight` allein reicht nicht: zwischen den Runden des
+// Enrichment-Polls läuft kein HTTP-Call, der Pass ist aber noch aktiv.
 @MainActor
 extension SyncRunner {
     var isIdleForTest: Bool {
-        inFlight == 0
+        inFlight == 0 && passTask == nil
     }
 }

@@ -323,7 +323,7 @@ final class SyncRunner: ObservableObject {
 
     @Published private(set) var inFlight = 0
 
-    private var passTask: Task<Void, Never>?
+    private(set) var passTask: Task<Void, Never>?
     private var retryTimer: Task<Void, Never>?
 
     /// Time between automatic retry passes when the outbox isn't

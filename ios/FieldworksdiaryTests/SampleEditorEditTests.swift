@@ -71,15 +71,13 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertNil(vm.codeValidationError)
     }
 
-    func testRecheckCode_Malformed_FormatError() throws {
+    func testRecheckCode_AnyFormatIsAccepted() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "")
         let vm = makeVM(sampleID: seeded.id)
 
-        vm.code = "not-a-code"
+        vm.code = "JB-1001"
         vm.recheckCode()
-        XCTAssertNotNil(vm.codeValidationError)
-        XCTAssertTrue(vm.codeValidationError?.contains("Format") ?? false)
-        XCTAssertFalse(vm.canSave, "format error blocks save")
+        XCTAssertNil(vm.codeValidationError, "the sample ID belongs to the user; no format check")
     }
 
     func testRecheckCode_DuplicateOfAnotherSample_UniquenessError() throws {
