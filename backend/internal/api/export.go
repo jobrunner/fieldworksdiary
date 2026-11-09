@@ -210,7 +210,14 @@ func exportReferencedPlacemarks(dao *daos.Dao, ownerID string) ([]map[string]any
 	if err != nil {
 		return nil, err
 	}
-	return exportAll(recs), nil
+	// Mirror the collection's view rule: shared (owner empty) or own rows.
+	visible := recs[:0]
+	for _, r := range recs {
+		if o := r.GetString("owner"); o == "" || o == ownerID {
+			visible = append(visible, r)
+		}
+	}
+	return exportAll(visible), nil
 }
 
 func exportAll(recs []*models.Record) []map[string]any {
