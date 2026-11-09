@@ -19,7 +19,9 @@ import Foundation
 ///   unlike the backend, which leaves it — the device already did the
 ///   query, a re-run would yield the same answer).
 /// - Geo values and features are always replaced; the DEM height is
-///   used only when the sample has no height of its own.
+///   used only when the sample has no height of its own (no
+///   `elevationSource`; 0 m with a source counts as a height).
+/// - The Ortus time zone is adopted unless it was set manually.
 ///
 /// When the sample is already on the server (`backendId` set), every
 /// write queues a `.sample/.update` outbox row, so the place data
@@ -139,6 +141,7 @@ final class SampleLocationResolver {
 
         Self.applyGeo(result.geo, to: &sample)
         Self.applyDEMHeight(result.geo, to: &sample)
+        Self.applyTimezone(result.geo, to: &sample)
         try samples.update(sample)
         try features.replace(sampleID: sampleID, features: result.features)
         // A manual sample whose stale suggestion was dropped must clear
@@ -203,6 +206,21 @@ final class SampleLocationResolver {
         case .locationService, .manual:
             return
         }
+    }
+
+    /// Zone from Ortus (`timezones-2026a`) replaces a device or earlier
+    /// location-service zone; a manual zone stays, and an empty or
+    /// unknown id leaves the sample untouched. Never touches
+    /// `collectingDay`, `fieldtrip` or `sampleID`: those were fixed when
+    /// the sample was saved. The queued update already carries
+    /// `timezone`/`timezone_source`.
+    private static func applyTimezone(_ g: SampleGeo, to s: inout LocalSample) {
+        guard s.timezoneSource != .manual,
+              let tz = g.timezone, !tz.isEmpty,
+              TimeZone(identifier: tz) != nil
+        else { return }
+        s.timezone = tz
+        s.timezoneSource = .locationService
     }
 
     private static func nonEmpty(_ s: String) -> String? {

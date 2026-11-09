@@ -266,6 +266,76 @@ final class SampleLocationResolverTests: XCTestCase {
         XCTAssertNil(noAltitude.verticalAccuracy)
     }
 
+    // MARK: - timezone (Phase Z)
+
+    func testResolveOnline_Timezone_SetsZoneAndSourceKeepsDayAndID() async throws {
+        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
+        XCTAssertEqual(sample.timezoneSource, .device)
+
+        _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
+
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.timezone, "Atlantic/Canary")
+        XCTAssertEqual(fresh.timezoneSource, .locationService)
+        XCTAssertEqual(fresh.collectingDay, sample.collectingDay)
+        XCTAssertEqual(fresh.fieldtrip, sample.fieldtrip)
+        XCTAssertEqual(fresh.sampleID, sample.sampleID)
+    }
+
+    func testResolveOnline_ManualTimezoneStays() async throws {
+        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
+        sample.timezone = "Asia/Kolkata"
+        sample.timezoneSource = .manual
+        try samples.update(sample)
+
+        _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
+
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.timezone, "Asia/Kolkata")
+        XCTAssertEqual(fresh.timezoneSource, .manual)
+    }
+
+    func testResolveOnline_NoTimezoneInAnswer_KeepsDeviceZone() async throws {
+        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
+
+        _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
+
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.timezone, sample.timezone)
+        XCTAssertEqual(fresh.timezoneSource, .device)
+    }
+
+    func testResolveOnline_CanaryZeroHeightWithSourceIsKept() async throws {
+        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 0)
+
+        _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
+
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.elevation, 0)
+        XCTAssertEqual(fresh.elevationSource, .locationService)
+    }
+
+    func testResolveOnline_PushedSample_QueuesUpdateWithNewTimezone() async throws {
+        let mutations = PendingMutationsStore(database: database)
+        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
+        sample.backendId = "backend-1"
+        sample.syncStatus = .synced
+        try samples.update(sample)
+
+        let resolver = SampleLocationResolver(ortus: fake, samples: samples, placemarks: placemarks,
+                                              features: features, mutations: mutations)
+        _ = await resolver.resolveOnline(sampleID: sample.id)
+
+        XCTAssertEqual(try mutations.fetch(entityType: .sample).map(\.op), [.update])
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.timezone, "Atlantic/Canary", "the update reads timezone from the row")
+    }
+
     // MARK: - helpers
 
     private func makeResolver(_ ortus: OrtusQuerying?) -> SampleLocationResolver {
@@ -315,6 +385,16 @@ final class SampleLocationResolverTests: XCTestCase {
       }
     }
     """
+
+    /// Ochsenfurt answer plus a `timezones-2026a` hit (zone is arbitrary here).
+    private static let canaryJSON = ochsenfurtJSON.replacingOccurrences(
+        of: "\"results\": [",
+        with: """
+        "results": [
+            {"source_id": "timezones-2026a", "source_name": "timezones-2026a.gpkg",
+             "features": [{"id": 1, "layer": "zones", "properties": {"tzid": "Atlantic/Canary"}}]},
+        """
+    )
 
     /// Copy of `shared/testdata/ortus/query_sea.json` (no admin coverage).
     private static let seaJSON = """
