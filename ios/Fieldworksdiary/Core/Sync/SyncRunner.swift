@@ -302,8 +302,28 @@ final class SyncRunner: ObservableObject {
     /// empty. Bumped to 5 s in tests.
     private let retryInterval: Duration
     /// Wartezeit zwischen Enrichment-Polls. 1.5 s in Prod, in Tests
-    /// auf 0 setzbar, damit `pollEnrichment` nicht künstlich blockt.
+    /// auf 0 setzbar, damit `pollPendingEnrichment` nicht künstlich blockt.
     private let enrichmentPollInterval: Duration
+    /// Upper bound for the whole enrichment poll at the end of a pass,
+    /// however many samples wait. What is left over is picked up by
+    /// the next `SamplesHydrator.pull`.
+    private let enrichmentPollBudget: Duration
+    /// Poll rounds at most (each one sleep + one GET per waiting sample).
+    static let enrichmentPollRounds = 6
+
+    /// A pushed sample whose server enrichment is still outstanding.
+    private struct EnrichmentTarget {
+        let localID: String
+        let backendID: String
+        /// Server version right after our own push; a newer one means
+        /// the enricher ran.
+        var baseVersion: Int
+    }
+
+    /// Collected during a pass, polled once after the push loop
+    /// (`pollPendingEnrichment`), so an offline day's worth of creates
+    /// doesn't wait for the enrichment sample by sample.
+    private var enrichmentTargets: [EnrichmentTarget] = []
 
     init(store: LocalSampleStore,
          mutationsStore: PendingMutationsStore,
@@ -315,6 +335,7 @@ final class SyncRunner: ObservableObject {
          authProvider: @escaping () -> AuthSession? = { nil },
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
+         enrichmentPollBudget: Duration = .seconds(12),
          clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
          localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(
              endpoint: $0,
@@ -339,6 +360,7 @@ final class SyncRunner: ObservableObject {
         self.authProvider = authProvider
         self.retryInterval = retryInterval
         self.enrichmentPollInterval = enrichmentPollInterval
+        self.enrichmentPollBudget = enrichmentPollBudget
         self.clientFactory = clientFactory
         self.localityClientFactory = localityClientFactory
         self.placemarkClientFactory = placemarkClientFactory
@@ -392,9 +414,11 @@ final class SyncRunner: ObservableObject {
         if mutations.isEmpty { return }
 
         let client = clientFactory(endpoint, authProvider())
+        enrichmentTargets = []
         for mutation in mutations {
             await execute(mutation, via: client)
         }
+        await pollPendingEnrichment(via: client)
     }
 
     /// Dispatch by (entityType, op). Sample create/update + locality
@@ -519,8 +543,7 @@ final class SyncRunner: ObservableObject {
             await pushPhotos(for: fresh, backendSampleID: created.id, endpoint: endpointProvider())
 
             if location.locationStatus != .backendService {
-                await pollEnrichment(backendID: created.id, localID: localId,
-                                     baseVersion: created.version, via: client)
+                awaitEnrichment(localID: localId, backendID: created.id, baseVersion: created.version)
             }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -543,8 +566,9 @@ final class SyncRunner: ObservableObject {
     /// during the network hop.
     ///
     /// Order: (server snapshot for weak local place data) → placemark
-    /// resolve → PATCH → features PUT (when the payload asks for it) →
-    /// enrichment poll after a coordinate change.
+    /// resolve → PATCH → features PUT (when the payload asks for it).
+    /// After a coordinate change the sample joins the enrichment poll
+    /// at the end of the pass.
     ///
     /// OCC: the backend's `enforceVersion` hook rejects
     /// `incoming <= current` with 409. The backend's own enrichment
@@ -638,8 +662,11 @@ final class SyncRunner: ObservableObject {
             if payload.coordinateChanged {
                 // The backend re-enriches a moved sample and bumps the
                 // version; follow it so the next edit doesn't 409.
-                await pollEnrichment(backendID: backendID, localID: localID,
-                                     baseVersion: outcome.fresh.version, via: client)
+                awaitEnrichment(localID: localID, backendID: backendID, baseVersion: outcome.fresh.version)
+            } else {
+                // Our own PATCH bumped the version: don't take that for
+                // the enrichment of a create earlier in this pass.
+                raiseEnrichmentBase(localID: localID, to: outcome.fresh.version)
             }
         } catch SampleClientError.conflict {
             // Still 409 right after adopting the server version: a
@@ -1111,25 +1138,67 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// Waits for the backend enrichment of a sample pushed without
-    /// final place data (status ≠ backend_service), or after a
-    /// coordinate change. Done when the server reports
-    /// `backend_service` or a newer version (the enricher bumps it).
-    /// Adopts the snapshot via `adoptServer` (version plus place data
-    /// unless the local state is better), then pulls placemark and
-    /// features.
-    private func pollEnrichment(backendID: String, localID: String, baseVersion: Int,
-                                via client: SamplePushClient) async
-    {
-        for _ in 0 ..< 6 {
-            try? await Task.sleep(for: enrichmentPollInterval)
-            guard let s = try? await client.fetchSample(id: backendID) else { continue }
-            guard s.locationStatus == .backendService || s.version > baseVersion else { continue }
-            guard var fresh = try? store.fetchById(localID), fresh.backendId == backendID else { return }
-            adoptServer(s, into: &fresh)
-            try? store.update(fresh)
-            await makeLocationHydration()?.hydrate([s])
-            return
+    /// Registers a sample for the enrichment poll at the end of the
+    /// pass (pushed with status ≠ backend_service, or after a
+    /// coordinate change).
+    private func awaitEnrichment(localID: String, backendID: String, baseVersion: Int) {
+        if let index = enrichmentTargets.firstIndex(where: { $0.localID == localID }) {
+            enrichmentTargets[index] = EnrichmentTarget(
+                localID: localID, backendID: backendID,
+                baseVersion: max(enrichmentTargets[index].baseVersion, baseVersion)
+            )
+        } else {
+            enrichmentTargets.append(EnrichmentTarget(localID: localID, backendID: backendID,
+                                                      baseVersion: baseVersion))
         }
+    }
+
+    private func raiseEnrichmentBase(localID: String, to version: Int) {
+        guard let index = enrichmentTargets.firstIndex(where: { $0.localID == localID }) else { return }
+        enrichmentTargets[index].baseVersion = max(enrichmentTargets[index].baseVersion, version)
+    }
+
+    /// Waits for the backend enrichment of every sample registered in
+    /// this pass, in one loop: up to `enrichmentPollRounds` rounds of
+    /// one sleep plus one GET per sample still waiting, and never
+    /// longer than `enrichmentPollBudget` in total. Samples still
+    /// unenriched afterwards are left to the next hydration pull.
+    private func pollPendingEnrichment(via client: SamplePushClient) async {
+        var waiting = enrichmentTargets
+        enrichmentTargets = []
+        guard !waiting.isEmpty else { return }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: enrichmentPollBudget)
+        for _ in 0 ..< Self.enrichmentPollRounds {
+            guard !waiting.isEmpty, clock.now < deadline else { break }
+            try? await Task.sleep(for: enrichmentPollInterval)
+            var next: [EnrichmentTarget] = []
+            for target in waiting {
+                if clock.now < deadline, await adoptEnrichment(target, via: client) { continue }
+                next.append(target)
+            }
+            waiting = next
+        }
+        if !waiting.isEmpty {
+            Log.sync.info("enrichment poll ended with \(waiting.count, privacy: .public) samples pending, left to hydration")
+        }
+    }
+
+    /// One poll of one sample. Done (true) when the server reports
+    /// `backend_service` or a newer version (the enricher bumps it), or
+    /// when the local row is gone or points elsewhere. Adopts the
+    /// snapshot via `adoptServer` onto the row as it is now (version
+    /// only forward; place data unless the local state is better),
+    /// then pulls placemark and features.
+    private func adoptEnrichment(_ target: EnrichmentTarget, via client: SamplePushClient) async -> Bool {
+        guard let s = try? await client.fetchSample(id: target.backendID) else { return false }
+        guard s.locationStatus == .backendService || s.version > target.baseVersion else { return false }
+        guard var fresh = try? store.fetchById(target.localID), fresh.backendId == target.backendID else {
+            return true
+        }
+        adoptServer(s, into: &fresh)
+        try? store.update(fresh)
+        await makeLocationHydration()?.hydrate([s])
+        return true
     }
 }

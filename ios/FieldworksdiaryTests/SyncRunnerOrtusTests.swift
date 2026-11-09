@@ -869,6 +869,75 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(try features.count(sampleID: sample.id), 1)
     }
 
+    // MARK: - batched enrichment poll (I-2)
+
+    /// Offline samples (status ≠ backend_service) used to wait for the
+    /// server enrichment one by one inside the create path. Now every
+    /// POST goes out first; one bounded poll follows the push loop.
+    func testOfflineCreates_AllPostedBeforeTheFirstEnrichmentPoll() async throws {
+        let samples = try (0 ..< 3).map { i in
+            try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14 + i))
+        }
+        let push = MockPush(log: log)
+        let created = createResponses(for: samples)
+        push.createResponder = { created[$0.clientUuid ?? ""] }
+        // Server never enriches (Ortus down): status stays pending.
+        let stillPending = Dictionary(uniqueKeysWithValues: created.values.map {
+            ($0.id, remote(id: $0.id, code: $0.sampleID, status: "pending"))
+        })
+        push.fetchResponder = { stillPending[$0] }
+        let runner = makeRunner(push: push)
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(push.createCount, 3)
+        XCTAssertFalse(push.fetches.isEmpty, "enrichment is still polled")
+        XCTAssertTrue(push.fetches.allSatisfy { $0.createsSoFar == 3 }, "no poll between the POSTs")
+        let perID = Dictionary(grouping: push.fetches, by: \.id).mapValues(\.count)
+        XCTAssertEqual(Set(perID.keys), ["backend-0", "backend-1", "backend-2"])
+        XCTAssertTrue(perID.values.allSatisfy { $0 <= SyncRunner.enrichmentPollRounds }, "bounded: \(perID)")
+        for sample in samples {
+            XCTAssertEqual(try store.fetchById(sample.id)?.syncStatus, .synced)
+        }
+    }
+
+    func testBatchedPoll_StopsPollingEnrichedSamples() async throws {
+        let samples = try (0 ..< 2).map { i in
+            try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14 + i))
+        }
+        let push = MockPush(log: log)
+        let created = createResponses(for: samples)
+        push.createResponder = { created[$0.clientUuid ?? ""] }
+        let fetched = [
+            "backend-0": remote(id: "backend-0", code: samples[0].sampleID, status: "backend_service",
+                                placemark: "pmbackend00001", version: 2, mtb: "6326"),
+            "backend-1": remote(id: "backend-1", code: samples[1].sampleID, status: "pending")
+        ]
+        push.fetchResponder = { fetched[$0] }
+        let pm = MockPlacemarks(log: log)
+        pm.fetchResponse = [remotePlacemark(id: "pmbackend00001")]
+        await runUntilQuiescent(makeRunner(push: push, placemarks: pm))
+
+        XCTAssertEqual(push.fetches.filter { $0.id == "backend-0" }.count, 1, "done after the enrichment landed")
+        XCTAssertEqual(push.fetches.filter { $0.id == "backend-1" }.count, SyncRunner.enrichmentPollRounds)
+        let enriched = try XCTUnwrap(store.fetchById(samples[0].id))
+        XCTAssertEqual(enriched.locationStatus, .backendService)
+        XCTAssertEqual(enriched.placemark, "pmbackend00001")
+        XCTAssertEqual(enriched.version, 2)
+        XCTAssertEqual(try store.fetchById(samples[1].id)?.locationStatus, .pending)
+    }
+
+    func testBatchedPoll_RespectsTotalTimeBudget() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-1", code: sample.sampleID, status: "pending")
+        push.fetchResponse = remote(id: "backend-1", code: sample.sampleID, status: "backend_service", version: 2)
+        let runner = makeRunner(push: push, pollBudget: .zero)
+        await runUntilQuiescent(runner)
+
+        XCTAssertTrue(push.fetches.isEmpty, "no budget: left to the next hydration")
+        XCTAssertEqual(try store.fetchById(sample.id)?.syncStatus, .synced)
+    }
+
     // MARK: - wire format
 
     func testFeaturesBody_SendsPropertiesAndLicenseAsJSON() throws {
@@ -924,6 +993,14 @@ final class SyncRunnerOrtusTests: XCTestCase {
         return try store.fetchById(sample.id)!
     }
 
+    /// Create responses `backend-<index>` (status pending) keyed by
+    /// the local sample id (= `client_uuid`).
+    private func createResponses(for samples: [LocalSample]) -> [String: Sample] {
+        Dictionary(uniqueKeysWithValues: samples.enumerated().map { index, sample in
+            (sample.id, remote(id: "backend-\(index)", code: sample.sampleID, clientUuid: sample.id, status: "pending"))
+        })
+    }
+
     private func feature(_ id: String, license: String? = nil) -> OrtusFeature {
         OrtusFeature(sourceID: "wdpa", sourceName: "WDPA", layer: "areas", featureID: id,
                      propertiesJSON: "{\"name\":\"\(id)\"}", licenseJSON: license)
@@ -932,7 +1009,8 @@ final class SyncRunnerOrtusTests: XCTestCase {
     private func makeRunner(
         push: MockPush,
         placemarks pm: MockPlacemarks? = nil,
-        features fx: MockFeatures? = nil
+        features fx: MockFeatures? = nil,
+        pollBudget: Duration = .seconds(5)
     ) -> SyncRunner {
         let pm = pm ?? MockPlacemarks(log: log)
         let fx = fx ?? MockFeatures(log: log)
@@ -944,6 +1022,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
             endpointProvider: { "http://test.invalid" },
             retryInterval: .seconds(3600),
             enrichmentPollInterval: .milliseconds(1),
+            enrichmentPollBudget: pollBudget,
             clientFactory: { _, _ in push },
             placemarkClientFactory: { _, _ in pm },
             featuresClientFactory: { _, _ in fx }
@@ -1086,11 +1165,21 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
 
     init(log: CallLog) { self.log = log }
 
+    /// Per-input create response (several samples in one pass); wins
+    /// over `createResponse`.
+    var createResponder: ((SampleCreateInput) -> Sample?)?
+    /// Per-id fetch response; wins over `fetchResponse`.
+    var fetchResponder: ((String) -> Sample?)?
+    var createCount = 0
+    /// Every GET, with the number of POSTs that had happened by then.
+    var fetches: [(id: String, createsSoFar: Int)] = []
+
     func createSample(_ input: SampleCreateInput) async throws -> Sample {
         log.calls.append("create")
         lastCreate = input
+        createCount += 1
         if let duringCreate { await duringCreate() }
-        guard let createResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
+        guard let createResponse = createResponder?(input) ?? createResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
         return createResponse
     }
 
@@ -1104,8 +1193,13 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
         return updateResponse
     }
 
-    func fetchSample(id _: String) async throws -> Sample {
+    func fetchSample(id: String) async throws -> Sample {
+        fetches.append((id, createCount))
         if let duringFetch { await duringFetch() }
+        if let fetchResponder {
+            guard let response = fetchResponder(id) else { throw SampleClientError.http(status: 404, body: "") }
+            return response
+        }
         guard let response = fetchResponse ?? createResponse else {
             throw SampleClientError.http(status: 404, body: "")
         }
