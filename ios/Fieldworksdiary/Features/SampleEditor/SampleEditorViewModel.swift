@@ -353,11 +353,26 @@ final class SampleEditorViewModel: ObservableObject {
 
         working.sampleID = code.trimmingCharacters(in: .whitespacesAndNewlines)
         working.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        working.beginDate = beginDate
-        // A legacy row without end stays that way until the user moves it.
-        if working.endDate != nil || endDate != beginDate { working.endDate = endDate }
-        working.timezone = timezoneID
-        working.timezoneSource = timezoneSource
+        // Time fields only when the user changed them; otherwise the
+        // row's current values (e.g. an Ortus zone set in the background)
+        // must survive a notes-only save.
+        if var fresh = try? store.fetchById(working.id) {
+            fresh.sampleID = working.sampleID
+            fresh.notes = working.notes
+            fresh.marked = working.marked
+            working = fresh
+        }
+        if let shown = savedSample {
+            if beginDate != shown.beginDate || endDate != (shown.endDate ?? shown.beginDate) {
+                working.beginDate = beginDate
+                // A legacy row without end stays that way until the user moves it.
+                if working.endDate != nil || endDate != beginDate { working.endDate = endDate }
+            }
+            if timezoneID != shown.timezone || timezoneSource != shown.timezoneSource {
+                working.timezone = timezoneID
+                working.timezoneSource = timezoneSource
+            }
+        }
         do {
             try store.saveEdits(working, mutationsStore: mutationsStore)
             try persistPhotos(for: working)

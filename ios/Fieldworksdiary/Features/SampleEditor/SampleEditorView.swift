@@ -890,12 +890,13 @@ private struct SampleEditorContent: View {
         return f
     }
 
-    private static let timeFormatter: DateFormatter = {
+    private var timeFormatter: DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "de_DE")
+        f.timeZone = viewModel.isExistingSample ? viewModel.timeZone : .current
         f.dateFormat = "HH:mm"
         return f
-    }()
+    }
 
     private var longDateText: String {
         // Existing sample: the sample's zone; a new one reads the
@@ -914,12 +915,12 @@ private struct SampleEditorContent: View {
 
     private var sunriseText: String? {
         guard let t = viewModel.savedFieldtrip?.astro?.sunrise else { return nil }
-        return Self.timeFormatter.string(from: t)
+        return timeFormatter.string(from: t)
     }
 
     private var sunsetText: String? {
         guard let t = viewModel.savedFieldtrip?.astro?.sunset else { return nil }
-        return Self.timeFormatter.string(from: t)
+        return timeFormatter.string(from: t)
     }
 
     // MARK: - A11y labels

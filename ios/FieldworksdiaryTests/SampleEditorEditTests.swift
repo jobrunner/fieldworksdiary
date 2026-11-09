@@ -251,6 +251,23 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(stored.beginDate, seeded.beginDate)
     }
 
+    func testNotesOnlySave_KeepsZoneSetInBackground() async throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let vm = makeVM(sampleID: seeded.id)
+        var row = try XCTUnwrap(samples.fetchById(seeded.id))
+        row.timezone = "Atlantic/Canary"
+        row.timezoneSource = .locationService
+        try samples.update(row)
+
+        vm.notes = "edited"
+        await vm.saveEdits()
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.notes, "edited")
+        XCTAssertEqual(stored.timezone, "Atlantic/Canary")
+        XCTAssertEqual(stored.timezoneSource, .locationService)
+    }
+
     func testEditTimes_EndNeverBeforeBegin_AndPersists() async throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
         let vm = makeVM(sampleID: seeded.id)
