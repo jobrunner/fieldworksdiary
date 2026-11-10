@@ -1093,10 +1093,17 @@ Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026
 - [x] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
 - [ ] Task 18: Phase O2 abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach O2 done
 
-Phase O3 – Backfill und Aufräumen — **in progress** (gestartet 2026-11-10 auf `feat/sample-zeit-id`, nach Phase Z; Task 20 bekommt die Migration `1700000027`)
-- [ ] Task 19: Backfill-Kommando
-- [ ] Task 20: Alte Spalten entfernen
-- [ ] Task 21: Hydration-Cursor statt 200er-Limit (Final-O2 I-3)
+Phase O3 – Backfill und Aufräumen — **implementiert, wartet auf Test durch Jo** (2026-11-10 auf `feat/sample-zeit-id`, nach Phase Z)
+- [x] Task 19: Backfill-Kommando
+- [x] Task 20: Alte Spalten entfernen
+- [x] Task 21: Hydration-Cursor statt 200er-Limit (Final-O2 I-3)
+
+Deploy-Hinweise O3:
+- Migration `1700000027` übernimmt die manuellen Alt-Placemarks (`country` … `sub_locality`) selbst nach `country_iso`/`admin_*` (pro Besitzer ein Klon) und löscht erst danach die Altspalten; Prod kann also direkt von 22 auf 27 springen.
+- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec backend /app/fieldworksdiary ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
+- Migration 27 nutzt die Mapping-Logik aus `internal/geoplace`; eine spätere Umbenennung von Placemark-Spalten muss 27 lauffähig halten.
+
+Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `backend/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
 
 ## Phase Z – Zeitzone, Sample-ID, Höhe
 
