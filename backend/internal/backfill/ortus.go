@@ -1,6 +1,7 @@
 // Package backfill migrates existing data to the Ortus-based place model
 // after deploy: samples without a backend place are enriched through
-// Ortus (step B), localities whose placemark predates Ortus are
+// Ortus (step B), samples still on the device timezone get the Ortus
+// timezone (step B2), localities whose placemark predates Ortus are
 // reverse-geocoded again (step B'), and backend placemarks are re-mapped
 // after an admin-label table change (step C, Spec §4.3). Every step is
 // idempotent. The former step A (legacy manual placemark texts → flat
@@ -53,10 +54,13 @@ func (r *Runner) labels() *adminlabels.Table {
 	return adminlabels.Default()
 }
 
-// Run executes steps B, B' and C in order.
+// Run executes steps B, B2, B' and C in order.
 func (r *Runner) Run(ctx context.Context) error {
 	if err := r.EnrichSamples(ctx); err != nil {
 		return fmt.Errorf("step B: %w", err)
+	}
+	if err := r.EnrichTimezones(ctx); err != nil {
+		return fmt.Errorf("step B2: %w", err)
 	}
 	if err := r.EnrichLocalities(ctx); err != nil {
 		return fmt.Errorf("step B': %w", err)
@@ -109,6 +113,51 @@ func (r *Runner) EnrichSamples(ctx context.Context) error {
 		}
 	}
 	r.log().Info("backfill: step B done", slog.Int("count", total))
+	return nil
+}
+
+// EnrichTimezones (step B2) gives every sample with a coordinate whose
+// timezone_source is still "device" the Ortus timezone, whatever its
+// location_status (step B skips backend_service and manual samples, so
+// rows enriched before Phase Z never got one). Only timezone and
+// timezone_source change; a manual timezone is never selected. Rate
+// limited like step B. Samples Ortus has no timezone for stay on device.
+func (r *Runner) EnrichTimezones(ctx context.Context) error {
+	if r.Enricher == nil || r.Enricher.Ortus == nil {
+		r.log().Warn("backfill: step B2 skipped, no ortus client", slog.String("service", "ortus"))
+		return nil
+	}
+	recs, err := r.App.Dao().FindRecordsByFilter("samples",
+		"(latitude != 0 || longitude != 0) && timezone_source = 'device'", "created", 0, 0)
+	if err != nil {
+		return err
+	}
+	total, changed := len(recs), 0
+	r.log().Info("backfill: step B2 start", slog.Int("count", total))
+	tick := time.NewTicker(r.interval())
+	defer tick.Stop()
+	for i, rec := range recs {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-tick.C:
+			}
+		}
+		saved, err := r.Enricher.EnrichSampleTimezone(ctx, rec.Id)
+		if err != nil {
+			r.log().Warn("backfill: sample timezone failed",
+				slog.String("sample_id", rec.Id), slog.String("service", "ortus"), slog.Any("err", err))
+			continue
+		}
+		if saved {
+			changed++
+		}
+	}
+	r.log().Info("backfill: step B2 done", slog.Int("count", total), slog.Int("changed", changed))
 	return nil
 }
 

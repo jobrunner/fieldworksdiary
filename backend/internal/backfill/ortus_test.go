@@ -412,3 +412,79 @@ func TestBackfill_LocalitiesSkippedWithoutOrtus(t *testing.T) {
 		t.Errorf("placemark = %q, want empty", got)
 	}
 }
+
+// tzSample creates a sample with the given location status and timezone.
+func tzSample(t *testing.T, app *tests.TestApp, owner, status, sid, tz, tzSource string) *models.Record {
+	t.Helper()
+	s := newSampleWithID(t, app, owner, deLat, deLon, status, sid)
+	s.Set("timezone", tz)
+	s.Set("timezone_source", tzSource)
+	s.Set("placemark", "")
+	s.Set("version", 3)
+	if err := app.Dao().SaveRecord(s); err != nil {
+		t.Fatal(err)
+	}
+	return reload(t, app, "samples", s.Id)
+}
+
+func TestBackfill_TimezoneForEnrichedAndManualSamples(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	backend := tzSample(t, app, u.Id, "backend_service", "260519/tz1", "UTC", "device")
+	manualLoc := tzSample(t, app, u.Id, "manual", "260519/tz2", "UTC", "device")
+	manualTZ := tzSample(t, app, u.Id, "backend_service", "260519/tz3", "Asia/Tokyo", "manual")
+	r, hits := newRunner(t, app, adminlabels.Default())
+
+	if err := r.EnrichTimezones(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, before := range []*models.Record{backend, manualLoc} {
+		got := reload(t, app, "samples", before.Id)
+		if got.GetString("timezone") != "Europe/Berlin" || got.GetString("timezone_source") != "location_service" {
+			t.Errorf("%s: timezone=%q source=%q", before.GetString("sample_id"),
+				got.GetString("timezone"), got.GetString("timezone_source"))
+		}
+		if got.GetInt("version") != before.GetInt("version")+1 {
+			t.Errorf("%s: version %d -> %d, want +1", before.GetString("sample_id"),
+				before.GetInt("version"), got.GetInt("version"))
+		}
+		if got.GetString("location_status") != before.GetString("location_status") ||
+			got.GetString("placemark") != "" || got.GetString("placemark_suggestion") != "" ||
+			got.GetString("mtb_sheet_number") != "" {
+			t.Errorf("%s: more than the timezone changed", before.GetString("sample_id"))
+		}
+	}
+	got := reload(t, app, "samples", manualTZ.Id)
+	if got.GetString("timezone") != "Asia/Tokyo" || got.GetString("timezone_source") != "manual" ||
+		got.GetInt("version") != manualTZ.GetInt("version") {
+		t.Errorf("manual timezone touched: %q %q v%d", got.GetString("timezone"),
+			got.GetString("timezone_source"), got.GetInt("version"))
+	}
+	if *hits != 2 {
+		t.Errorf("hits = %d, want 2", *hits)
+	}
+
+	// Second run selects nothing.
+	if err := r.EnrichTimezones(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if *hits != 2 {
+		t.Errorf("second run hit ortus (hits = %d)", *hits)
+	}
+	if v := reload(t, app, "samples", backend.Id).GetInt("version"); v != backend.GetInt("version")+1 {
+		t.Errorf("second run bumped version to %d", v)
+	}
+}
+
+func TestBackfill_TimezonesSkippedWithoutOrtus(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	s := tzSample(t, app, u.Id, "backend_service", "260519/tz4", "UTC", "device")
+	r := &Runner{App: app}
+	if err := r.EnrichTimezones(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := reload(t, app, "samples", s.Id); got.GetString("timezone_source") != "device" {
+		t.Errorf("timezone_source = %q", got.GetString("timezone_source"))
+	}
+}

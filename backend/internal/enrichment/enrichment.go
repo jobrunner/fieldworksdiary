@@ -379,3 +379,58 @@ func (e *Enricher) log() *slog.Logger {
 	}
 	return e.App.Logger()
 }
+
+// EnrichSampleTimezone sets only the Ortus timezone on one sample whose
+// timezone_source is still "device" (used by the backfill for samples
+// that were backend_service or manual before Phase Z and therefore never
+// pass through run). Placemark, geo values and location_status stay
+// untouched; a manual timezone is never replaced. The version is bumped
+// only when timezone or timezone_source actually change. It reports
+// whether the sample was saved.
+func (e *Enricher) EnrichSampleTimezone(ctx context.Context, sampleID string) (bool, error) {
+	if e.Ortus == nil {
+		return false, nil
+	}
+	dao := e.App.Dao()
+	rec, err := dao.FindRecordById("samples", sampleID)
+	if err != nil {
+		return false, err
+	}
+	lat, lon := rec.GetFloat("latitude"), rec.GetFloat("longitude")
+	if (lat == 0 && lon == 0) || rec.GetString("timezone_source") != "device" {
+		return false, nil
+	}
+	resp, err := e.Ortus.Query(ctx, lat, lon)
+	if err != nil {
+		return false, err
+	}
+	labels := e.Labels
+	if labels == nil {
+		labels = adminlabels.Default()
+	}
+	geo := geoplace.FromOrtus(resp, lat, lon, labels).Geo
+	saved := false
+	err = dao.RunInTransaction(func(tx *daos.Dao) error {
+		rec, err := tx.FindRecordById("samples", sampleID)
+		if err != nil {
+			return fmt.Errorf("sample disappeared: %w", err)
+		}
+		if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
+			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon ||
+			rec.GetString("timezone_source") != "device" {
+			return nil
+		}
+		tz, src := rec.GetString("timezone"), rec.GetString("timezone_source")
+		applyTimezone(rec, geo)
+		if rec.GetString("timezone") == tz && rec.GetString("timezone_source") == src {
+			return nil
+		}
+		rec.Set("version", rec.GetInt("version")+1)
+		if err := tx.SaveRecord(rec); err != nil {
+			return fmt.Errorf("save sample: %w", err)
+		}
+		saved = true
+		return nil
+	})
+	return saved, err
+}
