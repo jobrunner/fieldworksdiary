@@ -98,8 +98,10 @@ func TestMapLegacyManualPlacemarks_OwnersClonesAndLog(t *testing.T) {
 		clone.GetString("admin_municipality") != "Würzburg" || locB.GetInt("version") != 2 {
 		t.Errorf("owner B clone missing or wrong: err=%v", err)
 	}
-	for _, want := range []string{`"old_postal_code":"97084"`, `"old_name":"Hexenbruch"`,
-		`"old_thoroughfare":"Am Weg"`, `"new_admin_municipality":"Würzburg"`} {
+	for _, want := range []string{
+		`"old_postal_code":"97084"`, `"old_name":"Hexenbruch"`,
+		`"old_thoroughfare":"Am Weg"`, `"new_admin_municipality":"Würzburg"`,
+	} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("log lacks %s: %s", want, buf.String())
 		}

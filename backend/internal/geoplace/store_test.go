@@ -2,7 +2,6 @@ package geoplace_test
 
 import (
 	"testing"
-
 	"time"
 
 	"github.com/pocketbase/dbx"
