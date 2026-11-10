@@ -11,10 +11,13 @@ enum SampleCreation {
     /// local one and enqueues its `.locality/.create` mutation so the
     /// SyncRunner pushes it (dispatched before the sample). Either way
     /// the sample is re-pointed at the resulting locality id.
+    /// `locationSource` is the new locality's source: GPS for a fix,
+    /// `user` for a coordinate picked on the map.
     static func attachFusedLocality(
         sampleID: String,
         latitude: Double,
         longitude: Double,
+        locationSource: LocationSource = .locationService,
         store: LocalSampleStore,
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore
@@ -37,7 +40,7 @@ enum SampleCreation {
             let newLocal = try localitiesStore.createLocal(
                 latitude: latitude,
                 longitude: longitude,
-                locationSource: .locationService
+                locationSource: locationSource
             )
             _ = try mutationsStore.enqueue(
                 entityType: .locality,
@@ -87,12 +90,15 @@ enum SampleCreation {
 }
 
 extension SampleCreation {
-    /// A late fix from `PendingFixService` landed on an instantly
-    /// created sample: same pipeline as a sample created with a fix —
-    /// offline locality fusion, then place resolution (online, else
-    /// inherited offline) and a sync kick.
+    /// A late first coordinate landed on an instantly created sample —
+    /// a fix from `PendingFixService`, or a point the user picked on the
+    /// map (`localitySource: .user`): same pipeline as a sample created
+    /// with a fix — offline locality fusion when the sample has no
+    /// locality yet, then place resolution (online, else inherited
+    /// offline) and a sync kick. Works offline.
     static func completeLateFix(
         sampleID: String,
+        localitySource: LocationSource = .locationService,
         store: LocalSampleStore,
         localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
@@ -106,7 +112,7 @@ extension SampleCreation {
         {
             do {
                 try attachFusedLocality(
-                    sampleID: sampleID, latitude: lat, longitude: lon,
+                    sampleID: sampleID, latitude: lat, longitude: lon, locationSource: localitySource,
                     store: store, localitiesStore: localitiesStore, mutationsStore: mutationsStore
                 )
             } catch {

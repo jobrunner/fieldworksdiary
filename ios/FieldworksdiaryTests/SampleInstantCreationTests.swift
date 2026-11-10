@@ -161,6 +161,38 @@ final class SampleInstantCreationTests: XCTestCase {
         XCTAssertEqual(stored.locationStatus, .inherited)
     }
 
+    func testMapPickOnNewSampleOffline_FusesLocalityAndInheritsPlace() async throws {
+        let noon = berlinDate("2026-06-05T12:00:00")
+        var earlier = try samples.createLocal(lat: 49.0, lon: 9.0, collectedFrom: noon.addingTimeInterval(-600))
+        earlier.placemark = "pm-earlier"
+        try samples.update(earlier)
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample(now: noon))
+        let resolver = SampleLocationResolver(
+            ortus: nil, samples: samples, placemarks: LocalPlacemarkStore(database: database),
+            features: LocalSampleFeatureStore(database: database), mutations: mutations
+        )
+        let vm = SampleEditorViewModel(
+            sampleID: created.id, isNew: true, suggestedRunning: created.suggestedRunning,
+            store: samples, photoStore: photos, fieldtripStore: fieldtrips, localitiesStore: localities,
+            mutationsStore: mutations, sync: sync, locationResolver: resolver
+        )
+
+        vm.requestCoordinateCorrection(latitude: 49.79, longitude: 9.94)
+
+        var stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.latitude, 49.79)
+        XCTAssertNotNil(stored.locality, "offline map pick fuses like a late fix")
+        let locality = try XCTUnwrap(localities.fetchById(try XCTUnwrap(stored.locality)))
+        XCTAssertEqual(locality.locationSource, LocationSource.user.rawValue)
+        XCTAssertEqual(try mutations.fetch(entityType: .locality).map(\.op), [.create])
+        for _ in 0 ..< 100 where stored.placemark == nil {
+            try await Task.sleep(for: .milliseconds(10))
+            stored = try XCTUnwrap(samples.fetchById(created.id))
+        }
+        XCTAssertEqual(stored.placemark, "pm-earlier", "offline → place of the earlier sample of the day")
+        XCTAssertEqual(stored.locationStatus, .inherited)
+    }
+
     // MARK: - pending fix state in the editor
 
     func testEditor_NewSampleWithoutCoordinate_LocatingUntilServiceGivesUp() throws {

@@ -729,11 +729,20 @@ final class SampleEditorViewModel: ObservableObject {
     /// the old point's derived values and queues the update. Then the
     /// place is resolved online; offline it stays `pending` and the
     /// backend enriches it after the sync.
+    ///
+    /// A first coordinate for a sample without locality (a new sample
+    /// still waiting for its fix) instead runs the late-fix pipeline:
+    /// offline fusion plus place resolution online, else inherited —
+    /// so an offline map pick doesn't leave the locality empty.
     func applyCoordinateCorrection(keepManualPlace: Bool) {
         askRetakePlace = false
         guard let coordinate = pendingCorrection, let id = savedSample?.id else { return }
         pendingCorrection = nil
         placeActionError = nil
+        let before = (try? store.fetchById(id)) ?? savedSample
+        let needsLocality = before.map { sample in
+            (sample.locality ?? "").isEmpty && (!sample.hasCoordinate || isNew)
+        } ?? false
         do {
             try store.updateCoordinate(
                 id: id,
@@ -750,7 +759,22 @@ final class SampleEditorViewModel: ObservableObject {
         }
         refreshDerivedFields()
         observeRow()
-        resolveAfterCorrection(sampleID: id)
+        if needsLocality {
+            endPendingFix()
+            SampleCreation.completeLateFix(
+                sampleID: id,
+                localitySource: .user,
+                store: store,
+                localitiesStore: localitiesStore,
+                mutationsStore: mutationsStore,
+                resolver: locationResolver,
+                sync: sync,
+                completion: { [weak self] in self?.refreshDerivedFields() }
+            )
+            refreshDerivedFields()
+        } else {
+            resolveAfterCorrection(sampleID: id)
+        }
     }
 
     /// „Meine Angaben behalten“ / dialog dismissed without answer.
