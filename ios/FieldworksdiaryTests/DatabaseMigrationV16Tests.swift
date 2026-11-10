@@ -29,7 +29,10 @@ final class DatabaseMigrationV16Tests: XCTestCase {
         try Database.makeMigrator().migrate(queue)
 
         try queue.write { db in
-            XCTAssertEqual(try db.columns(in: "local_samples").map(\.name), columnsBefore)
+            // The rebuild keeps every column in order; later migrations
+            // (v18 `is_retrospective`) may only append.
+            let columnsAfter = try db.columns(in: "local_samples").map(\.name)
+            XCTAssertEqual(Array(columnsAfter.prefix(columnsBefore.count)), columnsBefore)
             let indexesAfter = Set(try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'local_samples' AND sql IS NOT NULL"))
             XCTAssertEqual(indexesAfter, indexesBefore)
 
