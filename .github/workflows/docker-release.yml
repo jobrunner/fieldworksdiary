@@ -92,9 +92,7 @@ jobs:
           cache-to: type=gha,scope=backend-release,mode=max
 
   # Advisory-Scan des veröffentlichten Images wie bei Ortus: Ergebnisse
-  # landen im Security-Tab, blockieren aber nichts. Bekannte Funde
-  # (echo/v5 über PocketBase 0.22) sind in backend/govulncheck-allowlist.txt
-  # begründet.
+  # landen im Security-Tab, blockieren aber nichts.
   image-scan:
     name: Trivy-Scan (advisory)
     runs-on: ubuntu-latest
