@@ -102,7 +102,8 @@ final class FeatureFlagsTests: XCTestCase {
         }, retryDelays: [.milliseconds(10), .milliseconds(10)])
         await waitUntil { flags.evaluator != nil }
         XCTAssertTrue(flags.isEnabled("x"))
-        XCTAssertEqual(attempts.value, 2)
+        // Two failed builds plus the successful third one.
+        XCTAssertEqual(attempts.value, 3)
     }
 
     func testRepeatedStartBuildsOnlyOneClient() async {
