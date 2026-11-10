@@ -1,4 +1,4 @@
-package services
+package services_test
 
 import (
 	"bytes"
@@ -15,17 +15,18 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 )
 
-func newTestGeocache(t *testing.T) *Geocache {
+func newTestGeocache(t *testing.T) *services.Geocache {
 	t.Helper()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatalf("test-app: %v", err)
 	}
 	t.Cleanup(app.Cleanup)
-	return &Geocache{Dao: app.Dao()}
+	return &services.Geocache{Dao: app.Dao()}
 }
 
 func ortusFixture(t *testing.T, name string) []byte {
@@ -50,7 +51,7 @@ func TestOrtusQuery_DecodesDE(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1}
 	got, err := o.Query(context.Background(), 49.681616, 10.039652)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -105,7 +106,7 @@ func TestOrtusQuery_DecodesIslandsAndMountains(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
 	defer srv.Close()
 
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1}
 	got, err := o.Query(context.Background(), 28.6835, -17.7642)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -127,7 +128,7 @@ func TestOrtusQuery_SeaPointAdminNil(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(body) }))
 	defer srv.Close()
 
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1}
 	got, err := o.Query(context.Background(), 40, -25)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
@@ -152,7 +153,7 @@ func TestOrtusQuery_5xxRetriesThenErrors(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 2}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 2}
 	if _, err := o.Query(context.Background(), 49.7, 10.0); err == nil {
 		t.Fatal("expected error")
 	}
@@ -171,7 +172,7 @@ func TestOrtusQuery_CachesSecondCall(t *testing.T) {
 	defer srv.Close()
 
 	cache := newTestGeocache(t)
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: cache}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: cache}
 	for i := 0; i < 2; i++ {
 		got, err := o.Query(context.Background(), 49.681616, 10.039652)
 		if err != nil {
@@ -207,7 +208,7 @@ func TestOrtusQuery_UnreachableErrorHasNoCoordinates(t *testing.T) {
 	srv.Close() // connection refused from now on
 
 	logger, logs := bufLogger()
-	o := &Ortus{BaseURL: base, MaxRetries: 1, Logger: logger}
+	o := &services.Ortus{BaseURL: base, MaxRetries: 1, Logger: logger}
 	_, err := o.Query(context.Background(), 49.681616, 10.039652)
 	if err == nil {
 		t.Fatal("expected error")
@@ -227,14 +228,14 @@ func TestOrtusQuery_4xxErrorOmitsBodyAndLogsStatus(t *testing.T) {
 	defer srv.Close()
 
 	logger, logs := bufLogger()
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
 	_, err := o.Query(context.Background(), 49.681616, 10.039652)
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	assertNoCoordinates(t, "error", err.Error())
 	assertNoCoordinates(t, "log", logs.String())
-	var se *HTTPStatusError
+	var se *services.HTTPStatusError
 	if !errors.As(err, &se) || se.StatusCode != http.StatusBadRequest {
 		t.Errorf("err = %v, want HTTPStatusError 400", err)
 	}
@@ -250,7 +251,7 @@ func TestOrtusQuery_5xxLogsStatus(t *testing.T) {
 	defer srv.Close()
 
 	logger, logs := bufLogger()
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Logger: logger}
 	if _, err := o.Query(context.Background(), 49.681616, 10.039652); err == nil {
 		t.Fatal("expected error")
 	}
@@ -276,7 +277,7 @@ func TestOrtusQuery_CacheWriteErrorStillReturnsResponse(t *testing.T) {
 	})
 
 	logger, logs := bufLogger()
-	o := &Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: &Geocache{Dao: app.Dao()}, Logger: logger}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: &services.Geocache{Dao: app.Dao()}, Logger: logger}
 	got, err := o.Query(context.Background(), 49.681616, 10.039652)
 	if err != nil {
 		t.Fatalf("Query: %v, want response despite cache write error", err)

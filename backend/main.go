@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -183,34 +184,19 @@ func main() {
 	}
 }
 
-// registerBackfillCommand adds `ortus-backfill [--remap-only]`: legacy
-// manual placemarks, Ortus enrichment of existing samples and the
-// remap after a label-table change (see internal/backfill).
+// registerBackfillCommand adds `ortus-backfill [--remap-only]`: Ortus
+// enrichment of existing samples (step B) and localities (step B') and
+// the remap after a label-table change (step C, see internal/backfill).
+// The legacy manual placemark mapping runs in migration 1700000027.
 func registerBackfillCommand(app *pocketbase.PocketBase, httpClient *http.Client) {
 	var remapOnly bool
 	cmd := &cobra.Command{
 		Use:   "ortus-backfill",
 		Short: "Backfill place data via Ortus (use --remap-only after a label-table change)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			labels := adminlabels.Default()
-			r := &backfill.Runner{
-				App:    app,
-				Labels: labels,
-				Logger: slog.Default(),
-				Enricher: &enrichment.Enricher{
-					App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
-				},
-			}
-			if u := strings.TrimSpace(os.Getenv("ORTUS_BASE_URL")); u != "" {
-				r.Enricher.Ortus = &services.Ortus{
-					BaseURL:    u,
-					HTTPClient: httpClient,
-					Cache:      &services.Geocache{Dao: app.Dao()},
-					MaxRetries: 3,
-					Logger:     slog.Default(),
-				}
-			} else if !remapOnly {
-				slog.Warn("ortus: ORTUS_BASE_URL leer, Anreicherung (Schritt B) wird übersprungen")
+			r, err := newBackfillRunner(app, httpClient, os.Getenv("ORTUS_BASE_URL"), remapOnly)
+			if err != nil {
+				return err
 			}
 			if remapOnly {
 				return r.Remap(cmd.Context())
@@ -220,4 +206,42 @@ func registerBackfillCommand(app *pocketbase.PocketBase, httpClient *http.Client
 	}
 	cmd.Flags().BoolVar(&remapOnly, "remap-only", false, "only re-map backend placemarks with the current label table")
 	app.RootCmd.AddCommand(cmd)
+}
+
+// errNoOrtusURL is returned by the backfill without --remap-only when
+// ORTUS_BASE_URL is empty: steps B and B' would silently do nothing.
+var errNoOrtusURL = errors.New("ortus-backfill: ORTUS_BASE_URL is empty (only --remap-only works without it)")
+
+// newBackfillRunner wires the backfill runner. Without an Ortus URL only
+// the remap (--remap-only) can run; everything else is an error.
+func newBackfillRunner(app core.App, httpClient *http.Client, ortusBaseURL string, remapOnly bool) (*backfill.Runner, error) {
+	labels := adminlabels.Default()
+	r := &backfill.Runner{
+		App:    app,
+		Labels: labels,
+		Logger: slog.Default(),
+		Enricher: &enrichment.Enricher{
+			App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
+		},
+		Localities: &enrichment.PlacemarkEnricher{
+			App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
+		},
+	}
+	u := strings.TrimSpace(ortusBaseURL)
+	if u == "" {
+		if !remapOnly {
+			return nil, errNoOrtusURL
+		}
+		return r, nil
+	}
+	ortus := &services.Ortus{
+		BaseURL:    u,
+		HTTPClient: httpClient,
+		Cache:      &services.Geocache{Dao: app.Dao()},
+		MaxRetries: 3,
+		Logger:     slog.Default(),
+	}
+	r.Enricher.Ortus = ortus
+	r.Localities.Ortus = ortus
+	return r, nil
 }

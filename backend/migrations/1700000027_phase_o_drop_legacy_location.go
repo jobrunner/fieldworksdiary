@@ -8,12 +8,18 @@
 //   - collection sample_sequences (the backend no longer assigns IDs
 //     since Phase Z)
 //
+// Before dropping, Up maps the legacy texts of manual placemarks onto the
+// flat columns (geoplace.MapLegacyManualPlacemarks: owner, per-owner
+// clones, one log line per row with old and new values). Production
+// jumps from migration 22 to 27 in one `serve`, so this cannot wait for
+// the post-deploy `ortus-backfill` job.
+//
 // Down restores the columns and the empty collection, without data.
-// Deploy only after the O3 backfill ran in production: it still reads
-// the legacy placemark columns (it skips when they are gone).
 package migrations
 
 import (
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/pocketbase/dbx"
@@ -22,13 +28,12 @@ import (
 	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
+
+	"go.mett.io/fwd-backend/internal/geoplace"
 )
 
 var legacyLocationFields = map[string][]string{
-	"placemarks": {
-		"country", "administrative_area", "sub_administrative_area", "locality",
-		"sub_locality", "postal_code", "name", "thoroughfare",
-	},
+	"placemarks": geoplace.LegacyPlacemarkFields,
 	"samples":    {"mtb"},
 	"fieldtrips": {"admin_units", "mtb", "country", "admin_area"},
 }
@@ -40,6 +45,9 @@ const (
 
 func dropLegacyLocationUp(db dbx.Builder) error {
 	dao := daos.New(db)
+	if _, err := geoplace.MapLegacyManualPlacemarks(dao, slog.Default()); err != nil {
+		return fmt.Errorf("map legacy manual placemarks: %w", err)
+	}
 	for _, name := range []string{"placemarks", "samples", "fieldtrips"} {
 		coll, err := dao.FindCollectionByNameOrId(name)
 		if err != nil {
@@ -73,7 +81,7 @@ func dropLegacyLocationDown(db dbx.Builder) error {
 	}
 	fields := map[string][]*schema.SchemaField{
 		"placemarks": {
-			{Name: "country", Type: schema.FieldTypeText, Required: true},
+			text("country"),
 			text("administrative_area"), text("sub_administrative_area"), text("locality"),
 			text("sub_locality"), text("postal_code"), text("name"), text("thoroughfare"),
 		},

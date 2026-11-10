@@ -1,4 +1,4 @@
-package geoplace
+package geoplace_test
 
 import (
 	"testing"
@@ -12,6 +12,7 @@ import (
 	_ "go.mett.io/fwd-backend/migrations"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
+	"go.mett.io/fwd-backend/internal/geoplace"
 )
 
 func newStoreApp(t *testing.T) *tests.TestApp {
@@ -40,10 +41,10 @@ func mkUser(t *testing.T, app *tests.TestApp, email string) *models.Record {
 	return u
 }
 
-func testPlace() Place {
-	return Place{
+func testPlace() geoplace.Place {
+	return geoplace.Place{
 		CountryISO: "ES",
-		Admin: map[adminlabels.Tier]AdminValue{
+		Admin: map[adminlabels.Tier]geoplace.AdminValue{
 			adminlabels.Tiers[0]: {Name: "Canarias", Native: "Canarias", Level: 4},
 		},
 		Island: "La Palma",
@@ -52,11 +53,11 @@ func testPlace() Place {
 
 func TestLookupOrCreate_ReusesSameHash(t *testing.T) {
 	app := newStoreApp(t)
-	a, err := LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
+	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
+	b, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +70,7 @@ func TestLookupOrCreate_ReusesSameHash(t *testing.T) {
 	if a.GetString("owner") != "" {
 		t.Errorf("owner = %q", a.GetString("owner"))
 	}
-	got := PlaceFromRecord(a)
+	got := geoplace.PlaceFromRecord(a)
 	if got.Island != "La Palma" || got.Admin[adminlabels.Tiers[0]].Level != 4 {
 		t.Errorf("roundtrip: %+v", got)
 	}
@@ -82,15 +83,15 @@ func TestLookupOrCreate_ManualScopedPerOwner(t *testing.T) {
 	app := newStoreApp(t)
 	u1 := mkUser(t, app, "one@example.com")
 	u2 := mkUser(t, app, "two@example.com")
-	a, err := LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
+	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u2.Id)
+	b, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u2.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
+	c, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,11 +111,11 @@ func TestApplyGeo_ClearsNil(t *testing.T) {
 	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
 	rec := models.NewRecord(coll)
 	v := 12.5
-	ApplyGeo(rec, SampleGeo{ElevationDEM: &v, MTBSheetNumber: "6026", MTBQuadrant: 3, TerrainFlat: true})
+	geoplace.ApplyGeo(rec, geoplace.SampleGeo{ElevationDEM: &v, MTBSheetNumber: "6026", MTBQuadrant: 3, TerrainFlat: true})
 	if rec.GetInt("mtb_quadrant") != 3 || !rec.GetBool("terrain_flat") {
 		t.Errorf("geo not applied: %v", rec.PublicExport())
 	}
-	ApplyGeo(rec, SampleGeo{})
+	geoplace.ApplyGeo(rec, geoplace.SampleGeo{})
 	if rec.GetInt("mtb_quadrant") != 0 || rec.GetString("mtb_sheet_number") != "" {
 		t.Error("geo not cleared")
 	}
@@ -124,14 +125,14 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 	app := newStoreApp(t)
 	u := mkUser(t, app, "feat@example.com")
 	sample := mkSample(t, app, u)
-	fs := []Feature{
+	fs := []geoplace.Feature{
 		{SourceID: "a", SourceName: "A", Layer: "l", FeatureID: "1", Properties: map[string]any{"k": "v"}},
 		{SourceID: "b", SourceName: "B", Layer: "l", FeatureID: "2"},
 	}
-	if err := ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs); err != nil {
+	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs[:1]); err != nil {
+	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs[:1]); err != nil {
 		t.Fatal(err)
 	}
 	recs, err := app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
@@ -144,7 +145,7 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 	if recs[0].GetDateTime("fetched_at").IsZero() {
 		t.Error("fetched_at unset")
 	}
-	if err := ReplaceFeatures(app.Dao(), sample.Id, u.Id, nil); err != nil {
+	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, nil); err != nil {
 		t.Fatal(err)
 	}
 	recs, _ = app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
@@ -186,7 +187,7 @@ func TestApplyGeo_NoDEMColumns(t *testing.T) {
 	u := mkUser(t, app, "nodem@example.com")
 	sample := mkSample(t, app, u)
 	v, acc := 12.5, 3.0
-	ApplyGeo(sample, SampleGeo{ElevationDEM: &v, ElevationDEMAccuracy: &acc})
+	geoplace.ApplyGeo(sample, geoplace.SampleGeo{ElevationDEM: &v, ElevationDEMAccuracy: &acc})
 	if err := app.Dao().SaveRecord(sample); err != nil {
 		t.Fatal(err)
 	}

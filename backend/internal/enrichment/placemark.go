@@ -105,10 +105,24 @@ func (e *PlacemarkEnricher) runSafely(localityID string) {
 	}
 }
 
-// run is the actual work, exported (lowercase but called from tests
-// in the same package) so the test can drive it synchronously and
-// assert on the post-state.
+// EnrichLocality reverse-geocodes one locality synchronously (used by
+// the backfill command), bounded by the enricher timeout. Manual
+// placemarks stay untouched; without an Ortus client or coordinate it
+// does nothing. An Ortus error is returned and leaves the locality
+// unchanged.
+func (e *PlacemarkEnricher) EnrichLocality(ctx context.Context, localityID string) error {
+	ctx, cancel := context.WithTimeout(ctx, e.timeout())
+	defer cancel()
+	return e.enrich(ctx, localityID)
+}
+
+// run is the hook-side entry; tests in the same package drive it
+// synchronously and assert on the post-state.
 func (e *PlacemarkEnricher) run(localityID string) error {
+	return e.EnrichLocality(context.Background(), localityID)
+}
+
+func (e *PlacemarkEnricher) enrich(ctx context.Context, localityID string) error {
 	dao := e.App.Dao()
 	loc, err := dao.FindRecordById("localities", localityID)
 	if err != nil {
@@ -143,9 +157,6 @@ func (e *PlacemarkEnricher) run(localityID string) error {
 		// Test / dev mode without an Ortus client wired in.
 		return nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), e.timeout())
-	defer cancel()
 
 	// Ortus outages are recoverable: the next coordinate update
 	// re-fires the hook. No retry queue here.

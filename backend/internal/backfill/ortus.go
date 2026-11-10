@@ -1,8 +1,11 @@
-// Package backfill migrates existing data to the Ortus-based place model:
-// legacy manual placemarks get the new flat columns (step A), samples
-// without a backend place are enriched through Ortus (step B), and
-// backend placemarks are re-mapped after an admin-label table change
-// (step C, Spec §4.3). Every step is idempotent.
+// Package backfill migrates existing data to the Ortus-based place model
+// after deploy: samples without a backend place are enriched through
+// Ortus (step B), localities whose placemark predates Ortus are
+// reverse-geocoded again (step B'), and backend placemarks are re-mapped
+// after an admin-label table change (step C, Spec §4.3). Every step is
+// idempotent. The former step A (legacy manual placemark texts → flat
+// columns) runs inside migration 1700000027, before the legacy columns
+// are dropped (geoplace.MapLegacyManualPlacemarks).
 package backfill
 
 import (
@@ -15,7 +18,6 @@ import (
 	"go.mett.io/fwd-backend/internal/enrichment"
 	"go.mett.io/fwd-backend/internal/geoplace"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/daos"
 )
@@ -26,6 +28,9 @@ type Runner struct {
 	// Enricher performs the per-sample Ortus work (step B). Its Ortus
 	// client may be nil; step B then does nothing.
 	Enricher *enrichment.Enricher
+	// Localities performs the per-locality Ortus work (step B'). Nil or
+	// a nil Ortus client skips the step.
+	Localities *enrichment.PlacemarkEnricher
 	// Labels is the admin-label table used by the remap; nil means
 	// adminlabels.Default().
 	Labels *adminlabels.Table
@@ -48,18 +53,13 @@ func (r *Runner) labels() *adminlabels.Table {
 	return adminlabels.Default()
 }
 
-// legacyPlacemarkFields are the pre-Ortus columns step A reads.
-var legacyPlacemarkFields = []string{
-	"country", "administrative_area", "sub_administrative_area", "locality", "sub_locality",
-}
-
-// Run executes steps A, B and C in order.
+// Run executes steps B, B' and C in order.
 func (r *Runner) Run(ctx context.Context) error {
-	if err := r.MapLegacyManual(ctx); err != nil {
-		return fmt.Errorf("step A: %w", err)
-	}
 	if err := r.EnrichSamples(ctx); err != nil {
 		return fmt.Errorf("step B: %w", err)
+	}
+	if err := r.EnrichLocalities(ctx); err != nil {
+		return fmt.Errorf("step B': %w", err)
 	}
 	if err := r.Remap(ctx); err != nil {
 		return fmt.Errorf("step C: %w", err)
@@ -67,141 +67,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	return nil
 }
 
-// MapLegacyManual (step A) moves the legacy text columns of manual
-// placemarks onto the new flat columns and fills the owner from the
-// referencing locality (or sample). Source stays manual.
-//
-// The legacy columns (country, administrative_area, …) are dropped by
-// migration 1700000027 (Phase O3). On a database that already ran it
-// there is nothing left to map and the step is a no-op; run the backfill
-// before deploying that migration if legacy manual placemarks exist.
-func (r *Runner) MapLegacyManual(ctx context.Context) error {
-	dao := r.App.Dao()
-	pmColl, err := dao.FindCollectionByNameOrId("placemarks")
-	if err != nil {
-		return err
+func (r *Runner) interval() time.Duration {
+	if r.Interval == 0 {
+		return 200 * time.Millisecond
 	}
-	for _, f := range legacyPlacemarkFields {
-		if pmColl.Schema.GetFieldByName(f) == nil {
-			r.log().Info("backfill: step A skipped, legacy placemark columns are gone",
-				slog.String("missing_column", f))
-			return nil
-		}
-	}
-	pms, err := dao.FindRecordsByFilter("placemarks",
-		"geocoding_source = 'manual' && country_iso = '' && (country != '' || administrative_area != '' || "+
-			"sub_administrative_area != '' || locality != '' || sub_locality != '')", "created", 0, 0)
-	if err != nil {
-		return err
-	}
-	done := 0
-	for _, pm := range pms {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		old := map[string]string{
-			"country":                 pm.GetString("country"),
-			"administrative_area":     pm.GetString("administrative_area"),
-			"sub_administrative_area": pm.GetString("sub_administrative_area"),
-			"locality":                pm.GetString("locality"),
-			"sub_locality":            pm.GetString("sub_locality"),
-		}
-		p := geoplace.Place{
-			CountryISO: old["country"],
-			Admin:      map[adminlabels.Tier]geoplace.AdminValue{},
-		}
-		for legacy, tier := range map[string]adminlabels.Tier{
-			"administrative_area":     "admin_state",
-			"sub_administrative_area": "admin_county",
-			"locality":                "admin_municipality",
-			"sub_locality":            "admin_submunicipality",
-		} {
-			if old[legacy] != "" {
-				p.Admin[tier] = geoplace.AdminValue{Name: old[legacy]}
-			}
-		}
-		owners := referencingOwners(dao, pm.Id)
-		owner := pm.GetString("owner")
-		if owner == "" && len(owners) > 0 {
-			owner = owners[0]
-		}
-		geoplace.ApplyPlace(pm, p)
-		pm.Set("dedup_hash", p.DedupHash())
-		if owner != "" {
-			pm.Set("owner", owner)
-		}
-		if err := dao.SaveRecord(pm); err != nil {
-			return fmt.Errorf("save placemark %s: %w", pm.Id, err)
-		}
-		// Pre-O rows were shared; every further owner gets its own clone
-		// (the view rule hides other owners' manual rows).
-		for _, o := range owners {
-			if o == owner {
-				continue
-			}
-			clone, err := geoplace.LookupOrCreatePlacemark(dao, p, "manual", o)
-			if err != nil {
-				return fmt.Errorf("clone placemark %s: %w", pm.Id, err)
-			}
-			err = dao.RunInTransaction(func(tx *daos.Dao) error {
-				for _, field := range []string{"placemark", "placemark_suggestion"} {
-					if _, err := repoint(tx, "samples", field, pm.Id, clone.Id, o); err != nil {
-						return err
-					}
-				}
-				_, err := repoint(tx, "localities", "placemark", pm.Id, clone.Id, o)
-				return err
-			})
-			if err != nil {
-				return fmt.Errorf("repoint owner clone %s: %w", pm.Id, err)
-			}
-			r.log().Info("backfill: legacy manual placemark cloned",
-				slog.String("placemark_id", pm.Id),
-				slog.String("clone_id", clone.Id),
-				slog.String("user_id", o))
-		}
-		done++
-		r.log().Info("backfill: legacy manual placemark",
-			slog.String("placemark_id", pm.Id),
-			slog.String("user_id", owner),
-			slog.String("old_country", old["country"]),
-			slog.String("old_administrative_area", old["administrative_area"]),
-			slog.String("old_sub_administrative_area", old["sub_administrative_area"]),
-			slog.String("old_locality", old["locality"]),
-			slog.String("old_sub_locality", old["sub_locality"]),
-			slog.String("new_country_iso", p.CountryISO),
-			slog.String("new_admin_state", p.Admin["admin_state"].Name),
-			slog.String("new_admin_county", p.Admin["admin_county"].Name),
-			slog.String("new_admin_municipality", p.Admin["admin_municipality"].Name),
-			slog.String("new_admin_submunicipality", p.Admin["admin_submunicipality"].Name),
-		)
-	}
-	r.log().Info("backfill: step A done", slog.Int("count", done))
-	return nil
-}
-
-// referencingOwners lists the distinct owners of localities and samples
-// that reference the placemark, oldest reference first.
-func referencingOwners(dao *daos.Dao, placemarkID string) []string {
-	var out []string
-	seen := map[string]bool{}
-	for _, coll := range []string{"localities", "samples"} {
-		filter := "placemark = {:p}"
-		if coll == "samples" {
-			filter += " || placemark_suggestion = {:p}"
-		}
-		recs, err := dao.FindRecordsByFilter(coll, filter, "created", 0, 0, dbx.Params{"p": placemarkID})
-		if err != nil {
-			continue
-		}
-		for _, rec := range recs {
-			if o := rec.GetString("owner"); o != "" && !seen[o] {
-				seen[o] = true
-				out = append(out, o)
-			}
-		}
-	}
-	return out
+	return r.Interval
 }
 
 // EnrichSamples (step B) enriches every sample with a coordinate whose
@@ -212,10 +82,6 @@ func (r *Runner) EnrichSamples(ctx context.Context) error {
 		r.log().Warn("backfill: step B skipped, no ortus client", slog.String("service", "ortus"))
 		return nil
 	}
-	interval := r.Interval
-	if interval == 0 {
-		interval = 200 * time.Millisecond
-	}
 	recs, err := r.App.Dao().FindRecordsByFilter("samples",
 		"(latitude != 0 || longitude != 0) && location_status != 'manual' && location_status != 'backend_service'",
 		"created", 0, 0)
@@ -224,7 +90,7 @@ func (r *Runner) EnrichSamples(ctx context.Context) error {
 	}
 	total := len(recs)
 	r.log().Info("backfill: step B start", slog.Int("count", total))
-	tick := time.NewTicker(interval)
+	tick := time.NewTicker(r.interval())
 	defer tick.Stop()
 	for i, rec := range recs {
 		if err := ctx.Err(); err != nil {
@@ -243,6 +109,64 @@ func (r *Runner) EnrichSamples(ctx context.Context) error {
 		}
 	}
 	r.log().Info("backfill: step B done", slog.Int("count", total))
+	return nil
+}
+
+// EnrichLocalities (step B') reverse-geocodes every locality with a
+// coordinate whose placemark is missing or a pre-Ortus backend row
+// (backend_service without country_iso, e.g. from migration 20), one at
+// a time, rate limited like step B. Manual placemarks are never touched;
+// a locality Ortus has no place for keeps its placemark.
+func (r *Runner) EnrichLocalities(ctx context.Context) error {
+	if r.Localities == nil || r.Localities.Ortus == nil {
+		r.log().Warn("backfill: step B' skipped, no ortus client", slog.String("service", "ortus"))
+		return nil
+	}
+	dao := r.App.Dao()
+	locs, err := dao.FindRecordsByFilter("localities", "latitude != 0 || longitude != 0", "created", 0, 0)
+	if err != nil {
+		return err
+	}
+	var todo []string
+	for _, loc := range locs {
+		pmID := loc.GetString("placemark")
+		if pmID == "" {
+			todo = append(todo, loc.Id)
+			continue
+		}
+		pm, err := dao.FindRecordById("placemarks", pmID)
+		if err != nil {
+			todo = append(todo, loc.Id) // dangling reference
+			continue
+		}
+		if pm.GetString("geocoding_source") == "backend_service" && pm.GetString("country_iso") == "" {
+			todo = append(todo, loc.Id)
+		}
+	}
+	total := len(todo)
+	r.log().Info("backfill: step B' start", slog.Int("count", total))
+	tick := time.NewTicker(r.interval())
+	defer tick.Stop()
+	for i, id := range todo {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-tick.C:
+			}
+		}
+		if err := r.Localities.EnrichLocality(ctx, id); err != nil {
+			r.log().Warn("backfill: locality enrichment failed",
+				slog.String("locality_id", id), slog.String("service", "ortus"), slog.Any("err", err))
+		}
+		if (i+1)%100 == 0 {
+			r.log().Info("backfill: step B' progress", slog.Int("done", i+1), slog.Int("count", total))
+		}
+	}
+	r.log().Info("backfill: step B' done", slog.Int("count", total))
 	return nil
 }
 
@@ -279,13 +203,13 @@ func (r *Runner) Remap(ctx context.Context) error {
 				return nil
 			}
 			for _, field := range []string{"placemark", "placemark_suggestion"} {
-				n, err := repoint(tx, "samples", field, pm.Id, target.Id, "")
+				n, err := geoplace.Repoint(tx, "samples", field, pm.Id, target.Id, "")
 				if err != nil {
 					return err
 				}
 				changed += n
 			}
-			n, err := repoint(tx, "localities", "placemark", pm.Id, target.Id, "")
+			n, err := geoplace.Repoint(tx, "localities", "placemark", pm.Id, target.Id, "")
 			changed += n
 			return err
 		})
@@ -302,31 +226,6 @@ func (r *Runner) Remap(ctx context.Context) error {
 	}
 	r.log().Info("backfill: step C done", slog.Int("count", moved))
 	return nil
-}
-
-// repoint sets field=to on every record of coll whose field is from
-// (restricted to one owner when owner != ""), bumping the version so
-// clients holding the old one get a 409. It returns the number of
-// records changed.
-func repoint(tx *daos.Dao, coll, field, from, to, owner string) (int, error) {
-	filter := field + " = {:f}"
-	params := dbx.Params{"f": from}
-	if owner != "" {
-		filter += " && owner = {:o}"
-		params["o"] = owner
-	}
-	recs, err := tx.FindRecordsByFilter(coll, filter, "", 0, 0, params)
-	if err != nil {
-		return 0, err
-	}
-	for _, rec := range recs {
-		rec.Set(field, to)
-		rec.Set("version", rec.GetInt("version")+1)
-		if err := tx.SaveRecord(rec); err != nil {
-			return 0, err
-		}
-	}
-	return len(recs), nil
 }
 
 // remapPlace re-assigns the stored admin units of p to columns according

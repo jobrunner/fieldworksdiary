@@ -11,12 +11,10 @@ import (
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/enrichment"
-	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 
 	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -58,6 +56,9 @@ func newRunnerFixture(t *testing.T, app *tests.TestApp, labels *adminlabels.Tabl
 	return &Runner{
 		App:      app,
 		Enricher: &enrichment.Enricher{App: app, Ortus: ortus, Labels: labels, Timeout: 5 * time.Second},
+		Localities: &enrichment.PlacemarkEnricher{
+			App: app, Ortus: ortus, Labels: labels, Timeout: 5 * time.Second,
+		},
 		Labels:   labels,
 		Interval: time.Millisecond,
 	}, hits
@@ -139,68 +140,6 @@ func reload(t *testing.T, app *tests.TestApp, coll, id string) *models.Record {
 	return r
 }
 
-// addLegacyPlacemarkColumns re-adds the pre-Ortus placemark columns that
-// migration 1700000027 dropped, so step A can be tested.
-func addLegacyPlacemarkColumns(t *testing.T, app *tests.TestApp) {
-	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("placemarks")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, n := range legacyPlacemarkFields {
-		if coll.Schema.GetFieldByName(n) == nil {
-			coll.Schema.AddField(&schema.SchemaField{Name: n, Type: schema.FieldTypeText})
-		}
-	}
-	if err := app.Dao().SaveCollection(coll); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// legacyManualPlacemark creates a pre-Ortus manual placemark (only legacy columns).
-func legacyManualPlacemark(t *testing.T, app *tests.TestApp) *models.Record {
-	t.Helper()
-	addLegacyPlacemarkColumns(t, app)
-	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
-	pm := models.NewRecord(coll)
-	pm.Set("country", "DE")
-	pm.Set("administrative_area", "Bayern")
-	pm.Set("sub_administrative_area", "Unterfranken")
-	pm.Set("locality", "Würzburg")
-	pm.Set("sub_locality", "Heidingsfeld")
-	pm.Set("geocoding_source", "manual")
-	pm.Set("dedup_hash", "legacyhash")
-	if err := app.Dao().SaveRecord(pm); err != nil {
-		t.Fatal(err)
-	}
-	return pm
-}
-
-func TestBackfill_LegacyManualMapped(t *testing.T) {
-	app := newApp(t)
-	u := newUser(t, app)
-	pm := legacyManualPlacemark(t, app)
-	newLocality(t, app, u.Id, pm.Id)
-	r, _ := newRunner(t, app, adminlabels.Default())
-
-	if err := r.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	got := reload(t, app, "placemarks", pm.Id)
-	for col, want := range map[string]string{
-		"country_iso": "DE", "admin_state": "Bayern", "admin_county": "Unterfranken",
-		"admin_municipality": "Würzburg", "admin_submunicipality": "Heidingsfeld",
-		"owner": u.Id, "geocoding_source": "manual",
-	} {
-		if got.GetString(col) != want {
-			t.Errorf("%s = %q, want %q", col, got.GetString(col), want)
-		}
-	}
-	if h := geoplace.PlaceFromRecord(got).DedupHash(); got.GetString("dedup_hash") != h {
-		t.Errorf("dedup_hash not recomputed")
-	}
-}
-
 func TestBackfill_SamplesEnriched(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
@@ -226,23 +165,22 @@ func TestBackfill_Idempotent(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
 	s := newSample(t, app, u.Id, deLat, deLon, "pending")
-	pm := legacyManualPlacemark(t, app)
-	newLocality(t, app, u.Id, pm.Id)
+	loc := newLocality(t, app, u.Id, legacyBackendPlacemark(t, app).Id)
 	r, hits := newRunner(t, app, adminlabels.Default())
 
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	s1 := reload(t, app, "samples", s.Id)
-	p1 := reload(t, app, "placemarks", pm.Id)
+	l1 := reload(t, app, "localities", loc.Id)
 	h1 := *hits
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	s2 := reload(t, app, "samples", s.Id)
-	p2 := reload(t, app, "placemarks", pm.Id)
+	l2 := reload(t, app, "localities", loc.Id)
 	if s1.GetInt("version") != s2.GetInt("version") || s1.GetString("placemark") != s2.GetString("placemark") ||
-		s1.Updated.String() != s2.Updated.String() || p1.Updated.String() != p2.Updated.String() {
+		s1.Updated.String() != s2.Updated.String() || l1.Updated.String() != l2.Updated.String() {
 		t.Error("second run changed records")
 	}
 	if *hits != h1 {
@@ -343,32 +281,6 @@ func TestBackfill_Idempotent_SeaSample(t *testing.T) {
 	}
 }
 
-func TestBackfill_LegacyManualSharedByTwoOwners(t *testing.T) {
-	app := newApp(t)
-	a := newUserNamed(t, app, "owner_a")
-	b := newUserNamed(t, app, "owner_b")
-	pm := legacyManualPlacemark(t, app)
-	locA := newLocality(t, app, a.Id, pm.Id)
-	locB := newLocality(t, app, b.Id, pm.Id)
-	r, _ := newRunner(t, app, adminlabels.Default())
-
-	if err := r.MapLegacyManual(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	pa := reload(t, app, "localities", locA.Id).GetString("placemark")
-	pb := reload(t, app, "localities", locB.Id).GetString("placemark")
-	if pa == pb {
-		t.Fatal("both owners still share one placemark")
-	}
-	for id, owner := range map[string]string{pa: a.Id, pb: b.Id} {
-		p := reload(t, app, "placemarks", id)
-		if p.GetString("owner") != owner || p.GetString("geocoding_source") != "manual" ||
-			p.GetString("admin_municipality") != "Würzburg" {
-			t.Errorf("placemark %s: owner=%q", id, p.GetString("owner"))
-		}
-	}
-}
-
 func TestRemap_OrphanNotCounted(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
@@ -402,10 +314,101 @@ func TestRemap_OrphanNotCounted(t *testing.T) {
 	}
 }
 
-func TestBackfill_StepASkippedWithoutLegacyColumns(t *testing.T) {
-	app := newApp(t) // schema after migration 1700000027: no legacy columns
+// legacyBackendPlacemark creates a pre-Ortus backend placemark as
+// migration 20 left it: backend_service without country_iso.
+func legacyBackendPlacemark(t *testing.T, app *tests.TestApp) *models.Record {
+	t.Helper()
+	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
+	pm := models.NewRecord(coll)
+	pm.Set("geocoding_source", "backend_service")
+	pm.Set("dedup_hash", "legacybackendhash")
+	if err := app.Dao().SaveRecord(pm); err != nil {
+		t.Fatal(err)
+	}
+	return pm
+}
+
+func TestBackfill_LocalityWithLegacyBackendPlacemarkReenriched(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	old := legacyBackendPlacemark(t, app)
+	loc := newLocality(t, app, u.Id, old.Id)
+	r, hits := newRunner(t, app, adminlabels.Default())
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := reload(t, app, "localities", loc.Id).GetString("placemark")
+	if got == "" || got == old.Id {
+		t.Fatalf("locality placemark = %q, want a new Ortus placemark", got)
+	}
+	pm := reload(t, app, "placemarks", got)
+	if pm.GetString("country_iso") != "DE" || pm.GetString("geocoding_source") != "backend_service" ||
+		pm.GetString("admin_municipality") == "" {
+		t.Errorf("placemark: iso=%q source=%q municipality=%q", pm.GetString("country_iso"),
+			pm.GetString("geocoding_source"), pm.GetString("admin_municipality"))
+	}
+	if *hits != 1 {
+		t.Errorf("hits = %d, want 1", *hits)
+	}
+	if err := r.EnrichLocalities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if *hits != 1 {
+		t.Errorf("second run hit ortus again (hits = %d)", *hits)
+	}
+}
+
+func TestBackfill_LocalityWithoutPlacemarkEnriched(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	loc := newLocality(t, app, u.Id, "")
 	r, _ := newRunner(t, app, adminlabels.Default())
-	if err := r.MapLegacyManual(context.Background()); err != nil {
-		t.Fatalf("step A must tolerate missing legacy columns: %v", err)
+
+	if err := r.EnrichLocalities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pmID := reload(t, app, "localities", loc.Id).GetString("placemark")
+	if pmID == "" || reload(t, app, "placemarks", pmID).GetString("country_iso") != "DE" {
+		t.Errorf("locality not enriched: placemark=%q", pmID)
+	}
+}
+
+func TestBackfill_LocalityWithManualPlacemarkUntouched(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
+	pm := models.NewRecord(coll)
+	pm.Set("geocoding_source", "manual")
+	pm.Set("owner", u.Id)
+	pm.Set("admin_municipality", "Eigener Ort")
+	pm.Set("dedup_hash", "manualhash")
+	if err := app.Dao().SaveRecord(pm); err != nil {
+		t.Fatal(err)
+	}
+	loc := newLocality(t, app, u.Id, pm.Id)
+	r, hits := newRunner(t, app, adminlabels.Default())
+
+	if err := r.EnrichLocalities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := reload(t, app, "localities", loc.Id).GetString("placemark"); got != pm.Id {
+		t.Errorf("manual placemark replaced: %q", got)
+	}
+	if *hits != 0 {
+		t.Errorf("hits = %d, want 0", *hits)
+	}
+}
+
+func TestBackfill_LocalitiesSkippedWithoutOrtus(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	loc := newLocality(t, app, u.Id, "")
+	r := &Runner{App: app}
+	if err := r.EnrichLocalities(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := reload(t, app, "localities", loc.Id).GetString("placemark"); got != "" {
+		t.Errorf("placemark = %q, want empty", got)
 	}
 }
