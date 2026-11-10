@@ -88,7 +88,7 @@ Gruppen in dieser Reihenfolge:
      Nicht-WGS84 um, aktualisiert Ortsdaten, Zeitzone, Höhe nach den bestehenden Regeln der
      Koordinatenkorrektur). Fehler werden in der Gruppe angezeigt, die Eingabe bleibt stehen.
    - Gespeichert wird **immer nur WGS84 dezimal**. Eine Eingabe in einem anderen System wird beim
-     Übernehmen in WGS84 umgerechnet (lokal für Geographisch/UTM/MGRS, sonst über Ortus). Das Formular
+     Übernehmen in WGS84 umgerechnet (über Ortus, siehe Entscheidungen). Das Formular
      speichert nicht, solange eine Nicht-WGS84-Eingabe nicht umgerechnet werden konnte.
    - Eine geänderte Koordinate läuft durch den bestehenden Korrekturpfad (Ortus/Höhe/Zeitzone folgen,
      Rückfragen zu manuellen Ortsangaben wie heute).
@@ -155,8 +155,8 @@ gestellt. Kein fest verdrahteter Endpoint im Code.
 - GEOTRANS als C-Target in `FieldworksGeo` statt Objective-C-Brücke.
 - Gauß-Krüger und andere Landesprojektionen nur als Eingabe (mit Jo abgestimmt).
 
-- Umrechnung: Geographisch, UTM (WGS84) und MGRS lokal mit GEOTRANS; alle Nur-Eingabe-Systeme
-  einschließlich ETRS89/UTM 32N/33N gehen mit `srid` an Ortus (ein Pfad für alle Projektionen, kein
+- Umrechnung: GEOTRANS lokal für die Anzeige und das Parsen geographischer Schreibweisen (DM/DMS →
+  Dezimalgrad); jede Eingabe zum Speichern geht über Ortus (auch MGRS und ETRS89/UTM 32N/33N mit `srid`) (ein Pfad für alle Projektionen, kein
   Sub-Meter-Unterschied zwischen ETRS89 und WGS84 zu diskutieren).
 - Bearbeiten-Formular: Zurück speichert wie die Sample-Ansicht (Phase E), kein „Fertig“-Button. Eine
   nicht umrechenbare Eingabe blockiert nur die Koordinate: die Gruppe zeigt den Fehler, die gespeicherte
