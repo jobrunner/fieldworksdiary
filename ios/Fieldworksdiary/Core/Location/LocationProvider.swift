@@ -66,6 +66,21 @@ final class LocationProvider: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
 
+    /// The fix CoreLocation already holds, if it is fresh and precise
+    /// enough by the editor's thresholds; nil otherwise. Starts no
+    /// location updates — the instant creation (Phase E) takes a fix
+    /// only when one is already there and leaves the rest to
+    /// `PendingFixService`.
+    static func recentFix(from manager: CLLocationManager = CLLocationManager()) -> Fix? {
+        guard let loc = manager.location,
+              abs(loc.timestamp.timeIntervalSinceNow) <= LocationThreshold.staleness,
+              loc.horizontalAccuracy >= 0,
+              loc.horizontalAccuracy <= LocationThreshold.horizontalAccuracy,
+              abs(loc.verticalAccuracy) <= LocationThreshold.verticalAccuracy
+        else { return nil }
+        return Fix(loc)
+    }
+
     func requestFix() {
         switch manager.authorizationStatus {
         case .notDetermined:

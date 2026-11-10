@@ -55,9 +55,13 @@ final class LocalSampleStore {
     /// string is a valid, stored id) and the running counter is not
     /// touched. With nil the current suggestion is used; if it came
     /// from the running counter, that counter is advanced.
+    ///
+    /// Coordinate: `lat`/`lon` may be nil for an instant creation
+    /// (Phase E) before the first GPS fix; `PendingFixService` fills
+    /// them in later.
     func createLocal(
-        lat: Double,
-        lon: Double,
+        lat: Double?,
+        lon: Double?,
         accuracy: Double? = nil,
         verticalAccuracy: Double? = nil,
         elevation: Double? = nil,
@@ -227,6 +231,17 @@ final class LocalSampleStore {
         peekSuggestion(for: collectedFrom).id
     }
 
+    /// Advances the running counter to `running` (never backwards).
+    /// Used when an instantly created sample keeps its suggested id:
+    /// the counter only moves once the user took the suggestion over
+    /// unchanged (Phase Z rule), which for an instant creation is
+    /// known when the editor saves.
+    func advanceRunning(to running: Int) {
+        if running > settingsProvider().lastRunning {
+            defaults.set(running, forKey: SampleIDSettings.Keys.lastRunning)
+        }
+    }
+
     /// Most recently collected sample (regardless of sync state). Used
     /// on the home dashboard to show "Recently Sample".
     func mostRecent() throws -> LocalSample? {
@@ -252,6 +267,15 @@ final class LocalSampleStore {
                 .filter(Column("created_at") > date)
                 .fetchAll(db)
         }
+    }
+
+    /// AsyncSequence over one sample row; emits nil once it is gone.
+    /// The editor uses it to show a coordinate `PendingFixService`
+    /// writes while the editor is open.
+    func observeSample(id: String) -> AsyncValueObservation<LocalSample?> {
+        AsyncValueObservation(observation: ValueObservation.tracking { db in
+            try LocalSample.fetchOne(db, key: id)
+        }, reader: database.reader)
     }
 
     func fetchById(_ id: String) throws -> LocalSample? {

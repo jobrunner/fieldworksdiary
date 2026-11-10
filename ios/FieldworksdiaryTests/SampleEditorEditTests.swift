@@ -2,7 +2,8 @@
 import XCTest
 
 /// Edit-Verhalten des `SampleEditorViewModel`: Dirty-Tracking,
-/// `canSave`-Matrix, Code-Validierung, `saveEdits` → Outbox.
+/// `canSave`-Matrix, Code-Validierung, Speichern beim Zurück
+/// (`finishEditing`) bzw. ohne Dialog (`saveEdits`) → Outbox.
 @MainActor
 final class SampleEditorEditTests: XCTestCase {
     private var database: Database!
@@ -104,12 +105,12 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertNil(vm.codeValidationError)
     }
 
-    func testSaveEdits_EnqueuesUpdate_WhenBackendIdPresent() async throws {
+    func testFinishEditing_EnqueuesUpdate_WhenBackendIdPresent() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "before", backendID: "backend-1")
         let vm = makeVM(sampleID: seeded.id)
 
         vm.notes = "after"
-        await vm.saveEdits()
+        XCTAssertTrue(vm.finishEditing())
 
         let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
         XCTAssertEqual(updates.count, 1)
@@ -228,7 +229,16 @@ final class SampleEditorEditTests: XCTestCase {
 
     // MARK: - time window and zone (Phase Z)
 
-    func testChooseZone_SetsManual_KeepsInstants_AndPersists() async throws {
+    func testFinishEditing_NoChanges_EnqueuesNothing() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "backend-1")
+        let vm = makeVM(sampleID: seeded.id)
+
+        XCTAssertTrue(vm.finishEditing())
+
+        XCTAssertEqual(try mutations.count(), 0, "leaving without edits pushes nothing")
+    }
+
+    func testChooseZone_SetsManual_KeepsInstants_AndPersists() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
         let vm = makeVM(sampleID: seeded.id)
         let begin = vm.beginDate
@@ -241,7 +251,7 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(vm.endDate, end)
         XCTAssertTrue(vm.hasUnsavedEdits)
 
-        await vm.saveEdits()
+        XCTAssertTrue(vm.finishEditing())
 
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.timezone, "Atlantic/Canary")
@@ -249,7 +259,7 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(stored.beginDate, seeded.beginDate)
     }
 
-    func testNotesOnlySave_KeepsZoneSetInBackground() async throws {
+    func testNotesOnlySave_KeepsZoneSetInBackground() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
         let vm = makeVM(sampleID: seeded.id)
         var row = try XCTUnwrap(samples.fetchById(seeded.id))
@@ -258,7 +268,7 @@ final class SampleEditorEditTests: XCTestCase {
         try samples.update(row)
 
         vm.notes = "edited"
-        await vm.saveEdits()
+        XCTAssertTrue(vm.finishEditing())
 
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.notes, "edited")
@@ -266,7 +276,7 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(stored.timezoneSource, .locationService)
     }
 
-    func testEditTimes_EndNeverBeforeBegin_AndPersists() async throws {
+    func testEditTimes_EndNeverBeforeBegin_AndPersists() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
         let vm = makeVM(sampleID: seeded.id)
         let newBegin = vm.beginDate.addingTimeInterval(3600)
@@ -277,7 +287,7 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(vm.endDate, newBegin, "end is clamped to begin")
         vm.setEndDate(newBegin.addingTimeInterval(1800))
 
-        await vm.saveEdits()
+        XCTAssertTrue(vm.finishEditing())
 
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.beginDate, newBegin)

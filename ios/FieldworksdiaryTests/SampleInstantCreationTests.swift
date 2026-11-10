@@ -1,0 +1,349 @@
+@testable import Fieldworksdiary
+import FieldworksGeo
+import XCTest
+
+@MainActor
+private final class SilentFixSource: PendingFixSource {
+    var onFix: (@MainActor (LocationProvider.Fix) -> Void)?
+    private(set) var running = false
+    func start() { running = true }
+    func stop() { running = false }
+}
+
+/// Phase E: instant creation on the home screen and the editor that
+/// saves on back (`finishEditing`) / in the background (`saveEdits`).
+@MainActor
+final class SampleInstantCreationTests: XCTestCase {
+    private var database: Database!
+    private var defaults: UserDefaults!
+    private var samples: LocalSampleStore!
+    private var photos: LocalPhotoStore!
+    private var fieldtrips: LocalFieldtripStore!
+    private var localities: LocalLocalityStore!
+    private var mutations: PendingMutationsStore!
+    private var sync: SyncRunner!
+    private var fixSource: SilentFixSource!
+    private var pendingFixes: PendingFixService!
+    private var format = SampleIDTemplate.default.raw
+    private let suiteName = "SampleInstantCreationTests"
+    // swiftlint:disable:next force_unwrapping
+    private let berlin = TimeZone(identifier: "Europe/Berlin")!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        database = try Database(inMemory: ())
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        format = SampleIDTemplate.default.raw
+        samples = LocalSampleStore(
+            database: database, userId: "u1", timeZone: berlin, defaults: defaults,
+            settings: { [unowned self] in
+                SampleIDSettings(
+                    format: format, prefix: "JB", cutoffHour: 5,
+                    lastRunning: defaults.integer(forKey: SampleIDSettings.Keys.lastRunning)
+                )
+            }
+        )
+        photos = LocalPhotoStore(database: database)
+        fieldtrips = LocalFieldtripStore(database: database)
+        localities = LocalLocalityStore(database: database)
+        mutations = PendingMutationsStore(database: database)
+        sync = SyncRunner(
+            store: samples,
+            mutationsStore: mutations,
+            localitiesStore: localities,
+            endpointProvider: { "" }, // no-op pass on kick()
+            retryInterval: .seconds(3600)
+        )
+        fixSource = SilentFixSource()
+        pendingFixes = PendingFixService(
+            store: samples, mutations: mutations, source: fixSource, timerInterval: nil
+        )
+    }
+
+    override func tearDownWithError() throws {
+        defaults.removePersistentDomain(forName: suiteName)
+        pendingFixes = nil
+        fixSource = nil
+        sync = nil
+        mutations = nil
+        localities = nil
+        fieldtrips = nil
+        photos = nil
+        samples = nil
+        defaults = nil
+        database = nil
+        try super.tearDownWithError()
+    }
+
+    // MARK: - createSample
+
+    func testCreateSample_WithoutFix_InsertsSampleQueuesCreateAndRegistersFix() throws {
+        let home = makeHome(fix: nil)
+
+        let created = try XCTUnwrap(home.createSample())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertFalse(stored.hasCoordinate, "no fix yet → no coordinate")
+        XCTAssertFalse(stored.sampleID.isEmpty, "id suggestion is stored")
+        XCTAssertEqual(stored.timezone, "Europe/Berlin")
+        XCTAssertEqual(stored.endDate?.timeIntervalSince(stored.beginDate), 15 * 60)
+        let creates = try mutations.fetch(entityType: .sample).filter { $0.op == .create }
+        XCTAssertEqual(creates.map(\.entityId), [created.id])
+        XCTAssertEqual(pendingFixes.pendingCount, 1, "PendingFixService waits for the fix")
+        XCTAssertEqual(home.sampleCount, 1)
+    }
+
+    func testCreateSample_WithFix_StoresCoordinateAndFusesLocality() throws {
+        let fix = LocationProvider.Fix(latitude: 49.79, longitude: 9.94, horizontalAccuracy: 8,
+                                       verticalAccuracy: 4, altitude: 180)
+        let home = makeHome(fix: fix)
+
+        let created = try XCTUnwrap(home.createSample())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.latitude, 49.79)
+        XCTAssertEqual(stored.longitude, 9.94)
+        XCTAssertEqual(stored.elevation, 180)
+        XCTAssertEqual(stored.verticalAccuracy, 4)
+        XCTAssertNotNil(stored.locality, "offline fusion like the old field save")
+        XCTAssertEqual(try mutations.fetch(entityType: .locality).count, 1)
+        XCTAssertEqual(try mutations.fetch(entityType: .sample).filter { $0.op == .create }.count, 1)
+        XCTAssertEqual(pendingFixes.pendingCount, 0)
+    }
+
+    // MARK: - finishEditing
+
+    func testFinishEditing_SavesNotes() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+
+        vm.notes = "unter Steinen"
+        XCTAssertTrue(vm.finishEditing())
+
+        XCTAssertEqual(try samples.fetchById(created.id)?.notes, "unter Steinen")
+        XCTAssertNil(vm.idPrompt)
+        XCTAssertTrue(vm.finished)
+    }
+
+    func testFinishEditing_KeepsCoordinateWrittenMeanwhile() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        vm.notes = "getippt, während der Fix kommt"
+        // PendingFixService writes the fix while the editor is open.
+        try samples.updateCoordinate(
+            id: created.id, latitude: 47.5, longitude: 11.5, horizontalAccuracy: 9,
+            locationSource: .locationService, mutationsStore: mutations
+        )
+
+        XCTAssertTrue(vm.finishEditing())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.latitude, 47.5)
+        XCTAssertEqual(stored.longitude, 11.5)
+        XCTAssertEqual(stored.notes, "getippt, während der Fix kommt")
+    }
+
+    func testFinishEditing_NewSampleWithEmptyID_AsksForID() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        let suggested = vm.code
+
+        vm.code = ""
+        XCTAssertFalse(vm.finishEditing())
+
+        XCTAssertEqual(vm.idPrompt, .emptyID)
+        XCTAssertFalse(vm.finished)
+        XCTAssertEqual(try samples.fetchById(created.id)?.sampleID, suggested, "nothing written yet")
+    }
+
+    func testEmptyIDPrompt_EnteredUniqueID_SavesAndFinishes() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        vm.code = ""
+        vm.notes = "n"
+        _ = vm.finishEditing()
+
+        vm.promptedID = "JB-77"
+        XCTAssertTrue(vm.submitPromptedID())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.sampleID, "JB-77")
+        XCTAssertEqual(stored.notes, "n")
+    }
+
+    func testEmptyIDPrompt_EnteredIDTakenOrEmpty_NotSaved() throws {
+        let other = try samples.createLocal(lat: 1, lon: 2, overrideCode: "JB-1")
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        vm.code = ""
+        _ = vm.finishEditing()
+
+        vm.promptedID = other.sampleID
+        XCTAssertFalse(vm.submitPromptedID())
+        vm.promptedID = "  "
+        XCTAssertFalse(vm.submitPromptedID())
+
+        XCTAssertNotEqual(try samples.fetchById(created.id)?.sampleID, "JB-1")
+        XCTAssertFalse(vm.finished)
+    }
+
+    func testEmptyIDPrompt_DeleteSample_DeletesLocallyAndDropsCreate() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        vm.code = ""
+        _ = vm.finishEditing()
+
+        XCTAssertTrue(vm.deleteNewSample())
+
+        XCTAssertNil(try samples.fetchById(created.id))
+        XCTAssertEqual(try mutations.fetch(entityType: .sample).count, 0, "never pushed → nothing for the server")
+        XCTAssertTrue(vm.finished)
+    }
+
+    func testEmptyIDPrompt_DeleteSample_AlreadyPushed_QueuesServerDelete() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        var row = try XCTUnwrap(samples.fetchById(created.id))
+        row.backendId = "backend-9"
+        row.syncStatus = .synced
+        try samples.update(row)
+        let vm = makeVM(created)
+        vm.code = ""
+        _ = vm.finishEditing()
+
+        XCTAssertTrue(vm.deleteNewSample())
+
+        XCTAssertNil(try samples.fetchById(created.id))
+        let queued = try mutations.fetch(entityType: .sample)
+        XCTAssertEqual(queued.map(\.op), [.delete])
+        XCTAssertEqual(queued.first?.entityId, "backend-9")
+    }
+
+    func testDuplicateID_PromptsAndKeepPreviousSavesTheRest() throws {
+        let other = try samples.createLocal(lat: 1, lon: 2, overrideCode: "JB-1")
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        let previous = vm.code
+
+        vm.code = other.sampleID
+        vm.notes = "Rest"
+        XCTAssertFalse(vm.finishEditing())
+        XCTAssertEqual(vm.idPrompt, .duplicate)
+
+        XCTAssertTrue(vm.keepPreviousID())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.sampleID, previous)
+        XCTAssertEqual(stored.notes, "Rest")
+        XCTAssertEqual(vm.code, previous)
+        XCTAssertTrue(vm.finished)
+    }
+
+    func testDuplicateID_Correct_StaysWithoutSaving() throws {
+        let other = try samples.createLocal(lat: 1, lon: 2, overrideCode: "JB-1")
+        let seeded = try samples.createLocal(lat: 1, lon: 2, overrideCode: "JB-2")
+        let vm = makeVM(sampleID: seeded.id)
+
+        vm.code = other.sampleID
+        XCTAssertFalse(vm.finishEditing(), "existing samples are checked too")
+        XCTAssertEqual(vm.idPrompt, .duplicate)
+        vm.correctID()
+
+        XCTAssertNil(vm.idPrompt)
+        XCTAssertFalse(vm.finished)
+        XCTAssertEqual(try samples.fetchById(seeded.id)?.sampleID, "JB-2")
+    }
+
+    func testExistingSampleWithEmptyID_NoPrompt() throws {
+        let seeded = try samples.createLocal(lat: 1, lon: 2, overrideCode: "JB-2")
+        let vm = makeVM(sampleID: seeded.id)
+
+        vm.code = ""
+        vm.notes = "Altdaten"
+        XCTAssertTrue(vm.finishEditing())
+
+        XCTAssertNil(vm.idPrompt)
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.sampleID, "")
+        XCTAssertEqual(stored.notes, "Altdaten")
+    }
+
+    // MARK: - background save
+
+    func testBackgroundSave_EmptyIDOfNewSample_KeepsStoredIDSavesNotes() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm = makeVM(created)
+        let suggested = vm.code
+
+        vm.code = ""
+        vm.notes = "Hintergrund"
+        XCTAssertTrue(vm.saveEdits())
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.sampleID, suggested)
+        XCTAssertEqual(stored.notes, "Hintergrund")
+        XCTAssertEqual(vm.code, "", "the empty id stays in the field until back")
+        XCTAssertNil(vm.idPrompt, "no dialog in the background")
+    }
+
+    // MARK: - running counter (Phase Z rule)
+
+    func testRunningCounter_AdvancesOnlyWhenSuggestionKept() throws {
+        format = "<PREFIX><n>"
+        let first = try XCTUnwrap(makeHome(fix: nil).createSample())
+        XCTAssertEqual(first.suggestedRunning, 1)
+        XCTAssertEqual(defaults.integer(forKey: SampleIDSettings.Keys.lastRunning), 0,
+                       "creation alone doesn't consume the number")
+        let vm1 = makeVM(first)
+        XCTAssertEqual(vm1.code, "JB1")
+        XCTAssertTrue(vm1.finishEditing())
+        XCTAssertEqual(defaults.integer(forKey: SampleIDSettings.Keys.lastRunning), 1)
+
+        let second = try XCTUnwrap(makeHome(fix: nil).createSample())
+        let vm2 = makeVM(second)
+        XCTAssertEqual(vm2.code, "JB2")
+        vm2.code = "Röhrchen 17"
+        XCTAssertTrue(vm2.finishEditing())
+        XCTAssertEqual(defaults.integer(forKey: SampleIDSettings.Keys.lastRunning), 1,
+                       "a replaced suggestion leaves the counter alone")
+    }
+
+    // MARK: - helpers
+
+    private func makeHome(fix: LocationProvider.Fix?) -> HomeViewModel {
+        HomeViewModel(
+            auth: AuthSession(endpointProvider: { "" }),
+            samples: samples,
+            fieldtrips: fieldtrips,
+            localities: localities,
+            photos: photos,
+            creator: InstantSampleCreator(
+                store: samples,
+                localitiesStore: localities,
+                mutationsStore: mutations,
+                sync: sync,
+                pendingFixes: pendingFixes,
+                locationResolver: nil,
+                currentFix: { fix }
+            )
+        )
+    }
+
+    private func makeVM(_ created: InstantSampleCreator.Created) -> SampleEditorViewModel {
+        makeVM(sampleID: created.id, isNew: true, suggestedRunning: created.suggestedRunning)
+    }
+
+    private func makeVM(sampleID: String, isNew: Bool = false, suggestedRunning: Int? = nil) -> SampleEditorViewModel {
+        SampleEditorViewModel(
+            sampleID: sampleID,
+            isNew: isNew,
+            suggestedRunning: suggestedRunning,
+            store: samples,
+            photoStore: photos,
+            fieldtripStore: fieldtrips,
+            localitiesStore: localities,
+            mutationsStore: mutations,
+            sync: sync
+        )
+    }
+}

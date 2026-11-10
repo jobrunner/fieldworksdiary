@@ -22,16 +22,30 @@ import UIKit
 ///
 /// The top stays editable through the entire flow; the bottom auto-
 /// fills as GPS lands + the sync round-trip enriches the row.
+///
+/// Saving (Phase E): no save button for a saved sample. The custom
+/// back button saves and validates the id; going to the background
+/// saves without dialogs. The navigation bar's back button is hidden,
+/// which also disables the interactive swipe-back, so every way out
+/// goes through `finishEditing()` (`onDisappear` only saves as a
+/// fallback, e.g. pop-to-root).
 struct SampleEditorView: View {
-    /// nil ⇒ new sample (GPS starts, fields editable).
-    /// non-nil ⇒ existing sample is adopted on init.
+    /// nil ⇒ unsaved create path (manual „Nachträglich“ flow, GPS
+    /// starts, „Probe anlegen“ inserts the row).
+    /// non-nil ⇒ the persisted sample is adopted on init.
     let sampleID: String?
+    /// The sample was just created instantly on the home screen.
+    var isNew: Bool = false
+    /// Running number of its suggested id (see `InstantSampleCreator`).
+    var suggestedRunning: Int?
 
     @EnvironmentObject var container: AppContainer
 
     var body: some View {
         SampleEditorContent(
             sampleID: sampleID,
+            isNew: isNew,
+            suggestedRunning: suggestedRunning,
             store: container.store,
             photoStore: container.photos,
             fieldtripStore: container.fieldtrips,
@@ -48,6 +62,7 @@ private struct SampleEditorContent: View {
     @StateObject private var viewModel: SampleEditorViewModel
     @EnvironmentObject private var container: AppContainer
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showingCamera = false
     @FocusState private var notesFocused: Bool
@@ -61,7 +76,6 @@ private struct SampleEditorContent: View {
     /// „Ortsangaben neu übernehmen?“ dialog isn't requested while the
     /// sheet is still presented (SwiftUI drops it then).
     @State private var pickedCorrection: CLLocationCoordinate2D?
-    @State private var showingDiscardConfirm = false
     @State private var placeEditor: PlaceEditorViewModel?
 
     /// Width of the leading icon column in the location rows; grows
@@ -72,6 +86,8 @@ private struct SampleEditorContent: View {
 
     init(
         sampleID: String?,
+        isNew: Bool,
+        suggestedRunning: Int?,
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
@@ -83,6 +99,8 @@ private struct SampleEditorContent: View {
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
+            isNew: isNew,
+            suggestedRunning: suggestedRunning,
             store: store,
             photoStore: photoStore,
             fieldtripStore: fieldtripStore,
@@ -149,25 +167,24 @@ private struct SampleEditorContent: View {
         .contentMargins(.leading, leadingMargin, for: .scrollContent)
         .contentMargins(.trailing, trailingMargin, for: .scrollContent)
         .background(Color(.systemBackground))
-        .navigationTitle(viewModel.isExistingSample ? "Probe" : "Neue Probe")
+        .navigationTitle(viewModel.isExistingSample && !viewModel.isNew ? "Probe" : "Neue Probe")
         .navigationBarTitleDisplayMode(.inline)
-        // When there are unsaved edits, swap out the default back
-        // chevron for a guarded one so accidental taps don't silently
-        // drop the user's work.
-        .navigationBarBackButtonHidden(viewModel.isExistingSample && viewModel.hasUnsavedEdits)
+        // Our own back button saves first. Hiding the system one also
+        // disables the interactive swipe-back, so it can't bypass the
+        // id validation.
+        .navigationBarBackButtonHidden(true)
         .toolbar {
-            if viewModel.isExistingSample, viewModel.hasUnsavedEdits {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingDiscardConfirm = true
-                    } label: {
-                        HStack(spacing: AppSpacing.xs) {
-                            Image(systemName: "chevron.backward")
-                            Text("Zurück")
-                        }
-                        .accessibilityLabel("Zurück mit ungespeicherten Änderungen")
+            ToolbarItem(placement: .topBarLeading) {
+                Button(action: goBack) {
+                    HStack(spacing: AppSpacing.xs) {
+                        Image(systemName: "chevron.backward")
+                            .accessibilityHidden(true)
+                        Text("Zurück")
                     }
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Zurück")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -192,19 +209,6 @@ private struct SampleEditorContent: View {
                     }
                     .frame(minWidth: 44, minHeight: 44)
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Sichern") {
-                        Task {
-                            await viewModel.saveEdits()
-                            if viewModel.saveError == nil {
-                                notesFocused = false
-                                codeFocused = false
-                            }
-                        }
-                    }
-                    .disabled(!viewModel.canSave)
-                    .accessibilityHint("Sichert die Änderungen lokal und stößt den Sync an.")
-                }
             } else {
                 ToolbarItem(placement: .bottomBar) {
                     saveButton
@@ -214,6 +218,15 @@ private struct SampleEditorContent: View {
         .task {
             viewModel.startGPS()
             viewModel.refreshDerivedFields()
+            viewModel.observeRow()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // Save without dialogs; an empty/taken id stays in the
+            // field until the user goes back.
+            if phase == .background { viewModel.saveEdits() }
+        }
+        .onDisappear {
+            if !viewModel.finished { viewModel.saveEdits() }
         }
         .refreshable { viewModel.refreshDerivedFields() }
         .onChange(of: viewModel.code) { _, _ in viewModel.recheckCode() }
@@ -224,15 +237,31 @@ private struct SampleEditorContent: View {
             }
             .ignoresSafeArea()
         }
-        .confirmationDialog(
-            "Änderungen verwerfen?",
-            isPresented: $showingDiscardConfirm,
-            titleVisibility: .visible
+        .alert(
+            "Die Sample-ID darf nicht leer sein und muss eindeutig sein.",
+            isPresented: promptBinding(.emptyID)
         ) {
-            Button("Verwerfen", role: .destructive) { dismiss() }
-            Button("Weiter bearbeiten", role: .cancel) {}
-        } message: {
-            Text("Die nicht gespeicherten Änderungen gehen verloren.")
+            TextField("Sample-ID", text: $viewModel.promptedID)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+            Button("Speichern") {
+                if viewModel.submitPromptedID() { dismiss() }
+            }
+            Button("Sample löschen", role: .destructive) {
+                if viewModel.deleteNewSample() { dismiss() }
+            }
+        }
+        .alert(
+            "Diese Sample-ID ist bereits vergeben.",
+            isPresented: promptBinding(.duplicate)
+        ) {
+            Button("Korrigieren", role: .cancel) {
+                viewModel.correctID()
+                codeFocused = true
+            }
+            Button("Bisherige ID behalten") {
+                if viewModel.keepPreviousID() { dismiss() }
+            }
         }
         .confirmationDialog(
             "Ortsangaben neu übernehmen?",
@@ -260,6 +289,24 @@ private struct SampleEditorContent: View {
                 viewModel.placeEdited()
             }
         }
+    }
+
+    // MARK: - leaving
+
+    private func goBack() {
+        notesFocused = false
+        codeFocused = false
+        if viewModel.finishEditing() { dismiss() }
+    }
+
+    /// Alert binding for one id dialog; closing it clears the state.
+    private func promptBinding(_ prompt: SampleEditorViewModel.IDPrompt) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.idPrompt == prompt },
+            set: { presented in
+                if !presented, viewModel.idPrompt == prompt { viewModel.idPrompt = nil }
+            }
+        )
     }
 
     // MARK: - editable section

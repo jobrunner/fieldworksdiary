@@ -4,21 +4,20 @@ import Foundation
 import UIKit
 
 /// Holds the in-progress / saved state for one sample in the editor.
-/// Replaces the old `AddSampleViewModel` — the editor is now a single
-/// view that handles both the create flow (sample id == nil) and an
-/// already-saved sample.
 ///
-/// Lifecycle:
-///   1. View appears with `sampleID == nil` → constructor seeds `code`
-///      from the local sequence preview and starts GPS.
-///   2. User edits `code`, `notes`, captures `pendingPhotos`. GPS fix
-///      lands on `coordinate` whenever it arrives.
-///   3. User taps "Speichern" → `save()` writes the local row +
-///      photos, kicks the sync, switches the VM into "savedSample"
-///      mode and starts observing enrichment.
-///   4. The bottom enrichment fields (admin units, fieldtrip, astro)
-///      stream in as the SyncRunner round-trips. The notes field is
-///      never overwritten — it's purely user-owned.
+/// Saved samples (Phase E): the editor works on a persisted row — an
+/// existing sample or one created instantly on the home screen
+/// (`isNew`). There is no save button: `finishEditing()` (custom back
+/// button) saves the changed fields and validates the id;
+/// `saveEdits()` saves without dialogs (app goes to the background,
+/// view disappears). The row is observed, so a coordinate written by
+/// `PendingFixService` or enrichment from the sync shows up while
+/// code and notes stay user-owned.
+///
+/// Unsaved create path (`sampleID == nil`, the manual „Nachträglich“
+/// flow): the constructor seeds `code` from the id suggestion, GPS or
+/// a map pick provides the coordinate, and `save()` („Probe anlegen“)
+/// inserts the row; from then on it behaves like a saved sample.
 @MainActor
 final class SampleEditorViewModel: ObservableObject {
     /// Photo not yet persisted to disk. We keep it in memory until
@@ -79,6 +78,30 @@ final class SampleEditorViewModel: ObservableObject {
     /// fine" — display nothing.
     @Published private(set) var codeValidationError: String?
 
+    /// Id dialog raised by `finishEditing()` (Spec Ziel 3).
+    enum IDPrompt: Equatable {
+        /// New sample with an empty id: enter one or delete the sample.
+        case emptyID
+        /// The id is taken by another sample: correct it or keep the
+        /// previous id.
+        case duplicate
+    }
+
+    @Published var idPrompt: IDPrompt?
+    /// Text field of the `.emptyID` dialog.
+    @Published var promptedID = ""
+
+    /// The sample was created instantly on the home screen (Phase E).
+    /// Only new samples must not end up with an empty id.
+    let isNew: Bool
+    /// Running number of the id suggested at instant creation; the
+    /// counter advances only when that suggestion is kept.
+    private let suggestedRunning: Int?
+    /// The id the sample got at instant creation.
+    private var suggestedCode: String?
+    /// Set once the editor was left through `finishEditing()` (or the
+    /// sample was deleted); later disappear hooks don't save again.
+    private(set) var finished = false
     // MARK: Phase O2 place data (Task 17)
 
     /// Placemark the sample points at (local cache row), nil while
@@ -115,9 +138,13 @@ final class SampleEditorViewModel: ObservableObject {
     private let placemarkStore: LocalPlacemarkStore?
 
     private var observerTask: Task<Void, Never>?
+    /// Observation of the saved row (`observeRow()`).
+    private var rowObservation: Task<Void, Never>?
 
     init(
         sampleID: String?,
+        isNew: Bool = false,
+        suggestedRunning: Int? = nil,
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
@@ -136,9 +163,16 @@ final class SampleEditorViewModel: ObservableObject {
         self.locationResolver = locationResolver
         self.placemarkStore = placemarkStore
         location = LocationProvider()
+        self.isNew = isNew
+        self.suggestedRunning = suggestedRunning
 
         if let sampleID, let existing = try? store.fetchById(sampleID) {
             adoptExisting(existing)
+            if isNew {
+                suggestedCode = code
+                // PendingFixService is locating for it.
+                if !existing.hasCoordinate { locationStatus = .locating }
+            }
         } else {
             // Seed the code field with the would-be sequence so the
             // user starts with a sensible default instead of an empty
@@ -147,7 +181,10 @@ final class SampleEditorViewModel: ObservableObject {
         }
     }
 
-    deinit { observerTask?.cancel() }
+    deinit {
+        observerTask?.cancel()
+        rowObservation?.cancel()
+    }
 
     var isExistingSample: Bool {
         savedSample != nil
@@ -338,53 +375,202 @@ final class SampleEditorViewModel: ObservableObject {
 
     // MARK: - save
 
-    /// Persists user edits (code, notes, new photos) on a sample
-    /// that's already been adopted via `init(sampleID:…)`. Idempotent:
-    /// re-running with no further changes is a no-op (`canSave` blocks
-    /// the button in that case anyway).
-    func saveEdits() async {
-        guard isExistingSample, !isSaving, var working = savedSample else { return }
-        recheckCode()
-        if codeValidationError != nil { return }
+    /// Saves every changed field of a saved sample without any dialog —
+    /// used when the app goes to the background and as the fallback
+    /// when the editor disappears. The id is only written when it is
+    /// valid (not taken; for a new sample not empty); otherwise the
+    /// stored id stays and the typed one remains in the field until
+    /// `finishEditing()` asks about it.
+    @discardableResult
+    func saveEdits() -> Bool {
+        let typed = trimmedCode
+        let idValid = !isTaken(typed) && !(isNew && typed.isEmpty)
+        return persist(id: idValid ? .typed : .keepStored)
+    }
 
+    /// Custom back button. Saves the changed fields and validates the
+    /// id (Spec Ziel 3). Returns true when the editor may close; false
+    /// when `idPrompt` asks the user first or the save failed.
+    func finishEditing() -> Bool {
+        // Unsaved create path: nothing persisted, leaving discards the
+        // draft (as before).
+        guard savedSample != nil else {
+            finished = true
+            return true
+        }
+        let typed = trimmedCode
+        if isTaken(typed) {
+            idPrompt = .duplicate
+            return false
+        }
+        if isNew, typed.isEmpty {
+            promptedID = ""
+            idPrompt = .emptyID
+            return false
+        }
+        guard persist(id: .typed) else { return false }
+        finish()
+        return true
+    }
+
+    /// „Speichern“ in the `.emptyID` dialog: the entered id must be
+    /// non-empty and not taken; otherwise the dialog comes back.
+    func submitPromptedID() -> Bool {
+        let entered = promptedID.trimmingCharacters(in: .whitespacesAndNewlines)
+        idPrompt = nil
+        guard !entered.isEmpty, !isTaken(entered) else {
+            represent(.emptyID)
+            return false
+        }
+        code = entered
+        guard persist(id: .typed) else { return false }
+        finish()
+        return true
+    }
+
+    /// „Sample löschen“ in the `.emptyID` dialog: deletes the new sample
+    /// with its photos and features, and on the server if it was pushed.
+    func deleteNewSample() -> Bool {
+        idPrompt = nil
+        guard let id = savedSample?.id else { return true }
+        do {
+            try store.deleteSample(id: id, mutationsStore: mutationsStore)
+        } catch {
+            Log.persistence.error("new sample delete failed: \(error.localizedDescription)")
+            saveError = "Die Probe konnte nicht gelöscht werden."
+            return false
+        }
+        rowObservation?.cancel()
+        rowObservation = nil
+        finished = true
+        sync.kick()
+        return true
+    }
+
+    /// „Korrigieren“: back to the code field.
+    func correctID() {
+        idPrompt = nil
+    }
+
+    /// „Bisherige ID behalten“: saves everything else with the stored id.
+    func keepPreviousID() -> Bool {
+        idPrompt = nil
+        guard persist(id: .keepStored) else { return false }
+        if let stored = savedSample?.sampleID {
+            code = stored.trimmingCharacters(in: .whitespacesAndNewlines)
+            originalCode = code
+        }
+        recheckCode()
+        finish()
+        return true
+    }
+
+    private var trimmedCode: String {
+        code.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True when `id` belongs to another sample. An unchanged id of an
+    /// existing sample is never questioned (legacy duplicates stay as
+    /// they are); a new sample's id is always checked.
+    private func isTaken(_ id: String) -> Bool {
+        guard !id.isEmpty else { return false }
+        if !isNew, id == originalCode { return false }
+        return (try? store.findByCode(id, excludingId: savedSample?.id)) != nil
+    }
+
+    private enum IDChoice {
+        /// Write the id from the code field.
+        case typed
+        /// Keep the id stored in the row.
+        case keepStored
+    }
+
+    /// Writes the user-edited fields onto a fresh read of the row, so
+    /// values written meanwhile (a `PendingFixService` coordinate, place
+    /// data, an Ortus zone) survive. `LocalSampleStore.saveEdits` only
+    /// writes id, notes, star and time fields; the coordinate is never
+    /// touched here. Nothing is written when nothing changed.
+    private func persist(id choice: IDChoice) -> Bool {
+        guard let shown = savedSample else { return true }
+        guard !isSaving else { return false }
+        guard var working = try? store.fetchById(shown.id) else {
+            // Deleted meanwhile: nothing to save.
+            return true
+        }
         isSaving = true
         defer { isSaving = false }
         saveError = nil
 
-        working.sampleID = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        working.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stored = working
+        let typedCode = trimmedCode
+        let typedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if choice == .typed, typedCode != originalCode {
+            working.sampleID = typedCode
+        }
+        if typedNotes != originalNotes {
+            working.notes = typedNotes
+        }
         // Time fields only when the user changed them; otherwise the
         // row's current values (e.g. an Ortus zone set in the background)
         // must survive a notes-only save.
-        if var fresh = try? store.fetchById(working.id) {
-            fresh.sampleID = working.sampleID
-            fresh.notes = working.notes
-            fresh.marked = working.marked
-            working = fresh
+        if beginDate != shown.beginDate || endDate != (shown.endDate ?? shown.beginDate) {
+            working.beginDate = beginDate
+            // A legacy row without end stays that way until the user moves it.
+            if working.endDate != nil || endDate != beginDate { working.endDate = endDate }
         }
-        if let shown = savedSample {
-            if beginDate != shown.beginDate || endDate != (shown.endDate ?? shown.beginDate) {
-                working.beginDate = beginDate
-                // A legacy row without end stays that way until the user moves it.
-                if working.endDate != nil || endDate != beginDate { working.endDate = endDate }
-            }
-            if timezoneID != shown.timezone || timezoneSource != shown.timezoneSource {
-                working.timezone = timezoneID
-                working.timezoneSource = timezoneSource
-            }
+        if timezoneID != shown.timezone || timezoneSource != shown.timezoneSource {
+            working.timezone = timezoneID
+            working.timezoneSource = timezoneSource
         }
+
+        let changed = working.sampleID != stored.sampleID
+            || working.notes != stored.notes
+            || working.beginDate != stored.beginDate
+            || working.endDate != stored.endDate
+            || working.timezone != stored.timezone
+            || working.timezoneSource != stored.timezoneSource
+            || !pendingPhotos.isEmpty
+        guard changed else { return true }
+
         do {
             try store.saveEdits(working, mutationsStore: mutationsStore)
             try persistPhotos(for: working)
-            let fresh = (try? store.fetchById(working.id)) ?? working
-            adoptExisting(fresh)
-            sync.kick()
-            // The push round-trip may rewrite the code (collision) or
-            // refresh enrichment fields. Re-use the create-path's
-            // background poller to surface those updates.
-            startObservingSync(sampleID: working.id)
         } catch {
             saveError = error.localizedDescription
+            return false
+        }
+        // Take over the saved state without touching the fields the
+        // user may still be editing: a kept-back id stays in the field.
+        if choice == .typed { originalCode = typedCode }
+        originalNotes = typedNotes
+        pendingPhotos = []
+        if let fresh = try? store.fetchById(working.id) {
+            savedSample = fresh
+            adoptTimeFields(fresh)
+        }
+        savedPhotos = (try? photoStore.fetchBySample(working.id)) ?? []
+        sync.kick()
+        observeRow()
+        return true
+    }
+
+    /// The editor is closed for good: advance the running counter if a
+    /// new sample kept its suggested id (Phase Z rule).
+    private func finish() {
+        finished = true
+        if isNew, let running = suggestedRunning, let suggestedCode,
+           savedSample?.sampleID == suggestedCode
+        {
+            store.advanceRunning(to: running)
+        }
+    }
+
+    /// Shows a dialog again after the current alert went away
+    /// (SwiftUI drops a re-presentation in the same transaction).
+    private func represent(_ prompt: IDPrompt) {
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            self?.idPrompt = prompt
         }
     }
 
@@ -415,87 +601,25 @@ final class SampleEditorViewModel: ObservableObject {
             // Offline fusion only for live GPS samples (Spec §5.1):
             // attach to a nearby locality or spin up a fresh one.
             if mode == .field {
-                try? attachFusedLocality(
-                    to: sample,
+                try? SampleCreation.attachFusedLocality(
+                    sampleID: sample.id,
                     latitude: coordinate.latitude,
-                    longitude: coordinate.longitude
+                    longitude: coordinate.longitude,
+                    store: store,
+                    localitiesStore: localitiesStore,
+                    mutationsStore: mutationsStore
                 )
             }
             // Re-read so `adoptExisting` reflects the locality we just set.
             let fresh = (try? store.fetchById(sample.id)) ?? sample
             adoptExisting(fresh)
-            startObservingSync(sampleID: sample.id)
-            resolveLocationThenSync(sampleID: sample.id)
+            observeRow()
+            SampleCreation.resolvePlaceThenSync(
+                sampleID: sample.id, resolver: locationResolver, sync: sync
+            )
         } catch {
             saveError = error.localizedDescription
         }
-    }
-
-    /// Runs after the sample is persisted, so Ortus can never block or
-    /// fail the save. Online → Ortus fills place/features/MTB right
-    /// away; otherwise the place is inherited from the previous sample
-    /// of the collecting day. The sync is kicked afterwards (at most
-    /// the 5 s Ortus timeout later) so the create push already carries
-    /// the place data. The task deliberately doesn't capture `self`:
-    /// it must finish even if the editor is dismissed meanwhile.
-    private func resolveLocationThenSync(sampleID: String) {
-        guard let resolver = locationResolver else {
-            sync.kick()
-            return
-        }
-        let sync = self.sync
-        Task { [weak self] in
-            let resolved = await resolver.resolveOnline(sampleID: sampleID)
-            if !resolved {
-                do {
-                    try resolver.inheritOffline(sampleID: sampleID)
-                } catch {
-                    Log.persistence.error("offline place inheritance failed: \(error.localizedDescription)")
-                }
-            }
-            sync.kick()
-            self?.refreshDerivedFields()
-        }
-    }
-
-    /// Runs the trivial offline-fusion (R6.3) against the local
-    /// localities. A hit re-uses that locality; a miss creates a new
-    /// local one and enqueues its `.locality/.create` mutation so the
-    /// SyncRunner pushes it (FK-ordered before the sample). Either way
-    /// the sample is re-pointed at the resulting locality id.
-    private func attachFusedLocality(to sample: LocalSample, latitude: Double, longitude: Double) throws {
-        let candidates: [LocalityFusion.Candidate] = ((try? localitiesStore.fetchAll()) ?? [])
-            .compactMap { loc in
-                guard let lat = loc.latitude ?? loc.centroidLat,
-                      let lon = loc.longitude ?? loc.centroidLon else { return nil }
-                return LocalityFusion.Candidate(id: loc.id, latitude: lat, longitude: lon)
-            }
-
-        let localityID: String
-        if let match = LocalityFusion.offlineFuseLocality(
-            sampleLatitude: latitude,
-            sampleLongitude: longitude,
-            candidates: candidates
-        ) {
-            localityID = match.id
-        } else {
-            let newLocal = try localitiesStore.createLocal(
-                latitude: latitude,
-                longitude: longitude,
-                locationSource: .locationService
-            )
-            _ = try mutationsStore.enqueue(
-                entityType: .locality,
-                entityId: newLocal.id,
-                op: .create,
-                payload: Data()
-            )
-            localityID = newLocal.id
-        }
-
-        var working = sample
-        working.locality = localityID
-        try store.update(working)
     }
 
     // MARK: - place data (Phase O2, Task 17)
@@ -539,7 +663,7 @@ final class SampleEditorViewModel: ObservableObject {
     func placeEdited() {
         refreshDerivedFields()
         sync.kick()
-        if let id = savedSample?.id { startObservingSync(sampleID: id) }
+        observeRow()
     }
 
     /// The user picked a corrected coordinate (or the first one for a
@@ -583,7 +707,7 @@ final class SampleEditorViewModel: ObservableObject {
             return
         }
         refreshDerivedFields()
-        startObservingSync(sampleID: id)
+        observeRow()
         resolveAfterCorrection(sampleID: id)
     }
 
@@ -624,7 +748,7 @@ final class SampleEditorViewModel: ObservableObject {
         }
         refreshDerivedFields()
         sync.kick()
-        startObservingSync(sampleID: id)
+        observeRow()
     }
 
     /// Online resolution for a corrected coordinate. No offline
@@ -693,6 +817,13 @@ final class SampleEditorViewModel: ObservableObject {
     /// without having to leave the editor.
     func refreshDerivedFields() {
         guard let id = savedSample?.id, let fresh = try? store.fetchById(id) else { return }
+        applyBackgroundRow(fresh)
+    }
+
+    /// Takes over a row written in the background (sync, enrichment,
+    /// a `PendingFixService` fix) — everything but code and notes.
+    private func applyBackgroundRow(_ fresh: LocalSample) {
+        let id = fresh.id
         adoptTimeFieldsUnlessEdited(fresh)
         savedSample = fresh
         savedPhotos = (try? photoStore.fetchBySample(id)) ?? []
@@ -751,34 +882,18 @@ final class SampleEditorViewModel: ObservableObject {
         loadPlacemarks(for: sample)
     }
 
-    /// Polls the store for the just-created sample so the bottom
-    /// section refreshes as the sync round-trip + enrichment land.
-    /// Doesn't touch `notes` or `code` — those are user-owned.
-    private func startObservingSync(sampleID: String) {
-        observerTask?.cancel()
-        observerTask = Task { [weak self] in
-            for _ in 0 ..< 60 {
-                try? await Task.sleep(for: .seconds(1))
+    /// Observes the saved row so the bottom section follows the sync
+    /// round-trip, enrichment and a coordinate written by
+    /// `PendingFixService` while the editor is open. Doesn't touch
+    /// `notes` or `code` — those are user-owned. Idempotent.
+    func observeRow() {
+        guard rowObservation == nil, let id = savedSample?.id else { return }
+        let rows = store.observeSample(id: id)
+        rowObservation = Task { [weak self] in
+            for await row in rows {
                 if Task.isCancelled { return }
-                guard let self else { return }
-                if let fresh = try? self.store.fetchById(sampleID), fresh != self.savedSample {
-                    self.adoptTimeFieldsUnlessEdited(fresh)
-                    self.savedSample = fresh
-                    if let lat = fresh.latitude, let lon = fresh.longitude {
-                        self.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-                    }
-                    self.accuracyM = fresh.horizontalAccuracy
-                    self.altitudeM = fresh.elevation
-                    if let ftID = fresh.fieldtrip, !ftID.isEmpty {
-                        self.savedFieldtrip = try? self.fieldtripStore.fetchById(ftID)
-                    }
-                    self.loadPlacemarks(for: fresh)
-                    // Done once the push landed and the place data is
-                    // known (resolved, inherited or set by hand).
-                    if fresh.syncStatus == .synced, fresh.locationStatus != .pending {
-                        return
-                    }
-                }
+                guard let self, let row else { return }
+                if row != self.savedSample { self.applyBackgroundRow(row) }
             }
         }
     }

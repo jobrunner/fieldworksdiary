@@ -3,9 +3,9 @@ import SwiftUI
 /// Root dashboard the user lands on after sign-in. Replaces the
 /// previous 5-tab bar.
 ///
-/// The new sample flow opens as a sheet so the dashboard's at-a-glance
-/// context stays visible behind it. Other destinations push onto the
-/// stack via `NavigationLink` and reuse the existing list screens.
+/// „Sample anlegen“ creates the sample instantly (Phase E) and pushes
+/// its editor onto the stack. Other destinations push via
+/// `NavigationLink` and reuse the existing list screens.
 struct HomeView: View {
     @EnvironmentObject var container: AppContainer
     @EnvironmentObject var auth: AuthSession
@@ -18,14 +18,24 @@ struct HomeView: View {
             localities: container.localitiesStore,
             photos: container.photos,
             placemarks: container.placemarksStore,
-            sync: container.sync
+            sync: container.sync,
+            creator: InstantSampleCreator(
+                store: container.store,
+                localitiesStore: container.localitiesStore,
+                mutationsStore: container.mutations,
+                sync: container.sync,
+                pendingFixes: container.pendingFixes,
+                locationResolver: container.makeLocationResolver(),
+                currentFix: { LocationProvider.recentFix() }
+            )
         )
     }
 }
 
 private struct HomeContent: View {
     @StateObject private var viewModel: HomeViewModel
-    @State private var presentingNewSample = false
+    /// The instantly created sample whose editor is pushed.
+    @State private var newSample: InstantSampleCreator.Created?
 
     private let sync: SyncRunner
 
@@ -36,7 +46,8 @@ private struct HomeContent: View {
         localities: LocalLocalityStore,
         photos: LocalPhotoStore,
         placemarks: LocalPlacemarkStore,
-        sync: SyncRunner
+        sync: SyncRunner,
+        creator: InstantSampleCreator
     ) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(
             auth: auth,
@@ -44,7 +55,8 @@ private struct HomeContent: View {
             fieldtrips: fieldtrips,
             localities: localities,
             photos: photos,
-            placemarks: placemarks
+            placemarks: placemarks,
+            creator: creator
         ))
         self.sync = sync
     }
@@ -57,7 +69,7 @@ private struct HomeContent: View {
                         collectorName: viewModel.collectorName,
                         activeFieldtrip: viewModel.activeFieldtrip,
                         recentSample: viewModel.recentSample,
-                        onAddSample: { presentingNewSample = true }
+                        onAddSample: { newSample = viewModel.createSample() }
                     )
                     menuList
                 }
@@ -66,14 +78,28 @@ private struct HomeContent: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { viewModel.refresh() }
             .onChange(of: sync.inFlight) { _, _ in viewModel.refresh() }
-            .onChange(of: presentingNewSample) { _, isPresented in
-                // Refresh once the sheet closes — covers both "user
-                // submitted a sample" and "user cancelled" without
-                // needing a callback closure.
-                if !isPresented { viewModel.refresh() }
+            .onChange(of: newSample) { _, created in
+                // Refresh once the editor is popped — covers both a
+                // saved and a deleted (empty id) new sample.
+                if created == nil { viewModel.refresh() }
             }
-            .sheet(isPresented: $presentingNewSample) {
-                AddSampleSheet()
+            .navigationDestination(item: $newSample) { created in
+                SampleEditorView(
+                    sampleID: created.id,
+                    isNew: true,
+                    suggestedRunning: created.suggestedRunning
+                )
+            }
+            .alert(
+                "Fehler",
+                isPresented: Binding(
+                    get: { viewModel.createError != nil },
+                    set: { if !$0 { viewModel.createError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.createError ?? "")
             }
         }
     }
@@ -164,25 +190,6 @@ private struct HomeContent: View {
             SampleEditorView(sampleID: recent.id)
         } else {
             SamplesListScreen()
-        }
-    }
-}
-
-/// The "+" sheet is its own struct so it can read the container from
-/// the environment without the parent having to re-inject it. Phase
-/// 14c replaced the old AddSampleView with the two-section
-/// `SampleEditorView`.
-private struct AddSampleSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            SampleEditorView(sampleID: nil)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Schließen") { dismiss() }
-                    }
-                }
         }
     }
 }

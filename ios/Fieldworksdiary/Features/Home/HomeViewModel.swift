@@ -8,8 +8,11 @@ import Foundation
 ///
 /// Doesn't drive a live `ValueObservation` — refresh is cheap (small
 /// SELECTs / counts) and the view kicks it on `.task` and when the
-/// add-sample sheet dismisses, which covers every state change the
-/// user can trigger.
+/// editor of a new sample is popped, which covers every state change
+/// the user can trigger.
+///
+/// `createSample()` is the instant creation of Phase E: the sample
+/// exists before the editor opens.
 @MainActor
 final class HomeViewModel: ObservableObject {
     struct ActiveFieldtrip: Equatable {
@@ -32,6 +35,8 @@ final class HomeViewModel: ObservableObject {
     @Published var fieldtripCount: Int = 0
     @Published var localityCount: Int = 0
     @Published var photoCount: Int = 0
+    /// Set when the instant creation failed; drives an alert.
+    @Published var createError: String?
 
     private let auth: AuthSession
     private let samples: LocalSampleStore
@@ -39,6 +44,8 @@ final class HomeViewModel: ObservableObject {
     private let localities: LocalLocalityStore
     private let photos: LocalPhotoStore
     private let placemarks: LocalPlacemarkStore?
+    /// nil → `createSample()` is unavailable (previews).
+    private let creator: InstantSampleCreator?
 
     /// The rollover hour comes from the user's settings (read fresh);
     /// "today" is the day in the device zone.
@@ -50,7 +57,8 @@ final class HomeViewModel: ObservableObject {
         fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
         photos: LocalPhotoStore,
-        placemarks: LocalPlacemarkStore? = nil
+        placemarks: LocalPlacemarkStore? = nil,
+        creator: InstantSampleCreator? = nil
     ) {
         self.auth = auth
         self.samples = samples
@@ -58,6 +66,23 @@ final class HomeViewModel: ObservableObject {
         self.localities = localities
         self.photos = photos
         self.placemarks = placemarks
+        self.creator = creator
+    }
+
+    /// „Sample anlegen“: creates the sample locally right away, queues
+    /// its create and kicks the sync. Returns what the editor needs, or
+    /// nil (with `createError` set) when the insert failed.
+    func createSample(now: Date = Date()) -> InstantSampleCreator.Created? {
+        guard let creator else { return nil }
+        do {
+            let created = try creator.create(now: now)
+            refresh()
+            return created
+        } catch {
+            Log.persistence.error("instant sample creation failed: \(error.localizedDescription)")
+            createError = "Die Probe konnte nicht angelegt werden."
+            return nil
+        }
     }
 
     func refresh() {
