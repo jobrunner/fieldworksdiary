@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "FieldworksGeo", targets: ["FieldworksGeo"])],
     targets: [
-        .target(name: "FieldworksGeo", resources: [.copy("Resources/admin_labels.json")]),
+        .target(name: "CGeotrans", path: "Sources/CGeotrans", publicHeadersPath: "include"),
+        .target(name: "FieldworksGeo", dependencies: ["CGeotrans"], resources: [.copy("Resources/admin_labels.json")]),
         .testTarget(name: "FieldworksGeoTests", dependencies: ["FieldworksGeo"]),
     ]
 )
