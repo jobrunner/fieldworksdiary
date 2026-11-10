@@ -131,6 +131,35 @@ final class LocalSampleStoreRetrospectiveTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(store.fetchById(created.id)).collectingDay, "2019-05-03")
     }
 
+    func testNotesOnlyEdit_AfterCutoffChange_KeepsDay() throws {
+        final class Cutoff { var hour = 5 }
+        let cutoff = Cutoff()
+        let store = LocalSampleStore(
+            database: database, userId: "u1", timeZone: berlin,
+            settings: { SampleIDSettings(cutoffHour: cutoff.hour) }
+        )
+        // 03:00 Berlin lies before the 05:00 rollover → previous day.
+        let created = try store.createRetrospective(
+            code: "x", latitude: nil, longitude: nil,
+            beginDate: date(2019, 5, 4, 3), timezone: "Europe/Berlin",
+            timezoneSource: .manual, mutationsStore: mutations
+        )
+        XCTAssertEqual(created.collectingDay, "2019-05-03")
+
+        cutoff.hour = 0
+        var edit = try XCTUnwrap(store.fetchById(created.id))
+        edit.notes = "nur eine Notiz"
+        try store.saveEdits(edit, mutationsStore: mutations)
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(created.id)).collectingDay, "2019-05-03",
+                       "a later rollover setting must not move an old sample")
+
+        edit = try XCTUnwrap(store.fetchById(created.id))
+        edit.beginDate = date(2019, 5, 4, 3).addingTimeInterval(60)
+        try store.saveEdits(edit, mutationsStore: mutations)
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(created.id)).collectingDay, "2019-05-04",
+                       "a real time change uses the current setting")
+    }
+
     func testAllDay_OfRetrospective_UsesCalendarDayWithoutRollover() throws {
         let created = try makeRetrospective()
         var edit = try XCTUnwrap(store.fetchById(created.id))

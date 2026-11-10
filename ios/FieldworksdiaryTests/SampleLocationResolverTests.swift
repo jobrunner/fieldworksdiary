@@ -283,6 +283,26 @@ final class SampleLocationResolverTests: XCTestCase {
         XCTAssertEqual(fresh.sampleID, sample.sampleID)
     }
 
+    func testResolveOnline_ZoneChange_RecomputesRetrospectiveDay() async throws {
+        let mutations = PendingMutationsStore(database: database)
+        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        // 2019-05-04 05:30 Berlin (03:30 UTC) is after the rollover in
+        // Berlin but 04:30 — before it — in Atlantic/Canary.
+        let begin = Self.morning2019.addingTimeInterval(-(4 * 3600 + 30 * 60))
+        let sample = try samples.createRetrospective(
+            code: "Altfund", latitude: lat, longitude: lon, beginDate: begin,
+            timezone: "Europe/Berlin", timezoneSource: .device, mutationsStore: mutations
+        )
+        XCTAssertEqual(sample.collectingDay, "2019-05-04")
+
+        _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
+
+        let fresh = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(fresh.timezone, "Atlantic/Canary")
+        XCTAssertEqual(fresh.collectingDay, "2019-05-03")
+        XCTAssertEqual(fresh.sampleID, "Altfund")
+    }
+
     func testResolveOnline_ManualTimezoneStays() async throws {
         let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
         var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
@@ -348,6 +368,17 @@ final class SampleLocationResolverTests: XCTestCase {
         c.year = 2026
         c.month = 6
         c.day = 5
+        c.hour = 10
+        c.timeZone = TimeZone(identifier: "Europe/Berlin")
+        return Calendar(identifier: .gregorian).date(from: c) ?? Date()
+    }()
+
+    /// 2019-05-04 10:00 Europe/Berlin.
+    private static let morning2019: Date = {
+        var c = DateComponents()
+        c.year = 2019
+        c.month = 5
+        c.day = 4
         c.hour = 10
         c.timeZone = TimeZone(identifier: "Europe/Berlin")
         return Calendar(identifier: .gregorian).date(from: c) ?? Date()

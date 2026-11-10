@@ -160,7 +160,13 @@ final class SampleLocationResolver {
 
         Self.applyGeo(result.geo, to: &sample)
         Self.applyDEMHeight(result.geo, to: &sample)
+        let zoneBefore = sample.timezone
         Self.applyTimezone(result.geo, to: &sample)
+        if sample.timezone != zoneBefore {
+            // A retrospective sample's day follows its zone (field
+            // samples keep theirs); the queued update carries it.
+            samples.refreshRetrospectiveCollectingDay(&sample)
+        }
         try samples.update(sample)
         try features.replace(sampleID: sampleID, features: result.features)
         // A manual sample whose stale suggestion was dropped must clear
@@ -229,10 +235,11 @@ final class SampleLocationResolver {
 
     /// Zone from Ortus (`timezones-2026a`) replaces a device or earlier
     /// location-service zone; a manual zone stays, and an empty or
-    /// unknown id leaves the sample untouched. Never touches
-    /// `collectingDay`, `fieldtrip` or `sampleID`: those were fixed when
-    /// the sample was saved. The queued update already carries
-    /// `timezone`/`timezone_source`. An all-day sample keeps its calendar
+    /// unknown id leaves the sample untouched. Never touches `fieldtrip`
+    /// or `sampleID`; `collectingDay` changes only for a retrospective
+    /// sample (in `apply`, via
+    /// `LocalSampleStore.refreshRetrospectiveCollectingDay`). The queued
+    /// update already carries `timezone`/`timezone_source`. An all-day sample keeps its calendar
     /// day: its begin moves to 00:00 of that day in the new zone (so its
     /// collecting day stays as well).
     private static func applyTimezone(_ g: SampleGeo, to s: inout LocalSample) {

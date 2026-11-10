@@ -193,6 +193,21 @@ final class LocalSampleStore {
         return sample
     }
 
+    /// A retrospective sample's day follows its begin date; a field
+    /// sample keeps the day it was collected on. Call only when begin,
+    /// zone or all-day actually changed in the write, so a later change
+    /// of the rollover setting never silently moves old samples. The
+    /// update always carries `begin_date`, `timezone` and
+    /// `collecting_day` together (SyncRunner), which the backend needs
+    /// to re-assign the fieldtrip.
+    func refreshRetrospectiveCollectingDay(_ sample: inout LocalSample) {
+        guard sample.isRetrospective else { return }
+        let zone = TimeZone(identifier: sample.timezone) ?? timeZone
+        sample.collectingDay = Self.collectingDay(
+            begin: sample.beginDate, isAllDay: sample.isAllDay, zone: zone, cutoffHour: cutoffHour
+        )
+    }
+
     /// Collecting day of a begin instant read in `zone`. All-day rows
     /// are pinned to midnight, so the rollover must not apply: their
     /// day is the calendar day.
@@ -509,23 +524,15 @@ final class LocalSampleStore {
             stored.marked = sample.marked
             // Time window and zone (editor): the instants are UTC, the
             // zone only changes how they are read.
+            let timeChanged = stored.beginDate != sample.beginDate
+                || stored.timezone != sample.timezone
+                || stored.isAllDay != sample.isAllDay
             stored.beginDate = sample.beginDate
             stored.endDate = sample.endDate
             stored.timezone = sample.timezone
             stored.timezoneSource = sample.timezoneSource
             stored.isAllDay = sample.isAllDay
-            if stored.isRetrospective {
-                // A retrospective sample's day follows its begin date;
-                // a field sample keeps the day it was collected on.
-                // The update always carries `begin_date`, `timezone` and
-                // `collecting_day` together (SyncRunner), which the
-                // backend needs to re-assign the fieldtrip.
-                let zone = TimeZone(identifier: stored.timezone) ?? self.timeZone
-                stored.collectingDay = Self.collectingDay(
-                    begin: stored.beginDate, isAllDay: stored.isAllDay, zone: zone,
-                    cutoffHour: settingsProvider().cutoffHour
-                )
-            }
+            if timeChanged { refreshRetrospectiveCollectingDay(&stored) }
             stored.updatedAt = Date()
             try stored.update(db)
             return stored.backendId
