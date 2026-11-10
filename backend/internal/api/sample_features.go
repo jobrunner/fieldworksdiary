@@ -4,21 +4,24 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 
 	"go.mett.io/fwd-backend/internal/geoplace"
 )
 
-// RegisterSampleFeaturesRoute wires `PUT /api/samples/:id/features`.
+// RegisterSampleFeaturesRoute wires `PUT /api/samples/{id}/features`.
 func RegisterSampleFeaturesRoute(app core.App) {
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		e.Router.PUT("/api/samples/:id/features", func(c echo.Context) error {
-			return handleReplaceSampleFeatures(app, c)
-		}, apis.RequireRecordAuth("users"))
-		return nil
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindSampleFeaturesRoute(se.Router)
+		return se.Next()
 	})
+}
+
+func bindSampleFeaturesRoute(r *router.Router[*core.RequestEvent]) {
+	r.PUT("/api/samples/{id}/features", handleReplaceSampleFeatures).
+		Bind(apis.RequireAuth("users"))
 }
 
 type featureBody struct {
@@ -33,22 +36,22 @@ type featureBody struct {
 // handleReplaceSampleFeatures replaces the complete feature set of one of
 // the caller's samples. Foreign or missing samples both yield 404 so ids
 // of other users' samples cannot be probed.
-func handleReplaceSampleFeatures(app core.App, c echo.Context) error {
-	ownerID, err := authOwnerID(c)
+func handleReplaceSampleFeatures(e *core.RequestEvent) error {
+	ownerID, err := authOwnerID(e)
 	if err != nil {
 		return err
 	}
 	var body struct {
 		Features *[]featureBody `json:"features"`
 	}
-	if err := c.Bind(&body); err != nil {
-		return apis.NewBadRequestError("Invalid request body.", err)
+	if err := bindJSON(e, &body); err != nil {
+		return err
 	}
 	if body.Features == nil {
 		return apis.NewBadRequestError("The features array is required.", nil)
 	}
-	dao := app.Dao()
-	sample, err := dao.FindRecordById("samples", c.PathParam("id"))
+	app := e.App
+	sample, err := app.FindRecordById("samples", e.Request.PathValue("id"))
 	if err != nil || sample.GetString("owner") != ownerID {
 		return apis.NewNotFoundError("sample not found", err)
 	}
@@ -59,8 +62,8 @@ func handleReplaceSampleFeatures(app core.App, c echo.Context) error {
 			FeatureID: f.FeatureID, Properties: f.Properties, License: f.License,
 		})
 	}
-	if err := geoplace.ReplaceFeatures(dao, sample.Id, ownerID, fs); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, ownerID, fs); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "could not store features", err)
 	}
-	return c.NoContent(http.StatusNoContent)
+	return e.NoContent(http.StatusNoContent)
 }

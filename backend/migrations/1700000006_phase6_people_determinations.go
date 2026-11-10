@@ -8,105 +8,81 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
+	m.Register(func(app core.App) error {
 		open := types.Pointer("")
 
 		// 1. people
-		people := &models.Collection{
-			Name: "people",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{Name: "full_name", Type: schema.FieldTypeText, Required: true},
-				&schema.SchemaField{Name: "abbreviation", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "email", Type: schema.FieldTypeEmail},
-				&schema.SchemaField{Name: "notes", Type: schema.FieldTypeEditor},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE INDEX idx_people_full_name ON people (full_name)",
-			},
-			ListRule:   open,
-			ViewRule:   open,
-			CreateRule: open,
-			UpdateRule: open,
-			DeleteRule: open,
+		people := newBaseCollection("people",
+			&core.TextField{Name: "full_name", Required: true},
+			&core.TextField{Name: "abbreviation"},
+			&core.EmailField{Name: "email"},
+			&core.EditorField{Name: "notes"},
+		)
+		people.Indexes = types.JSONArray[string]{
+			"CREATE INDEX idx_people_full_name ON people (full_name)",
 		}
-		if err := dao.SaveCollection(people); err != nil {
+		people.ListRule = open
+		people.ViewRule = open
+		people.CreateRule = open
+		people.UpdateRule = open
+		people.DeleteRule = open
+		if err := app.Save(people); err != nil {
 			return err
 		}
 
 		// 2. determinations
-		samples, err := dao.FindCollectionByNameOrId("samples")
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		determinations := &models.Collection{
-			Name: "determinations",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{
-					Name:     "sample",
-					Type:     schema.FieldTypeRelation,
-					Required: true,
-					Options: &schema.RelationOptions{
-						CollectionId:  samples.Id,
-						CascadeDelete: true, // determination dies with its sample
-						MinSelect:     types.Pointer(1),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "species_text", Type: schema.FieldTypeText, Required: true},
-				&schema.SchemaField{
-					Name:     "kind",
-					Type:     schema.FieldTypeSelect,
-					Required: true,
-					Options: &schema.SelectOptions{
-						Values:    []string{"det", "t", "vid"},
-						MaxSelect: 1,
-					},
-				},
-				&schema.SchemaField{
-					Name: "person",
-					Type: schema.FieldTypeRelation,
-					Options: &schema.RelationOptions{
-						CollectionId:  people.Id,
-						CascadeDelete: false,
-						MinSelect:     types.Pointer(0),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "determined_on", Type: schema.FieldTypeDate},
-				&schema.SchemaField{Name: "notes", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "client_uuid", Type: schema.FieldTypeText},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE INDEX idx_determinations_sample ON determinations (sample)",
-				"CREATE INDEX idx_determinations_kind ON determinations (kind)",
-				"CREATE INDEX idx_determinations_person ON determinations (person)",
+		determinations := newBaseCollection("determinations",
+			&core.RelationField{
+				Name:          "sample",
+				Required:      true,
+				CollectionId:  samples.Id,
+				CascadeDelete: true, // determination dies with its sample
+				MinSelect:     1,
+				MaxSelect:     1,
 			},
-			ListRule:   open,
-			ViewRule:   open,
-			CreateRule: open,
-			UpdateRule: open,
-			DeleteRule: open,
+			&core.TextField{Name: "species_text", Required: true},
+			&core.SelectField{
+				Name:      "kind",
+				Required:  true,
+				Values:    []string{"det", "t", "vid"},
+				MaxSelect: 1,
+			},
+			&core.RelationField{
+				Name:          "person",
+				CollectionId:  people.Id,
+				CascadeDelete: false,
+				MinSelect:     0,
+				MaxSelect:     1,
+			},
+			&core.DateField{Name: "determined_on"},
+			&core.TextField{Name: "notes"},
+			&core.TextField{Name: "client_uuid"},
+		)
+		determinations.Indexes = types.JSONArray[string]{
+			"CREATE INDEX idx_determinations_sample ON determinations (sample)",
+			"CREATE INDEX idx_determinations_kind ON determinations (kind)",
+			"CREATE INDEX idx_determinations_person ON determinations (person)",
 		}
-		return dao.SaveCollection(determinations)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
+		determinations.ListRule = open
+		determinations.ViewRule = open
+		determinations.CreateRule = open
+		determinations.UpdateRule = open
+		determinations.DeleteRule = open
+		return app.Save(determinations)
+	}, func(app core.App) error {
 		for _, name := range []string{"determinations", "people"} {
-			if c, err := dao.FindCollectionByNameOrId(name); err == nil {
-				if err := dao.DeleteCollection(c); err != nil {
-					return err
-				}
+			if err := deleteCollectionIfExists(app, name); err != nil {
+				return err
 			}
 		}
 		return nil

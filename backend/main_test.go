@@ -5,16 +5,14 @@ import (
 	"net/http"
 	"testing"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"github.com/pocketbase/pocketbase/tests"
 )
 
 func newMainTestApp(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 	return app
 }
 

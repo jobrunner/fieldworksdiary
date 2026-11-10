@@ -18,10 +18,8 @@ package migrations
 import (
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
@@ -41,49 +39,38 @@ func placemarksOrtusFieldNames() []string {
 	return names
 }
 
-func placemarksOrtusUp(db dbx.Builder) error {
-	dao := daos.New(db)
-	pm, err := dao.FindCollectionByNameOrId("placemarks")
+func placemarksOrtusUp(app core.App) error {
+	pm, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		return err
 	}
-	users, err := dao.FindCollectionByNameOrId("users")
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
 	}
-	add := func(f *schema.SchemaField) {
-		if pm.Schema.GetFieldByName(f.Name) == nil {
-			pm.Schema.AddField(f)
-		}
+	text := func(name string) core.Field {
+		return &core.TextField{Name: name}
 	}
-	text := func(name string) *schema.SchemaField {
-		return &schema.SchemaField{Name: name, Type: schema.FieldTypeText}
-	}
-	add(text("country_iso"))
+	addFieldIfMissing(pm, text("country_iso"))
 	for _, tier := range adminlabels.Tiers {
 		s := string(tier)
-		add(text(s))
-		add(&schema.SchemaField{Name: s + "_level", Type: schema.FieldTypeNumber})
-		add(text(s + "_native"))
+		addFieldIfMissing(pm, text(s))
+		addFieldIfMissing(pm, &core.NumberField{Name: s + "_level"})
+		addFieldIfMissing(pm, text(s+"_native"))
 	}
-	add(text("island"))
-	add(text("mountain_range"))
-	add(text("mountain"))
-	add(&schema.SchemaField{
-		Name: "owner",
-		Type: schema.FieldTypeRelation,
-		Options: &schema.RelationOptions{
-			CollectionId:  users.Id,
-			CascadeDelete: false,
-			MinSelect:     types.Pointer(0),
-			MaxSelect:     types.Pointer(1),
-		},
+	addFieldIfMissing(pm, text("island"))
+	addFieldIfMissing(pm, text("mountain_range"))
+	addFieldIfMissing(pm, text("mountain"))
+	addFieldIfMissing(pm, &core.RelationField{
+		Name:          "owner",
+		CollectionId:  users.Id,
+		CascadeDelete: false,
+		MinSelect:     0,
+		MaxSelect:     1,
 	})
-	if f := pm.Schema.GetFieldByName("geocoding_source"); f != nil {
-		f.Options = &schema.SelectOptions{
-			Values:    []string{"backend_service", "manual"},
-			MaxSelect: 1,
-		}
+	if f, ok := pm.Fields.GetByName("geocoding_source").(*core.SelectField); ok {
+		f.Values = []string{"backend_service", "manual"}
+		f.MaxSelect = 1
 	}
 
 	idx := filterIndexes(pm.Indexes, func(s string) bool {
@@ -100,34 +87,27 @@ func placemarksOrtusUp(db dbx.Builder) error {
 	pm.ViewRule = rule
 	pm.CreateRule, pm.UpdateRule, pm.DeleteRule = nil, nil, nil
 
-	if err := dao.SaveCollection(pm); err != nil {
+	if err := app.Save(pm); err != nil {
 		return err
 	}
-	_, err = db.NewQuery(`UPDATE placemarks SET geocoding_source = 'backend_service'
+	_, err = app.DB().NewQuery(`UPDATE placemarks SET geocoding_source = 'backend_service'
 		WHERE geocoding_source = 'backend-service'`).Execute()
 	return err
 }
 
-func placemarksOrtusDown(db dbx.Builder) error {
-	dao := daos.New(db)
-	pm, err := dao.FindCollectionByNameOrId("placemarks")
+func placemarksOrtusDown(app core.App) error {
+	pm, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		return err
 	}
-	if _, err := db.NewQuery(`UPDATE placemarks SET geocoding_source = 'backend-service'
+	if _, err := app.DB().NewQuery(`UPDATE placemarks SET geocoding_source = 'backend-service'
 		WHERE geocoding_source = 'backend_service'`).Execute(); err != nil {
 		return err
 	}
-	for _, name := range placemarksOrtusFieldNames() {
-		if f := pm.Schema.GetFieldByName(name); f != nil {
-			pm.Schema.RemoveField(f.Id)
-		}
-	}
-	if f := pm.Schema.GetFieldByName("geocoding_source"); f != nil {
-		f.Options = &schema.SelectOptions{
-			Values:    []string{"backend-service", "manual"},
-			MaxSelect: 1,
-		}
+	removeFields(pm, placemarksOrtusFieldNames()...)
+	if f, ok := pm.Fields.GetByName("geocoding_source").(*core.SelectField); ok {
+		f.Values = []string{"backend-service", "manual"}
+		f.MaxSelect = 1
 	}
 	idx := filterIndexes(pm.Indexes, func(s string) bool {
 		return !strings.Contains(s, "idx_placemarks_dedup_source_owner") &&
@@ -137,7 +117,7 @@ func placemarksOrtusDown(db dbx.Builder) error {
 	rule := types.Pointer("@request.auth.id != ''")
 	pm.ListRule = rule
 	pm.ViewRule = rule
-	return dao.SaveCollection(pm)
+	return app.Save(pm)
 }
 
 func init() {

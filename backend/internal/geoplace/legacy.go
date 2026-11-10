@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
 )
@@ -40,16 +40,16 @@ var legacyTiers = map[string]adminlabels.Tier{
 // Pure DB work, safe inside a migration transaction. When the legacy
 // columns are already gone it does nothing. It returns the number of
 // mapped placemarks.
-func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) {
+func MapLegacyManualPlacemarks(app core.App, logger *slog.Logger) (int, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	pmColl, err := dao.FindCollectionByNameOrId("placemarks")
+	pmColl, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		return 0, err
 	}
 	for _, f := range LegacyPlacemarkFields {
-		if pmColl.Schema.GetFieldByName(f) == nil {
+		if pmColl.Fields.GetByName(f) == nil {
 			logger.Info("legacy placemarks: skipped, legacy columns are gone",
 				slog.String("missing_column", f))
 			return 0, nil
@@ -63,7 +63,7 @@ func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) 
 		filter += f + " != ''"
 	}
 	filter += ")"
-	pms, err := dao.FindRecordsByFilter("placemarks", filter, "created", 0, 0)
+	pms, err := app.FindRecordsByFilter("placemarks", filter, "created", 0, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -79,7 +79,7 @@ func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) 
 				p.Admin[tier] = AdminValue{Name: old[legacy]}
 			}
 		}
-		owners := referencingOwners(dao, pm.Id)
+		owners := referencingOwners(app, pm.Id)
 		owner := pm.GetString("owner")
 		if owner == "" && len(owners) > 0 {
 			owner = owners[0]
@@ -89,18 +89,18 @@ func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) 
 		if owner != "" {
 			pm.Set("owner", owner)
 		}
-		if err := dao.SaveRecord(pm); err != nil {
+		if err := app.SaveNoValidate(pm); err != nil {
 			return done, fmt.Errorf("save placemark %s: %w", pm.Id, err)
 		}
 		for _, o := range owners {
 			if o == owner {
 				continue
 			}
-			clone, err := LookupOrCreatePlacemark(dao, p, "manual", o)
+			clone, err := LookupOrCreatePlacemark(app, p, "manual", o)
 			if err != nil {
 				return done, fmt.Errorf("clone placemark %s: %w", pm.Id, err)
 			}
-			err = dao.RunInTransaction(func(tx *daos.Dao) error {
+			err = app.RunInTransaction(func(tx core.App) error {
 				for _, field := range []string{"placemark", "placemark_suggestion"} {
 					if _, err := Repoint(tx, "samples", field, pm.Id, clone.Id, o); err != nil {
 						return err
@@ -143,7 +143,7 @@ func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) 
 
 // referencingOwners lists the distinct owners of localities and samples
 // that reference the placemark, oldest reference first.
-func referencingOwners(dao *daos.Dao, placemarkID string) []string {
+func referencingOwners(app core.App, placemarkID string) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, coll := range []string{"localities", "samples"} {
@@ -151,7 +151,7 @@ func referencingOwners(dao *daos.Dao, placemarkID string) []string {
 		if coll == "samples" {
 			filter += " || placemark_suggestion = {:p}"
 		}
-		recs, err := dao.FindRecordsByFilter(coll, filter, "created", 0, 0, dbx.Params{"p": placemarkID})
+		recs, err := app.FindRecordsByFilter(coll, filter, "created", 0, 0, dbx.Params{"p": placemarkID})
 		if err != nil {
 			continue
 		}
@@ -169,7 +169,7 @@ func referencingOwners(dao *daos.Dao, placemarkID string) []string {
 // (restricted to one owner when owner != ""), bumping the version so
 // clients holding the old one get a 409. It returns the number of
 // records changed.
-func Repoint(tx *daos.Dao, coll, field, from, to, owner string) (int, error) {
+func Repoint(tx core.App, coll, field, from, to, owner string) (int, error) {
 	filter := field + " = {:f}"
 	params := dbx.Params{"f": from}
 	if owner != "" {
@@ -183,7 +183,7 @@ func Repoint(tx *daos.Dao, coll, field, from, to, owner string) (int, error) {
 	for _, rec := range recs {
 		rec.Set(field, to)
 		rec.Set("version", rec.GetInt("version")+1)
-		if err := tx.SaveRecord(rec); err != nil {
+		if err := tx.SaveNoValidate(rec); err != nil {
 			return 0, err
 		}
 	}

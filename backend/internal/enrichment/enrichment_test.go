@@ -12,12 +12,14 @@ import (
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -34,15 +36,15 @@ func TestCentroid_EmptyReturnsZero(t *testing.T) {
 
 func TestCentroid_AveragesLatLon(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
+	coll, _ := app.FindCollectionByNameOrId("samples")
 
-	mk := func(lat, lon float64) *models.Record {
-		r := models.NewRecord(coll)
+	mk := func(lat, lon float64) *core.Record {
+		r := core.NewRecord(coll)
 		r.Set("latitude", lat)
 		r.Set("longitude", lon)
 		return r
 	}
-	samples := []*models.Record{
+	samples := []*core.Record{
 		mk(49.0, 9.0),
 		mk(51.0, 11.0),
 	}
@@ -77,11 +79,7 @@ func TestParseCollectingDay_InvalidFormatFallsBackToNow(t *testing.T) {
 
 func newAppForRecordsOnly(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 	return app
 }
 
@@ -90,42 +88,36 @@ func newAppForRecordsOnly(t *testing.T) *tests.TestApp {
 // damit wir keine Hook-Cascade brauchen.
 func createOwnerSampleFieldtrip(t *testing.T, app *tests.TestApp, lat, lon float64) (ownerID, sampleID, ftID string) {
 	t.Helper()
-	dao := app.Dao()
+	dao := app
 
 	usersColl, _ := dao.FindCollectionByNameOrId("users")
-	user := models.NewRecord(usersColl)
-	if err := user.SetEmail("enrich-" + strings.ReplaceAll(t.Name(), "/", "_") + "@example.com"); err != nil {
-		t.Fatalf("set email: %v", err)
-	}
-	if err := user.SetUsername("enrichuser_" + strings.ReplaceAll(t.Name(), "/", "_")); err != nil {
-		t.Fatalf("set username: %v", err)
-	}
-	if err := user.SetPassword("test1234password"); err != nil {
-		t.Fatalf("set password: %v", err)
-	}
-	if err := dao.SaveRecord(user); err != nil {
+	user := core.NewRecord(usersColl)
+	user.SetEmail("enrich-" + strings.ReplaceAll(t.Name(), "/", "_") + "@example.com")
+	user.Set("username", "enrichuser_"+strings.ReplaceAll(t.Name(), "/", "_"))
+	user.SetPassword("test1234password")
+	if err := dao.SaveNoValidate(user); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 
 	ftColl, _ := dao.FindCollectionByNameOrId("fieldtrips")
-	ft := models.NewRecord(ftColl)
+	ft := core.NewRecord(ftColl)
 	ft.Set("owner", user.Id)
 	ft.Set("collecting_day", "2026-05-19")
 	ft.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	ft.Set("end_date", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
-	if err := dao.SaveRecord(ft); err != nil {
+	if err := dao.SaveNoValidate(ft); err != nil {
 		t.Fatalf("save fieldtrip: %v", err)
 	}
 
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
-	sam := models.NewRecord(samColl)
+	sam := core.NewRecord(samColl)
 	sam.Set("owner", user.Id)
 	sam.Set("fieldtrip", ft.Id)
 	sam.Set("sample_id", "260519/1")
 	sam.Set("latitude", lat)
 	sam.Set("longitude", lon)
 	sam.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
-	if err := dao.SaveRecord(sam); err != nil {
+	if err := dao.SaveNoValidate(sam); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 	return user.Id, sam.Id, ft.Id
@@ -241,30 +233,30 @@ func fixturePlace(t *testing.T, name string, lat, lon float64) geoplace.Place {
 
 func updateSample(t *testing.T, app *tests.TestApp, id string, fields map[string]any) {
 	t.Helper()
-	rec, err := app.Dao().FindRecordById("samples", id)
+	rec, err := app.FindRecordById("samples", id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for k, v := range fields {
 		rec.Set(k, v)
 	}
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 }
 
-func loadSample(t *testing.T, app *tests.TestApp, id string) *models.Record {
+func loadSample(t *testing.T, app *tests.TestApp, id string) *core.Record {
 	t.Helper()
-	rec, err := app.Dao().FindRecordById("samples", id)
+	rec, err := app.FindRecordById("samples", id)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return rec
 }
 
-func sampleFeatures(t *testing.T, app *tests.TestApp, id string) []*models.Record {
+func sampleFeatures(t *testing.T, app *tests.TestApp, id string) []*core.Record {
 	t.Helper()
-	recs, err := app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0,
+	recs, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0,
 		map[string]any{"s": id})
 	if err != nil {
 		t.Fatal(err)
@@ -288,7 +280,7 @@ func TestEnrich_PendingGetsPlacemarkFeaturesMTB(t *testing.T) {
 	if pmID == "" {
 		t.Fatal("placemark not set")
 	}
-	pm, err := app.Dao().FindRecordById("placemarks", pmID)
+	pm, err := app.FindRecordById("placemarks", pmID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -354,7 +346,7 @@ func TestEnrich_InheritedDifferentPlaceSplits(t *testing.T) {
 	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
 
 	// Placemark A: the inherited one from the previous sample (La Palma).
-	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+	a, err := geoplace.LookupOrCreatePlacemark(app,
 		fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
@@ -373,7 +365,7 @@ func TestEnrich_InheritedDifferentPlaceSplits(t *testing.T) {
 	if b == "" || b == a.Id {
 		t.Fatalf("placemark = %q, want a new placemark B != A (%q)", b, a.Id)
 	}
-	pm, _ := app.Dao().FindRecordById("placemarks", b)
+	pm, _ := app.FindRecordById("placemarks", b)
 	if got := pm.GetString("admin_municipality"); got != "Ochsenfurt" {
 		t.Errorf("placemark B municipality = %q, want Ochsenfurt", got)
 	}
@@ -389,7 +381,7 @@ func TestEnrich_ManualOnlySuggestion(t *testing.T) {
 	t.Run("different place gets suggestion", func(t *testing.T) {
 		app := newAppForRecordsOnly(t)
 		ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
-		m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		m, err := geoplace.LookupOrCreatePlacemark(app,
 			fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "manual", ownerID)
 		if err != nil {
 			t.Fatal(err)
@@ -410,7 +402,7 @@ func TestEnrich_ManualOnlySuggestion(t *testing.T) {
 		if sugID == "" || sugID == m.Id {
 			t.Fatalf("placemark_suggestion = %q, want candidate", sugID)
 		}
-		sug, _ := app.Dao().FindRecordById("placemarks", sugID)
+		sug, _ := app.FindRecordById("placemarks", sugID)
 		if got := sug.GetString("admin_municipality"); got != "Ochsenfurt" {
 			t.Errorf("suggestion municipality = %q, want Ochsenfurt", got)
 		}
@@ -425,12 +417,12 @@ func TestEnrich_ManualOnlySuggestion(t *testing.T) {
 	t.Run("same place clears suggestion", func(t *testing.T) {
 		app := newAppForRecordsOnly(t)
 		ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
-		m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		m, err := geoplace.LookupOrCreatePlacemark(app,
 			fixturePlace(t, "query_de_ochsenfurt.json", deLat, deLon), "manual", ownerID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		stale, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+		stale, err := geoplace.LookupOrCreatePlacemark(app,
 			fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
 		if err != nil {
 			t.Fatal(err)
@@ -512,7 +504,7 @@ func TestEnrich_SeaKeepsStatusWritesGeo(t *testing.T) {
 	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 40.0, -25.0)
 	// Stale geo + features from an earlier coordinate must be replaced.
 	updateSample(t, app, sampleID, map[string]any{"location_status": "pending", "mtb_sheet_number": "6326"})
-	if err := geoplace.ReplaceFeatures(app.Dao(), sampleID, ownerID,
+	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID,
 		[]geoplace.Feature{{SourceID: "old", Layer: "old", FeatureID: "1"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -538,12 +530,12 @@ func TestEnrich_SeaKeepsStatusWritesGeo(t *testing.T) {
 func TestEnrich_ManualAtSeaClearsStaleSuggestion(t *testing.T) {
 	app := newAppForRecordsOnly(t)
 	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 40.0, -25.0)
-	m, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+	m, err := geoplace.LookupOrCreatePlacemark(app,
 		fixturePlace(t, "query_de_ochsenfurt.json", deLat, deLon), "manual", ownerID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale, err := geoplace.LookupOrCreatePlacemark(app.Dao(),
+	stale, err := geoplace.LookupOrCreatePlacemark(app,
 		fixturePlace(t, "query_es_lapalma.json", 28.6835, -17.7642), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
@@ -622,19 +614,19 @@ func TestEnrich_CoordUpdateRetriggers(t *testing.T) {
 
 	rec := loadSample(t, app, sampleID) // OriginalCopy = DB state
 	rec.Set("latitude", deLat+0.001)
-	if !coordChanged(rec) {
+	if !coordChanged(rec.Original(), rec) {
 		t.Error("latitude change by 0.001 must re-trigger enrichment")
 	}
 
 	rec = loadSample(t, app, sampleID)
 	rec.Set("longitude", deLon-0.000001)
-	if !coordChanged(rec) {
+	if !coordChanged(rec.Original(), rec) {
 		t.Error("longitude change by 1e-6 must re-trigger enrichment")
 	}
 
 	rec = loadSample(t, app, sampleID)
 	rec.Set("latitude", deLat+0.00000001)
-	if coordChanged(rec) {
+	if coordChanged(rec.Original(), rec) {
 		t.Error("float noise below 1e-7 must not re-trigger enrichment")
 	}
 }
@@ -645,7 +637,7 @@ func TestEnrich_NotesUpdateDoesNotRetrigger(t *testing.T) {
 
 	rec := loadSample(t, app, sampleID)
 	rec.Set("notes", "Unter Steinen")
-	if coordChanged(rec) {
+	if coordChanged(rec.Original(), rec) {
 		t.Error("notes-only update must not re-trigger enrichment")
 	}
 }
@@ -697,10 +689,10 @@ func TestEnrich_DEMRefreshesBackendServiceHeight(t *testing.T) {
 
 func TestApplyDEMHeight(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
+	coll, _ := app.FindCollectionByNameOrId("samples")
 	dem := 236.0
-	mk := func(source string) *models.Record {
-		r := models.NewRecord(coll)
+	mk := func(source string) *core.Record {
+		r := core.NewRecord(coll)
 		r.Set("elevation", 100)
 		r.Set("elevation_source", source)
 		r.Set("vertical_accuracy", 9)
@@ -736,10 +728,10 @@ func TestApplyDEMHeight(t *testing.T) {
 
 func TestLocationStatus_TrimsAndDefaults(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
+	coll, _ := app.FindCollectionByNameOrId("samples")
 	cases := map[string]string{"": "pending", "  ": "pending", " manual ": "manual", "inherited": "inherited"}
 	for in, want := range cases {
-		r := models.NewRecord(coll)
+		r := core.NewRecord(coll)
 		r.Set("location_status", in)
 		if got := locationStatus(r); got != want {
 			t.Errorf("locationStatus(%q) = %q, want %q", in, got, want)

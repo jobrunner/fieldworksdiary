@@ -20,7 +20,6 @@ import (
 	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/services"
 
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -42,17 +41,24 @@ type PlacemarkEnricher struct {
 // localities collection. The handler runs in a goroutine with a
 // recover guard so an Ortus outage never blocks the originating
 // save.
-func RegisterPlacemarkEnricher(app *pocketbase.PocketBase, e *PlacemarkEnricher) {
+func RegisterPlacemarkEnricher(app core.App, e *PlacemarkEnricher) {
 	e.App = app
 
-	app.OnRecordAfterCreateRequest("localities").Add(func(ev *core.RecordCreateEvent) error {
+	app.OnRecordCreateRequest("localities").BindFunc(func(ev *core.RecordRequestEvent) error {
+		if err := ev.Next(); err != nil {
+			return err
+		}
 		id := ev.Record.Id
 		go e.runSafely(id)
 		return nil
 	})
 
-	app.OnRecordAfterUpdateRequest("localities").Add(func(ev *core.RecordUpdateEvent) error {
-		original := ev.Record.OriginalCopy()
+	app.OnRecordUpdateRequest("localities").BindFunc(func(ev *core.RecordRequestEvent) error {
+		// The pre-update state, captured before the save.
+		original := ev.Record.Original()
+		if err := ev.Next(); err != nil {
+			return err
+		}
 		prevLat := original.GetFloat("latitude")
 		prevLon := original.GetFloat("longitude")
 		newLat := ev.Record.GetFloat("latitude")
@@ -123,8 +129,8 @@ func (e *PlacemarkEnricher) run(localityID string) error {
 }
 
 func (e *PlacemarkEnricher) enrich(ctx context.Context, localityID string) error {
-	dao := e.App.Dao()
-	loc, err := dao.FindRecordById("localities", localityID)
+	app := e.App
+	loc, err := app.FindRecordById("localities", localityID)
 	if err != nil {
 		// Locality may have been merged away by the fusion hook
 		// running in parallel — that's a benign race, not an
@@ -139,7 +145,7 @@ func (e *PlacemarkEnricher) enrich(ctx context.Context, localityID string) error
 	// hand-edited the placemark, the auto-geocoder must not
 	// stomp it.
 	if pmID := loc.GetString("placemark"); pmID != "" {
-		if pm, err := dao.FindRecordById("placemarks", pmID); err == nil {
+		if pm, err := app.FindRecordById("placemarks", pmID); err == nil {
 			if pm.GetString("geocoding_source") == "manual" {
 				return nil
 			}
@@ -175,7 +181,7 @@ func (e *PlacemarkEnricher) enrich(ctx context.Context, localityID string) error
 		return nil
 	}
 
-	pmRec, err := geoplace.LookupOrCreatePlacemark(dao, *res.Place, "backend_service", "")
+	pmRec, err := geoplace.LookupOrCreatePlacemark(app, *res.Place, "backend_service", "")
 	if err != nil {
 		return err
 	}
@@ -186,5 +192,5 @@ func (e *PlacemarkEnricher) enrich(ctx context.Context, localityID string) error
 		return nil
 	}
 	loc.Set("placemark", pmRec.Id)
-	return dao.SaveRecord(loc)
+	return app.SaveNoValidate(loc)
 }

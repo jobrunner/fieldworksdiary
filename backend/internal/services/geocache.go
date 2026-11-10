@@ -15,8 +15,7 @@ import (
 	"time"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // DefaultCacheTTL is how long a cached payload stays valid. Beyond
@@ -27,7 +26,7 @@ const DefaultCacheTTL = 7 * 24 * time.Hour
 // service-scoped (so different services can share the lat/lon space
 // without collisions).
 type Geocache struct {
-	Dao *daos.Dao
+	App core.App
 	TTL time.Duration
 }
 
@@ -43,7 +42,7 @@ func CoordinateKey(lat, lon float64, lang string) string {
 // Get returns the cached payload bytes, or sql.ErrNoRows if absent or
 // expired.
 func (c *Geocache) Get(service, key string) ([]byte, error) {
-	rec, err := c.Dao.FindFirstRecordByFilter(
+	rec, err := c.App.FindFirstRecordByFilter(
 		"geocache",
 		"service = {:svc} && key = {:key}",
 		dbx.Params{"svc": service, "key": key},
@@ -63,12 +62,12 @@ func (c *Geocache) Get(service, key string) ([]byte, error) {
 
 // Put writes (or refreshes) a cache entry.
 func (c *Geocache) Put(service, key string, payload []byte) error {
-	coll, err := c.Dao.FindCollectionByNameOrId("geocache")
+	coll, err := c.App.FindCollectionByNameOrId("geocache")
 	if err != nil {
 		return err
 	}
 
-	rec, err := c.Dao.FindFirstRecordByFilter(
+	rec, err := c.App.FindFirstRecordByFilter(
 		"geocache",
 		"service = {:svc} && key = {:key}",
 		dbx.Params{"svc": service, "key": key},
@@ -77,13 +76,13 @@ func (c *Geocache) Put(service, key string, payload []byte) error {
 		return err
 	}
 	if rec == nil {
-		rec = models.NewRecord(coll)
+		rec = core.NewRecord(coll)
 		rec.Set("service", service)
 		rec.Set("key", key)
 	}
 	rec.Set("payload", string(payload))
 	rec.Set("cached_at", time.Now().UTC())
-	return c.Dao.SaveRecord(rec)
+	return c.App.SaveNoValidate(rec)
 }
 
 func (c *Geocache) ttl() time.Duration {

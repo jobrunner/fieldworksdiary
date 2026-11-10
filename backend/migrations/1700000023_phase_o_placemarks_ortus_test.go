@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
 )
 
 func TestPlacemarksOrtusMigration_Schema(t *testing.T) {
 	app := setupTestApp(t)
-	pm, err := app.Dao().FindCollectionByNameOrId("placemarks")
+	pm, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		t.Fatalf("find placemarks: %v", err)
 	}
@@ -21,7 +21,7 @@ func TestPlacemarksOrtusMigration_Schema(t *testing.T) {
 		want = append(want, s, s+"_level", s+"_native")
 	}
 	for _, name := range want {
-		if pm.Schema.GetFieldByName(name) == nil {
+		if pm.Fields.GetByName(name) == nil {
 			t.Errorf("placemarks.%s missing", name)
 		}
 	}
@@ -49,9 +49,9 @@ func TestPlacemarksOrtusMigration_Schema(t *testing.T) {
 
 func TestPlacemarksMigration_RenamesBackendService(t *testing.T) {
 	app := setupLegacyLocationTestApp(t)
-	dao := app.Dao()
+	dao := app
 	// Revert, seed a legacy row, re-apply the up-step.
-	if err := placemarksOrtusDown(dao.DB()); err != nil {
+	if err := placemarksOrtusDown(dao); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	if _, err := dao.DB().NewQuery(
@@ -59,7 +59,7 @@ func TestPlacemarksMigration_RenamesBackendService(t *testing.T) {
 		 VALUES ('legacy00000001', 'DE', 'backend-service', 'h1')`).Execute(); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if err := placemarksOrtusUp(dao.DB()); err != nil {
+	if err := placemarksOrtusUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	var src string
@@ -74,15 +74,15 @@ func TestPlacemarksMigration_RenamesBackendService(t *testing.T) {
 
 func TestPlacemarksOrtusMigration_DownRestores(t *testing.T) {
 	app := setupLegacyLocationTestApp(t)
-	dao := app.Dao()
-	if err := placemarksOrtusDown(dao.DB()); err != nil {
+	dao := app
+	if err := placemarksOrtusDown(dao); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	pm, _ := dao.FindCollectionByNameOrId("placemarks")
-	if pm.Schema.GetFieldByName("country_iso") != nil {
+	if pm.Fields.GetByName("country_iso") != nil {
 		t.Errorf("country_iso still present after down")
 	}
-	if pm.Schema.GetFieldByName("administrative_area") == nil {
+	if pm.Fields.GetByName("administrative_area") == nil {
 		t.Errorf("legacy column lost")
 	}
 	for _, r := range []*string{pm.ListRule, pm.ViewRule} {
@@ -94,14 +94,14 @@ func TestPlacemarksOrtusMigration_DownRestores(t *testing.T) {
 
 func TestPlacemarksOrtusMigration_ViewRuleHidesOrphanedManualRows(t *testing.T) {
 	app := setupTestApp(t)
-	dao := app.Dao()
+	dao := app
 	users, _ := dao.FindCollectionByNameOrId("users")
-	mkUser := func(email string) *models.Record {
-		u := models.NewRecord(users)
-		_ = u.SetEmail(email)
-		_ = u.SetUsername(strings.SplitN(email, "@", 2)[0])
-		_ = u.SetPassword("password1234")
-		if err := dao.SaveRecord(u); err != nil {
+	mkUser := func(email string) *core.Record {
+		u := core.NewRecord(users)
+		u.SetEmail(email)
+		u.Set("username", strings.SplitN(email, "@", 2)[0])
+		u.SetPassword("password1234")
+		if err := dao.SaveNoValidate(u); err != nil {
 			t.Fatalf("user: %v", err)
 		}
 		return u
@@ -109,22 +109,22 @@ func TestPlacemarksOrtusMigration_ViewRuleHidesOrphanedManualRows(t *testing.T) 
 	alice := mkUser("alice@example.com")
 	bob := mkUser("bob@example.com")
 	pmColl, _ := dao.FindCollectionByNameOrId("placemarks")
-	mkPM := func(owner, source, hash string) *models.Record {
-		r := models.NewRecord(pmColl)
+	mkPM := func(owner, source, hash string) *core.Record {
+		r := core.NewRecord(pmColl)
 		r.Set("country", "DE")
 		r.Set("geocoding_source", source)
 		r.Set("dedup_hash", hash)
 		if owner != "" {
 			r.Set("owner", owner)
 		}
-		if err := dao.SaveRecord(r); err != nil {
+		if err := dao.SaveNoValidate(r); err != nil {
 			t.Fatalf("placemark: %v", err)
 		}
 		return r
 	}
 	cases := []struct {
 		name string
-		rec  *models.Record
+		rec  *core.Record
 		want bool
 	}{
 		{"shared backend row", mkPM("", "backend_service", "h1"), true},
@@ -132,7 +132,7 @@ func TestPlacemarksOrtusMigration_ViewRuleHidesOrphanedManualRows(t *testing.T) 
 		{"foreign manual row", mkPM(bob.Id, "manual", "h3"), false},
 		{"orphaned manual row", mkPM("", "manual", "h4"), false},
 	}
-	info := &models.RequestInfo{AuthRecord: alice}
+	info := &core.RequestInfo{Auth: alice}
 	for _, rule := range []*string{pmColl.ListRule, pmColl.ViewRule} {
 		for _, c := range cases {
 			got, err := dao.CanAccessRecord(c.rec, info, rule)

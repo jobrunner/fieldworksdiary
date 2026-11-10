@@ -13,8 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tests"
 
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
@@ -22,12 +23,8 @@ import (
 
 func newTestGeocache(t *testing.T) *services.Geocache {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
-	return &services.Geocache{Dao: app.Dao()}
+	app := testutil.NewTestApp(t)
+	return &services.Geocache{App: app}
 }
 
 func ortusFixture(t *testing.T, name string) []byte {
@@ -268,17 +265,13 @@ func TestOrtusQuery_CacheWriteErrorStillReturnsResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
-	app.OnModelBeforeCreate("geocache").Add(func(*core.ModelEvent) error {
+	app := testutil.NewTestApp(t)
+	app.OnRecordCreate("geocache").BindFunc(func(*core.RecordEvent) error {
 		return errors.New("disk full")
 	})
 
 	logger, logs := bufLogger()
-	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: &services.Geocache{Dao: app.Dao()}, Logger: logger}
+	o := &services.Ortus{BaseURL: srv.URL, MaxRetries: 1, Cache: &services.Geocache{App: app}, Logger: logger}
 	got, err := o.Query(context.Background(), 49.681616, 10.039652)
 	if err != nil {
 		t.Fatalf("Query: %v, want response despite cache write error", err)

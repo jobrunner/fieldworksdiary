@@ -33,59 +33,42 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
-	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-
-		localities, err := dao.FindCollectionByNameOrId("localities")
+	m.Register(func(app core.App) error {
+		localities, err := app.FindCollectionByNameOrId("localities")
 		if err != nil {
 			return err
 		}
-		placemarks, err := dao.FindCollectionByNameOrId("placemarks")
+		placemarks, err := app.FindCollectionByNameOrId("placemarks")
 		if err != nil {
 			return err
 		}
 
-		addIfMissing := func(field *schema.SchemaField) {
-			if localities.Schema.GetFieldByName(field.Name) == nil {
-				localities.Schema.AddField(field)
-			}
-		}
-
-		addIfMissing(&schema.SchemaField{Name: "latitude", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{Name: "longitude", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{Name: "altitude", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{Name: "horizontal_accuracy", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{Name: "vertical_accuracy", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{
-			Name: "location_source",
-			Type: schema.FieldTypeSelect,
-			Options: &schema.SelectOptions{
-				Values:    []string{"user", "location_service", "sample", "locality"},
-				MaxSelect: 1,
-			},
+		addFieldIfMissing(localities, &core.NumberField{Name: "latitude"})
+		addFieldIfMissing(localities, &core.NumberField{Name: "longitude"})
+		addFieldIfMissing(localities, &core.NumberField{Name: "altitude"})
+		addFieldIfMissing(localities, &core.NumberField{Name: "horizontal_accuracy"})
+		addFieldIfMissing(localities, &core.NumberField{Name: "vertical_accuracy"})
+		addFieldIfMissing(localities, &core.SelectField{
+			Name:      "location_source",
+			Values:    []string{"user", "location_service", "sample", "locality"},
+			MaxSelect: 1,
 		})
-		addIfMissing(&schema.SchemaField{Name: "location_number", Type: schema.FieldTypeText})
-		addIfMissing(&schema.SchemaField{
-			Name: "placemark",
-			Type: schema.FieldTypeRelation,
-			Options: &schema.RelationOptions{
-				CollectionId:  placemarks.Id,
-				CascadeDelete: false,
-				MinSelect:     types.Pointer(0),
-				MaxSelect:     types.Pointer(1),
-			},
+		addFieldIfMissing(localities, &core.TextField{Name: "location_number"})
+		addFieldIfMissing(localities, &core.RelationField{
+			Name:          "placemark",
+			CollectionId:  placemarks.Id,
+			CascadeDelete: false,
+			MinSelect:     0,
+			MaxSelect:     1,
 		})
-		addIfMissing(&schema.SchemaField{Name: "version", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{Name: "client_uuid", Type: schema.FieldTypeText})
-		addIfMissing(&schema.SchemaField{Name: "client_updated_at", Type: schema.FieldTypeDate})
+		addFieldIfMissing(localities, &core.NumberField{Name: "version"})
+		addFieldIfMissing(localities, &core.TextField{Name: "client_uuid"})
+		addFieldIfMissing(localities, &core.DateField{Name: "client_updated_at"})
 
 		// Composite spatial index for fusion lookups.
 		hasSpatialIndex := false
@@ -100,7 +83,7 @@ func init() {
 				"CREATE INDEX idx_localities_lat_lon ON localities (latitude, longitude)")
 		}
 
-		if err := dao.SaveCollection(localities); err != nil {
+		if err := app.Save(localities); err != nil {
 			return err
 		}
 
@@ -109,48 +92,37 @@ func init() {
 		// raw SQL to bypass PocketBase's per-record save (which would
 		// run hooks and rules and balloon the migration to minutes
 		// even for tiny tables).
-		if _, err := db.NewQuery(`
-			UPDATE localities
+		for _, q := range []string{
+			`UPDATE localities
 			SET latitude = centroid_lat,
 			    longitude = centroid_lon
-			WHERE latitude IS NULL OR latitude = 0
-		`).Execute(); err != nil {
-			return err
-		}
-		if _, err := db.NewQuery(`
-			UPDATE localities
+			WHERE latitude IS NULL OR latitude = 0`,
+			`UPDATE localities
 			SET location_source = 'user'
-			WHERE location_source IS NULL OR location_source = ''
-		`).Execute(); err != nil {
-			return err
-		}
-		if _, err := db.NewQuery(`
-			UPDATE localities
+			WHERE location_source IS NULL OR location_source = ''`,
+			`UPDATE localities
 			SET version = 1
-			WHERE version IS NULL OR version = 0
-		`).Execute(); err != nil {
-			return err
+			WHERE version IS NULL OR version = 0`,
+		} {
+			if _, err := app.DB().NewQuery(q).Execute(); err != nil {
+				return err
+			}
 		}
 		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		localities, err := dao.FindCollectionByNameOrId("localities")
+	}, func(app core.App) error {
+		localities, err := app.FindCollectionByNameOrId("localities")
 		if err != nil {
 			return err
 		}
-		for _, name := range []string{
+		removeFields(localities,
 			"latitude", "longitude", "altitude",
 			"horizontal_accuracy", "vertical_accuracy",
 			"location_source", "location_number", "placemark",
 			"version", "client_uuid", "client_updated_at",
-		} {
-			if f := localities.Schema.GetFieldByName(name); f != nil {
-				localities.Schema.RemoveField(f.Id)
-			}
-		}
+		)
 		localities.Indexes = filterIndexes(localities.Indexes, func(s string) bool {
 			return s != "CREATE INDEX idx_localities_lat_lon ON localities (latitude, longitude)"
 		})
-		return dao.SaveCollection(localities)
+		return app.Save(localities)
 	})
 }

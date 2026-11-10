@@ -6,8 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
 	"go.mett.io/fwd-backend/internal/geoplace"
@@ -17,7 +16,7 @@ import (
 // must be a no-op instead of failing on the unknown filter fields.
 func TestMapLegacyManualPlacemarks_NoopWithoutLegacyColumns(t *testing.T) {
 	app := newStoreApp(t)
-	n, err := geoplace.MapLegacyManualPlacemarks(app.Dao(), nil)
+	n, err := geoplace.MapLegacyManualPlacemarks(app, nil)
 	if err != nil || n != 0 {
 		t.Fatalf("got (%d, %v), want (0, nil)", n, err)
 	}
@@ -27,16 +26,16 @@ func TestMapLegacyManualPlacemarks_NoopWithoutLegacyColumns(t *testing.T) {
 // migration 1700000027 dropped.
 func addLegacyColumns(t *testing.T, app *tests.TestApp) {
 	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("placemarks")
+	coll, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range geoplace.LegacyPlacemarkFields {
-		if coll.Schema.GetFieldByName(n) == nil {
-			coll.Schema.AddField(&schema.SchemaField{Name: n, Type: schema.FieldTypeText})
+		if coll.Fields.GetByName(n) == nil {
+			coll.Fields.Add(&core.TextField{Name: n})
 		}
 	}
-	if err := app.Dao().SaveCollection(coll); err != nil {
+	if err := app.Save(coll); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -44,12 +43,12 @@ func addLegacyColumns(t *testing.T, app *tests.TestApp) {
 func TestMapLegacyManualPlacemarks_OwnersClonesAndLog(t *testing.T) {
 	app := newStoreApp(t)
 	addLegacyColumns(t, app)
-	dao := app.Dao()
+	dao := app
 	a := mkUser(t, app, "aleg1@example.com")
 	b := mkUser(t, app, "bleg2@example.com")
 
 	pmColl, _ := dao.FindCollectionByNameOrId("placemarks")
-	pm := models.NewRecord(pmColl)
+	pm := core.NewRecord(pmColl)
 	for k, v := range map[string]string{
 		"country": "DE", "administrative_area": "Bayern", "sub_administrative_area": "Unterfranken",
 		"locality": "Würzburg", "sub_locality": "Heidingsfeld", "postal_code": "97084",
@@ -57,20 +56,20 @@ func TestMapLegacyManualPlacemarks_OwnersClonesAndLog(t *testing.T) {
 	} {
 		pm.Set(k, v)
 	}
-	if err := dao.SaveRecord(pm); err != nil {
+	if err := dao.SaveNoValidate(pm); err != nil {
 		t.Fatal(err)
 	}
 	locColl, _ := dao.FindCollectionByNameOrId("localities")
-	var locs []*models.Record
-	for _, u := range []*models.Record{a, b} {
-		l := models.NewRecord(locColl)
+	var locs []*core.Record
+	for _, u := range []*core.Record{a, b} {
+		l := core.NewRecord(locColl)
 		l.Set("owner", u.Id)
 		l.Set("name", "Ort")
 		l.Set("latitude", 49.7)
 		l.Set("longitude", 9.9)
 		l.Set("placemark", pm.Id)
 		l.Set("version", 1)
-		if err := dao.SaveRecord(l); err != nil {
+		if err := dao.SaveNoValidate(l); err != nil {
 			t.Fatal(err)
 		}
 		locs = append(locs, l)

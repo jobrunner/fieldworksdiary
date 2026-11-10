@@ -4,7 +4,6 @@ import (
 	"math"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/models"
 )
 
 // coordEpsilon mirrors enrichment.coordEpsilon: smaller latitude/
@@ -12,11 +11,11 @@ import (
 const coordEpsilon = 1e-7
 
 // RegisterSampleLocationReset wires resetStaleLocationStatus as a
-// before-update request hook on samples.
+// update request hook on samples (before the save).
 func RegisterSampleLocationReset(app core.App) {
-	app.OnRecordBeforeUpdateRequest("samples").Add(func(e *core.RecordUpdateEvent) error {
+	app.OnRecordUpdateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		resetStaleLocationStatus(e.Record)
-		return nil
+		return e.Next()
 	})
 }
 
@@ -26,8 +25,8 @@ func RegisterSampleLocationReset(app core.App) {
 // (which skips backend_service samples) would never re-resolve the place
 // and the old placemark would stick to the new coordinate. A client that
 // re-resolved online sends the new placemark and keeps its status.
-func resetStaleLocationStatus(rec *models.Record) {
-	orig := rec.OriginalCopy()
+func resetStaleLocationStatus(rec *core.Record) {
+	orig := rec.Original()
 	moved := math.Abs(rec.GetFloat("latitude")-orig.GetFloat("latitude")) > coordEpsilon ||
 		math.Abs(rec.GetFloat("longitude")-orig.GetFloat("longitude")) > coordEpsilon
 	if !moved {

@@ -47,21 +47,17 @@ package migrations
 import (
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
-	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		localities, err := dao.FindCollectionByNameOrId("localities")
+		localities, err := app.FindCollectionByNameOrId("localities")
 		if err != nil {
 			return err
 		}
@@ -77,45 +73,32 @@ func init() {
 			{"altitude_m", "altitude"},
 		}
 		for _, r := range renames {
-			if f := samples.Schema.GetFieldByName(r[0]); f != nil {
-				f.Name = r[1]
-			}
+			renameField(samples, r[0], r[1])
 		}
 
 		// 2. latitude/longitude optional (drop required flag).
 		for _, name := range []string{"latitude", "longitude"} {
-			if f := samples.Schema.GetFieldByName(name); f != nil {
+			if f, ok := samples.Fields.GetByName(name).(*core.NumberField); ok {
 				f.Required = false
 			}
 		}
 
 		// 3. New columns.
-		addIfMissing := func(field *schema.SchemaField) {
-			if samples.Schema.GetFieldByName(field.Name) == nil {
-				samples.Schema.AddField(field)
-			}
-		}
-		addIfMissing(&schema.SchemaField{Name: "is_all_day", Type: schema.FieldTypeBool})
-		addIfMissing(&schema.SchemaField{Name: "time_zone", Type: schema.FieldTypeText})
-		addIfMissing(&schema.SchemaField{Name: "version", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{
-			Name: "location_source",
-			Type: schema.FieldTypeSelect,
-			Options: &schema.SelectOptions{
-				Values:    []string{"user", "location_service", "sample", "locality"},
-				MaxSelect: 1,
-			},
+		addFieldIfMissing(samples, &core.BoolField{Name: "is_all_day"})
+		addFieldIfMissing(samples, &core.TextField{Name: "time_zone"})
+		addFieldIfMissing(samples, &core.NumberField{Name: "version"})
+		addFieldIfMissing(samples, &core.SelectField{
+			Name:      "location_source",
+			Values:    []string{"user", "location_service", "sample", "locality"},
+			MaxSelect: 1,
 		})
-		addIfMissing(&schema.SchemaField{Name: "vertical_accuracy", Type: schema.FieldTypeNumber})
-		addIfMissing(&schema.SchemaField{
-			Name: "locality",
-			Type: schema.FieldTypeRelation,
-			Options: &schema.RelationOptions{
-				CollectionId:  localities.Id,
-				CascadeDelete: false,
-				MinSelect:     types.Pointer(0),
-				MaxSelect:     types.Pointer(1),
-			},
+		addFieldIfMissing(samples, &core.NumberField{Name: "vertical_accuracy"})
+		addFieldIfMissing(samples, &core.RelationField{
+			Name:          "locality",
+			CollectionId:  localities.Id,
+			CascadeDelete: false,
+			MinSelect:     0,
+			MaxSelect:     1,
 		})
 
 		// 4. Indexes.
@@ -139,7 +122,7 @@ func init() {
 				"CREATE INDEX idx_samples_owner_sample_id ON samples (owner, sample_id)")
 		}
 
-		if err := dao.SaveCollection(samples); err != nil {
+		if err := app.Save(samples); err != nil {
 			return err
 		}
 
@@ -155,27 +138,22 @@ func init() {
 			 WHERE is_all_day IS NULL`,
 		}
 		for _, q := range queries {
-			if _, err := db.NewQuery(q).Execute(); err != nil {
+			if _, err := app.DB().NewQuery(q).Execute(); err != nil {
 				return err
 			}
 		}
 		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	}, func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
 		// Drop the new columns first, then unwind the renames so the
 		// resulting schema matches what migrations 1–14 + R2 produced.
-		for _, name := range []string{
+		removeFields(samples,
 			"is_all_day", "time_zone", "version",
 			"location_source", "vertical_accuracy", "locality",
-		} {
-			if f := samples.Schema.GetFieldByName(name); f != nil {
-				samples.Schema.RemoveField(f.Id)
-			}
-		}
+		)
 		renames := [][2]string{
 			{"sample_id", "code"},
 			{"begin_date", "collected_from"},
@@ -186,12 +164,10 @@ func init() {
 			{"altitude", "altitude_m"},
 		}
 		for _, r := range renames {
-			if f := samples.Schema.GetFieldByName(r[0]); f != nil {
-				f.Name = r[1]
-			}
+			renameField(samples, r[0], r[1])
 		}
 		for _, name := range []string{"lat", "lon"} {
-			if f := samples.Schema.GetFieldByName(name); f != nil {
+			if f, ok := samples.Fields.GetByName(name).(*core.NumberField); ok {
 				f.Required = true
 			}
 		}
@@ -202,6 +178,6 @@ func init() {
 		samples.Indexes = filterIndexes(samples.Indexes, func(s string) bool {
 			return !strings.Contains(s, "idx_samples_owner_sample_id")
 		})
-		return dao.SaveCollection(samples)
+		return app.Save(samples)
 	})
 }

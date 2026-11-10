@@ -1,10 +1,10 @@
 package hooks
 
 import (
+	"errors"
+
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
 
 	"go.mett.io/fwd-backend/internal/geoplace"
 )
@@ -22,37 +22,39 @@ var placemarkRefFields = map[string][]string{
 // RegisterPlacemarkRefGuards rejects (400) create/update requests on
 // samples and localities that set a placemark reference to a row the
 // caller may not see (neither shared nor owned, see geoplace.VisibleTo).
-// Admin requests are not checked.
+// Superuser requests are not checked.
 func RegisterPlacemarkRefGuards(app core.App) {
 	for name := range placemarkRefFields {
-		app.OnRecordBeforeCreateRequest(name).Add(func(e *core.RecordCreateEvent) error {
-			return guardPlacemarkRefs(app.Dao(), e.HttpContext, e.Record)
-		})
-		app.OnRecordBeforeUpdateRequest(name).Add(func(e *core.RecordUpdateEvent) error {
-			return guardPlacemarkRefs(app.Dao(), e.HttpContext, e.Record)
-		})
+		guard := func(e *core.RecordRequestEvent) error {
+			if err := guardPlacemarkRefs(e.App, e.Auth, e.Record); err != nil {
+				return err
+			}
+			return e.Next()
+		}
+		app.OnRecordCreateRequest(name).BindFunc(guard)
+		app.OnRecordUpdateRequest(name).BindFunc(guard)
 	}
 }
 
-func guardPlacemarkRefs(dao *daos.Dao, c interface{ Get(string) any }, rec *models.Record) error {
-	if admin, _ := c.Get(apis.ContextAdminKey).(*models.Admin); admin != nil {
+func guardPlacemarkRefs(app core.App, auth *core.Record, rec *core.Record) error {
+	if auth != nil && auth.IsSuperuser() {
 		return nil
 	}
-	callerID, err := authOwnerID(c)
+	callerID, err := authOwnerID(auth)
 	if err != nil {
 		return err
 	}
-	return checkPlacemarkRefs(dao, rec, callerID)
+	return checkPlacemarkRefs(app, rec, callerID)
 }
 
 // checkPlacemarkRefs validates the placemark reference fields of rec
 // that are set (create) or changed (update) against the visibility
 // rule for callerID.
-func checkPlacemarkRefs(dao *daos.Dao, rec *models.Record, callerID string) error {
+func checkPlacemarkRefs(app core.App, rec *core.Record, callerID string) error {
 	fields := placemarkRefFields[rec.Collection().Name]
-	var original *models.Record
+	var original *core.Record
 	if !rec.IsNew() {
-		original = rec.OriginalCopy()
+		original = rec.Original()
 	}
 	for _, field := range fields {
 		id := rec.GetString(field)
@@ -62,13 +64,16 @@ func checkPlacemarkRefs(dao *daos.Dao, rec *models.Record, callerID string) erro
 		if original != nil && original.GetString(field) == id {
 			continue
 		}
-		pm, err := dao.FindRecordById("placemarks", id)
+		pm, err := app.FindRecordById("placemarks", id)
 		if err != nil || !geoplace.VisibleTo(pm, callerID) {
-			return apis.NewBadRequestError("Invalid placemark reference.", map[string]any{
-				field: map[string]string{
-					"code":    "validation_invalid_placemark",
-					"message": "Placemark is not accessible.",
-				},
+			// The field error is a plain error on purpose: PocketBase
+			// renders it as {"code":"validation_invalid_value",
+			// "message":"Invalid value."}, exactly the body 0.22 sent
+			// (its nested map[string]string was flattened the same way;
+			// 0.23+ would nest it one level deeper and the iOS error
+			// formatter would drop the field).
+			return apis.NewBadRequestError("Invalid placemark reference.", map[string]error{
+				field: errors.New("placemark is not accessible"),
 			})
 		}
 	}

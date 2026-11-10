@@ -138,13 +138,12 @@ func main() {
 	// fieldtrip astro; locality-side reverse-geocodes the coordinate
 	// into a Placemark row.
 	//
-	// The cache lives in the `geocache` collection; we hand each
-	// enricher a function-bound dao reference because app.Dao() at
-	// startup is nil — the dao is built during app.Start().
+	// The cache lives in the `geocache` collection. The enrichers are
+	// wired on serve, after the app is bootstrapped.
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		cache := &services.Geocache{Dao: app.Dao()}
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		cache := &services.Geocache{App: app}
 		enr := &enrichment.Enricher{
 			App:     app,
 			Labels:  adminlabels.Default(),
@@ -175,7 +174,7 @@ func main() {
 			Timeout: 15 * time.Second,
 		}
 		enrichment.RegisterPlacemarkEnricher(app, pm)
-		return nil
+		return se.Next()
 	})
 
 	registerBackfillCommand(app, httpClient)
@@ -238,7 +237,7 @@ func newBackfillRunner(app core.App, httpClient *http.Client, ortusBaseURL strin
 	ortus := &services.Ortus{
 		BaseURL:    u,
 		HTTPClient: httpClient,
-		Cache:      &services.Geocache{Dao: app.Dao()},
+		Cache:      &services.Geocache{App: app},
 		MaxRetries: 3,
 		Logger:     slog.Default(),
 	}

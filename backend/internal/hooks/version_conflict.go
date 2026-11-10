@@ -22,10 +22,8 @@ package hooks
 import (
 	"net/http"
 
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/models"
 )
 
 // versionedCollections are the ones that grew a `version` column in
@@ -40,16 +38,19 @@ var versionedCollections = []string{
 
 // RegisterVersionConflictGuards wires the version-check hook on
 // every versioned collection. Call once at boot from main.go.
-func RegisterVersionConflictGuards(app *pocketbase.PocketBase) {
+func RegisterVersionConflictGuards(app core.App) {
 	for _, name := range versionedCollections {
-		app.OnRecordBeforeUpdateRequest(name).Add(func(e *core.RecordUpdateEvent) error {
-			return enforceVersion(e.Record)
+		app.OnRecordUpdateRequest(name).BindFunc(func(e *core.RecordRequestEvent) error {
+			if err := enforceVersion(e.Record); err != nil {
+				return err
+			}
+			return e.Next()
 		})
 	}
 }
 
-func enforceVersion(rec *models.Record) error {
-	original := rec.OriginalCopy()
+func enforceVersion(rec *core.Record) error {
+	original := rec.Original()
 	current := original.GetInt("version")
 	incoming := rec.GetInt("version")
 

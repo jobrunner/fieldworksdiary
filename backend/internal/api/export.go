@@ -9,13 +9,11 @@ import (
 	"path"
 	"time"
 
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/pocketbase/pocketbase/tools/router"
 
 	"go.mett.io/fwd-backend/internal/geoplace"
 )
@@ -28,13 +26,14 @@ import (
 // The archive is for backup. It is NOT designed as an import format —
 // fields, structure, and naming may change without a migration story.
 func RegisterExportRoute(app core.App) {
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		requireAuth := apis.RequireRecordAuth("users")
-		e.Router.GET("/api/export", func(c echo.Context) error {
-			return handleExport(app, c)
-		}, requireAuth)
-		return nil
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindExportRoute(se.Router)
+		return se.Next()
 	})
+}
+
+func bindExportRoute(r *router.Router[*core.RequestEvent]) {
+	r.GET("/api/export", handleExport).Bind(apis.RequireAuth("users"))
 }
 
 // exportPayload is the JSON shape of `data.json` inside the archive.
@@ -58,12 +57,13 @@ type exportMeta struct {
 	User map[string]any `json:"user"`
 }
 
-func handleExport(app core.App, c echo.Context) error {
-	ownerID, err := authOwnerID(c)
+func handleExport(e *core.RequestEvent) error {
+	ownerID, err := authOwnerID(e)
 	if err != nil {
 		return err
 	}
-	dao := app.Dao()
+	app := e.App
+	dao := app
 
 	userRec, err := dao.FindRecordById("users", ownerID)
 	if err != nil {
@@ -114,11 +114,11 @@ func handleExport(app core.App, c echo.Context) error {
 	// downloads — but the alternative (buffer the whole archive in
 	// memory) is worse once PDFs are involved.
 	filename := fmt.Sprintf("fieldworksdiary-export-%s.zip", time.Now().UTC().Format("20060102-150405"))
-	c.Response().Header().Set("Content-Type", "application/zip")
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	c.Response().WriteHeader(http.StatusOK)
+	e.Response.Header().Set("Content-Type", "application/zip")
+	e.Response.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	e.Response.WriteHeader(http.StatusOK)
 
-	zw := zip.NewWriter(c.Response().Writer)
+	zw := zip.NewWriter(e.Response)
 	defer zw.Close()
 
 	if err := writeJSON(zw, "data.json", payload); err != nil {
@@ -165,7 +165,7 @@ func handleExport(app core.App, c echo.Context) error {
 }
 
 func fetchOwned(dao interface {
-	FindRecordsByFilter(string, string, string, int, int, ...dbx.Params) ([]*models.Record, error)
+	FindRecordsByFilter(any, string, string, int, int, ...dbx.Params) ([]*core.Record, error)
 }, name, ownerID, sort string,
 ) ([]map[string]any, error) {
 	recs, err := dao.FindRecordsByFilter(name, "owner = {:o}", sort, 0, 0, dbx.Params{"o": ownerID})
@@ -177,7 +177,7 @@ func fetchOwned(dao interface {
 
 // exportReferencedPlacemarks returns the placemarks (and suggested
 // placemarks) referenced by the owner's samples and localities.
-func exportReferencedPlacemarks(dao *daos.Dao, ownerID string) ([]map[string]any, error) {
+func exportReferencedPlacemarks(dao core.App, ownerID string) ([]map[string]any, error) {
 	seen := map[string]struct{}{}
 	var ids []string
 	add := func(coll string, fields ...string) error {
@@ -223,7 +223,7 @@ func exportReferencedPlacemarks(dao *daos.Dao, ownerID string) ([]map[string]any
 	return exportAll(visible), nil
 }
 
-func exportAll(recs []*models.Record) []map[string]any {
+func exportAll(recs []*core.Record) []map[string]any {
 	out := make([]map[string]any, 0, len(recs))
 	for _, r := range recs {
 		out = append(out, r.PublicExport())
@@ -248,7 +248,7 @@ func writeText(zw *zip.Writer, name, body string) {
 }
 
 func copyFromStorage(zw *zip.Writer, fs *filesystem.System, key, entry string) error {
-	r, err := fs.GetFile(key)
+	r, err := fs.GetReader(key)
 	if err != nil {
 		return err
 	}

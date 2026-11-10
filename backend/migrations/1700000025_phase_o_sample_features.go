@@ -4,71 +4,54 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		if c, err := dao.FindCollectionByNameOrId("sample_features"); err == nil && c != nil {
+	m.Register(func(app core.App) error {
+		if c, err := app.FindCollectionByNameOrId("sample_features"); err == nil && c != nil {
 			return nil
 		}
-		users, err := dao.FindCollectionByNameOrId("users")
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
-		samples, err := dao.FindCollectionByNameOrId("samples")
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
 		rule := types.Pointer("@request.auth.id != '' && owner = @request.auth.id")
-		return dao.SaveCollection(&models.Collection{
-			Name: "sample_features",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{
-					Name: "owner", Type: schema.FieldTypeRelation, Required: true,
-					Options: &schema.RelationOptions{
-						CollectionId: users.Id,
-						MinSelect:    types.Pointer(1),
-						MaxSelect:    types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{
-					Name: "sample", Type: schema.FieldTypeRelation, Required: true,
-					Options: &schema.RelationOptions{
-						CollectionId:  samples.Id,
-						CascadeDelete: true,
-						MinSelect:     types.Pointer(1),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "source_id", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "source_name", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "layer", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "feature_id", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "properties", Type: schema.FieldTypeJson,
-					Options: &schema.JsonOptions{MaxSize: 2 << 20}},
-				&schema.SchemaField{Name: "license", Type: schema.FieldTypeJson,
-					Options: &schema.JsonOptions{MaxSize: 2 << 20}},
-				&schema.SchemaField{Name: "fetched_at", Type: schema.FieldTypeDate},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE INDEX idx_sample_features_sample_source ON sample_features (sample, source_id)",
+		c := newBaseCollection("sample_features",
+			&core.RelationField{
+				Name: "owner", Required: true,
+				CollectionId: users.Id,
+				MinSelect:    1,
+				MaxSelect:    1,
 			},
-			ListRule: rule,
-			ViewRule: rule,
-		})
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		if c, err := dao.FindCollectionByNameOrId("sample_features"); err == nil && c != nil {
-			return dao.DeleteCollection(c)
+			&core.RelationField{
+				Name: "sample", Required: true,
+				CollectionId:  samples.Id,
+				CascadeDelete: true,
+				MinSelect:     1,
+				MaxSelect:     1,
+			},
+			&core.TextField{Name: "source_id"},
+			&core.TextField{Name: "source_name"},
+			&core.TextField{Name: "layer"},
+			&core.TextField{Name: "feature_id"},
+			&core.JSONField{Name: "properties", MaxSize: 2 << 20},
+			&core.JSONField{Name: "license", MaxSize: 2 << 20},
+			&core.DateField{Name: "fetched_at"},
+		)
+		c.Indexes = types.JSONArray[string]{
+			"CREATE INDEX idx_sample_features_sample_source ON sample_features (sample, source_id)",
 		}
-		return nil
+		c.ListRule = rule
+		c.ViewRule = rule
+		return app.Save(c)
+	}, func(app core.App) error {
+		return deleteCollectionIfExists(app, "sample_features")
 	})
 }

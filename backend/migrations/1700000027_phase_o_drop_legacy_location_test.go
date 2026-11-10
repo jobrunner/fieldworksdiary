@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/forms"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -15,7 +14,7 @@ import (
 func setupLegacyLocationTestApp(t *testing.T) *tests.TestApp {
 	t.Helper()
 	app := setupTestApp(t)
-	if err := dropLegacyLocationDown(app.Dao().DB()); err != nil {
+	if err := dropLegacyLocationDown(app); err != nil {
 		t.Fatalf("restore legacy columns: %v", err)
 	}
 	return app
@@ -23,17 +22,17 @@ func setupLegacyLocationTestApp(t *testing.T) *tests.TestApp {
 
 func TestDropLegacyLocation_ColumnsGoneNewDataKept(t *testing.T) {
 	app := setupTestApp(t)
-	dao := app.Dao()
+	dao := app
 	db := dao.DB()
 	// The test app already ran Up. Roll back to the legacy shape, seed
 	// both legacy and new columns, then run Up again.
-	if err := dropLegacyLocationDown(db); err != nil {
+	if err := dropLegacyLocationDown(dao); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	for _, c := range []string{"placemarks", "samples", "fieldtrips"} {
 		coll, _ := dao.FindCollectionByNameOrId(c)
 		for _, f := range legacyLocationFields[c] {
-			if coll.Schema.GetFieldByName(f) == nil {
+			if coll.Fields.GetByName(f) == nil {
 				t.Fatalf("%s.%s not restored by down", c, f)
 			}
 		}
@@ -46,13 +45,13 @@ func TestDropLegacyLocation_ColumnsGoneNewDataKept(t *testing.T) {
 	phaseZExec(t, db, `INSERT INTO samples (id, mtb, mtb_sheet_number) VALUES ('smdrop000000001', '{"x":1}', '6326')`, nil)
 	phaseZExec(t, db, `INSERT INTO fieldtrips (id, country, admin_area) VALUES ('ftdrop000000001', 'DE', 'Bayern')`, nil)
 
-	if err := dropLegacyLocationUp(db); err != nil {
+	if err := dropLegacyLocationUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	for _, c := range []string{"placemarks", "samples", "fieldtrips"} {
 		coll, _ := dao.FindCollectionByNameOrId(c)
 		for _, f := range legacyLocationFields[c] {
-			if coll.Schema.GetFieldByName(f) != nil {
+			if coll.Fields.GetByName(f) != nil {
 				t.Errorf("%s.%s still present", c, f)
 			}
 		}
@@ -78,16 +77,16 @@ func TestDropLegacyLocation_ColumnsGoneNewDataKept(t *testing.T) {
 
 func TestDropLegacyLocation_UpMapsLegacyManualPlacemarks(t *testing.T) {
 	app := setupLegacyLocationTestApp(t)
-	dao := app.Dao()
+	dao := app
 	db := dao.DB()
 	users, _ := dao.FindCollectionByNameOrId("users")
 	var owners []string
 	for _, n := range []string{"legacya", "legacyb"} {
-		u := models.NewRecord(users)
-		_ = u.SetEmail(n + "@example.com")
-		_ = u.SetUsername(n)
-		_ = u.SetPassword("test1234password")
-		if err := dao.SaveRecord(u); err != nil {
+		u := core.NewRecord(users)
+		u.SetEmail(n + "@example.com")
+		u.Set("username", n)
+		u.SetPassword("test1234password")
+		if err := dao.SaveNoValidate(u); err != nil {
 			t.Fatal(err)
 		}
 		owners = append(owners, u.Id)
@@ -104,7 +103,7 @@ func TestDropLegacyLocation_UpMapsLegacyManualPlacemarks(t *testing.T) {
 				"c": fmt.Sprintf("2024-01-0%d 00:00:00.000Z", i+2)})
 	}
 
-	if err := dropLegacyLocationUp(db); err != nil {
+	if err := dropLegacyLocationUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 
@@ -141,7 +140,7 @@ func TestDropLegacyLocation_UpMapsLegacyManualPlacemarks(t *testing.T) {
 	}
 	coll, _ := dao.FindCollectionByNameOrId("placemarks")
 	for _, f := range legacyLocationFields["placemarks"] {
-		if coll.Schema.GetFieldByName(f) != nil {
+		if coll.Fields.GetByName(f) != nil {
 			t.Errorf("placemarks.%s still present", f)
 		}
 	}
@@ -149,30 +148,30 @@ func TestDropLegacyLocation_UpMapsLegacyManualPlacemarks(t *testing.T) {
 
 func TestDropLegacyLocation_DownRestoresOptionalColumns(t *testing.T) {
 	app := setupLegacyLocationTestApp(t)
-	dao := app.Dao()
+	dao := app
 	coll, err := dao.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range legacyLocationFields["placemarks"] {
-		sf := coll.Schema.GetFieldByName(f)
+		sf := coll.Fields.GetByName(f)
 		if sf == nil {
 			t.Fatalf("placemarks.%s not restored", f)
 		}
-		if sf.Required {
+		if tf, ok := sf.(*core.TextField); !ok || tf.Required {
 			t.Errorf("placemarks.%s restored as required", f)
 		}
 	}
 	// A placemark created after Down (no legacy country) must validate.
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("geocoding_source", "backend_service")
 	rec.Set("country_iso", "DE")
 	rec.Set("dedup_hash", "downhash")
-	if err := forms.NewRecordUpsert(app, rec).Submit(); err != nil {
+	if err := app.Save(rec); err != nil {
 		t.Errorf("placemark without legacy country rejected after down: %v", err)
 	}
 	// Down is idempotent.
-	if err := dropLegacyLocationDown(dao.DB()); err != nil {
+	if err := dropLegacyLocationDown(dao); err != nil {
 		t.Errorf("second down: %v", err)
 	}
 }

@@ -7,36 +7,29 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if samples.Schema.GetFieldByName("is_retrospective") != nil {
+		if samples.Fields.GetByName("is_retrospective") != nil {
 			return nil
 		}
-		samples.Schema.AddField(&schema.SchemaField{
-			Name: "is_retrospective",
-			Type: schema.FieldTypeBool,
-		})
-		return dao.SaveCollection(samples)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+		samples.Fields.Add(&core.BoolField{Name: "is_retrospective"})
+		return app.Save(samples)
+	}, func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if f := samples.Schema.GetFieldByName("is_retrospective"); f != nil {
-			samples.Schema.RemoveField(f.Id)
-			return dao.SaveCollection(samples)
+		if samples.Fields.GetByName("is_retrospective") != nil {
+			removeFields(samples, "is_retrospective")
+			return app.Save(samples)
 		}
 		return nil
 	})

@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"go.mett.io/fwd-backend/internal/grouping"
 	// Side-effect-Import: registriert unsere Migrations global, damit
 	// `tests.NewTestApp` sie auf der frischen Test-DB anwendet.
 	_ "go.mett.io/fwd-backend/migrations"
 
-	"github.com/pocketbase/pocketbase/apis"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -20,37 +21,25 @@ import (
 // registriert).
 func setupTestApp(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app setup: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 	return app
 }
 
 // createTestUser legt einen verifizierten User in `users` an und gibt
 // das Record zurück (für owner-Felder).
-func createTestUser(t *testing.T, app *tests.TestApp, email string) *models.Record {
+func createTestUser(t *testing.T, app *tests.TestApp, email string) *core.Record {
 	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("users")
+	coll, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatalf("users collection: %v", err)
 	}
-	rec := models.NewRecord(coll)
-	if err := rec.SetEmail(email); err != nil {
-		t.Fatalf("set email: %v", err)
-	}
+	rec := core.NewRecord(coll)
+	rec.SetEmail(email)
 	username := strings.SplitN(email, "@", 2)[0]
-	if err := rec.SetUsername(username + uniqueSuffix(t)); err != nil {
-		t.Fatalf("set username: %v", err)
-	}
-	if err := rec.SetPassword("test1234password"); err != nil {
-		t.Fatalf("set password: %v", err)
-	}
-	if err := rec.SetVerified(true); err != nil {
-		t.Fatalf("set verified: %v", err)
-	}
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	rec.Set("username", username+uniqueSuffix(t))
+	rec.SetPassword("test1234password")
+	rec.SetVerified(true)
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 	return rec
@@ -59,13 +48,13 @@ func createTestUser(t *testing.T, app *tests.TestApp, email string) *models.Reco
 // newSampleRecord baut ein unsaved samples-Record mit den Pflicht-
 // Feldern latitude/longitude. Die anderen Felder werden im Test
 // gezielt gesetzt.
-func newSampleRecord(t *testing.T, app *tests.TestApp) *models.Record {
+func newSampleRecord(t *testing.T, app *tests.TestApp) *core.Record {
 	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("samples")
+	coll, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		t.Fatalf("samples collection: %v", err)
 	}
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("latitude", 49.793)
 	rec.Set("longitude", 9.939)
 	return rec
@@ -83,7 +72,7 @@ func uniqueSuffix(t *testing.T) string {
 // ────────────────────────────────────────────────────────────────────
 
 // createSample verarbeitet und speichert ein Sample.
-func createSample(t *testing.T, app *tests.TestApp, ownerID string, set map[string]any) *models.Record {
+func createSample(t *testing.T, app *tests.TestApp, ownerID string, set map[string]any) *core.Record {
 	t.Helper()
 	rec := newSampleRecord(t, app)
 	if _, ok := set["begin_date"]; !ok {
@@ -92,18 +81,18 @@ func createSample(t *testing.T, app *tests.TestApp, ownerID string, set map[stri
 	for k, v := range set {
 		rec.Set(k, v)
 	}
-	if err := processSample(app.Dao(), rec, ownerID); err != nil {
+	if err := processSample(app, rec, ownerID); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	return rec
 }
 
-func fieldtripOf(t *testing.T, app *tests.TestApp, rec *models.Record) *models.Record {
+func fieldtripOf(t *testing.T, app *tests.TestApp, rec *core.Record) *core.Record {
 	t.Helper()
-	ft, err := app.Dao().FindRecordById("fieldtrips", rec.GetString("fieldtrip"))
+	ft, err := app.FindRecordById("fieldtrips", rec.GetString("fieldtrip"))
 	if err != nil {
 		t.Fatalf("fieldtrip: %v", err)
 	}
@@ -132,7 +121,7 @@ func TestCreate_EmptyIDStaysEmpty(t *testing.T) {
 
 	a := createSample(t, app, owner.Id, nil)
 	b := createSample(t, app, owner.Id, map[string]any{"sample_id": "   "})
-	for _, r := range []*models.Record{a, b} {
+	for _, r := range []*core.Record{a, b} {
 		if got := r.GetString("sample_id"); got != "" {
 			t.Errorf("sample_id = %q, want empty", got)
 		}
@@ -215,7 +204,7 @@ func TestCreate_UserCutoffHour(t *testing.T) {
 	app := setupTestApp(t)
 	owner := createTestUser(t, app, "cut@example.com")
 	owner.Set("day_cutoff_hour", 5)
-	if err := app.Dao().SaveRecord(owner); err != nil {
+	if err := app.SaveNoValidate(owner); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 
@@ -292,7 +281,7 @@ func TestProcessSample_DefaultsCollectedFromToNowWhenZero(t *testing.T) {
 
 	rec := newSampleRecord(t, app)
 	before := time.Now()
-	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
+	if err := processSample(app, rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 	after := time.Now()
@@ -319,15 +308,15 @@ func TestUniqueSampleID_ExcludesOwnRecord(t *testing.T) {
 	owner := createTestUser(t, app, "uq@example.com")
 	rec := createSample(t, app, owner.Id, map[string]any{"sample_id": "X1"})
 
-	got, err := uniqueSampleID(app.Dao(), owner.Id, "X1", rec.Id)
+	got, err := uniqueSampleID(app, owner.Id, "X1", rec.Id)
 	if err != nil || got != "X1" {
 		t.Errorf("own id: got %q, %v", got, err)
 	}
-	got, err = uniqueSampleID(app.Dao(), owner.Id, "X1", "")
+	got, err = uniqueSampleID(app, owner.Id, "X1", "")
 	if err != nil || got != "X1 (2)" {
 		t.Errorf("foreign id: got %q, %v", got, err)
 	}
-	got, err = uniqueSampleID(app.Dao(), owner.Id, "", "")
+	got, err = uniqueSampleID(app, owner.Id, "", "")
 	if err != nil || got != "" {
 		t.Errorf("empty: got %q, %v", got, err)
 	}
@@ -339,8 +328,8 @@ func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	createSample(t, app, owner.Id, map[string]any{"sample_id": "A"})
 	x := createSample(t, app, owner.Id, map[string]any{"sample_id": "B"})
 
-	reload := func() *models.Record {
-		r, err := app.Dao().FindRecordById("samples", x.Id)
+	reload := func() *core.Record {
+		r, err := app.FindRecordById("samples", x.Id)
 		if err != nil {
 			t.Fatalf("reload: %v", err)
 		}
@@ -350,7 +339,7 @@ func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	// Update ohne ID-Änderung: ID und original_code bleiben.
 	r := reload()
 	r.Set("notes", "geändert")
-	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+	if err := resolveSampleIDOnUpdate(app, r); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if r.GetString("sample_id") != "B" || r.GetString("original_code") != "" {
@@ -360,7 +349,7 @@ func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	// Update auf eigene aktuelle ID: kein Suffix.
 	r = reload()
 	r.Set("sample_id", "B")
-	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+	if err := resolveSampleIDOnUpdate(app, r); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if r.GetString("sample_id") != "B" {
@@ -370,7 +359,7 @@ func TestUpdate_SuffixOnCollidingIDChange(t *testing.T) {
 	// Update auf vergebene ID: Suffix + original_code.
 	r = reload()
 	r.Set("sample_id", "A")
-	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+	if err := resolveSampleIDOnUpdate(app, r); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if r.GetString("sample_id") != "A (2)" || r.GetString("original_code") != "A" {
@@ -384,8 +373,8 @@ func TestUpdate_KeepsLocationServiceTimezoneAgainstDevice(t *testing.T) {
 	x := createSample(t, app, owner.Id, map[string]any{
 		"sample_id": "T1", "timezone": "Atlantic/Canary", "timezone_source": "location_service",
 	})
-	reload := func() *models.Record {
-		r, err := app.Dao().FindRecordById("samples", x.Id)
+	reload := func() *core.Record {
+		r, err := app.FindRecordById("samples", x.Id)
 		if err != nil {
 			t.Fatalf("reload: %v", err)
 		}
@@ -414,7 +403,7 @@ func TestUpdate_KeepsLocationServiceTimezoneAgainstDevice(t *testing.T) {
 	d := createSample(t, app, owner.Id, map[string]any{
 		"sample_id": "T2", "timezone": "Europe/Berlin", "timezone_source": "device",
 	})
-	d, _ = app.Dao().FindRecordById("samples", d.Id)
+	d, _ = app.FindRecordById("samples", d.Id)
 	d.Set("timezone", "Asia/Tokyo")
 	d.Set("timezone_source", "device")
 	keepStrongerTimezone(d)
@@ -427,22 +416,11 @@ func TestUpdate_KeepsLocationServiceTimezoneAgainstDevice(t *testing.T) {
 // authOwnerID — defensive Auth-Extraktion
 // ────────────────────────────────────────────────────────────────────
 
-// fakeAuthCtx implementiert nur das Interface, das authOwnerID braucht
-// (`Get(string) any`). Damit testen wir die Auth-Extraktion ohne echo.
-type fakeAuthCtx struct {
-	values map[string]any
-}
-
-func (f *fakeAuthCtx) Get(key string) any { return f.values[key] }
-
 func TestAuthOwnerID_ExtractsFromAuthRecord(t *testing.T) {
 	app := setupTestApp(t)
 	user := createTestUser(t, app, "kim@example.com")
 
-	ctx := &fakeAuthCtx{values: map[string]any{
-		apis.ContextAuthRecordKey: user,
-	}}
-	id, err := authOwnerID(ctx)
+	id, err := authOwnerID(user)
 	if err != nil {
 		t.Fatalf("authOwnerID: %v", err)
 	}
@@ -452,18 +430,26 @@ func TestAuthOwnerID_ExtractsFromAuthRecord(t *testing.T) {
 }
 
 func TestAuthOwnerID_FailsWhenNoAuthRecord(t *testing.T) {
-	ctx := &fakeAuthCtx{values: map[string]any{}}
-	if _, err := authOwnerID(ctx); err == nil {
-		t.Error("authOwnerID akzeptiert leeren Kontext, sollte aber 401 werfen")
+	if _, err := authOwnerID(nil); err == nil {
+		t.Error("authOwnerID akzeptiert fehlende Auth, sollte aber 401 werfen")
 	}
 }
 
-func TestAuthOwnerID_FailsWhenAuthRecordHasWrongType(t *testing.T) {
-	ctx := &fakeAuthCtx{values: map[string]any{
-		apis.ContextAuthRecordKey: "not-a-record",
-	}}
-	if _, err := authOwnerID(ctx); err == nil {
-		t.Error("authOwnerID akzeptiert String statt *models.Record")
+// Superuser sind kein `users`-Record (wie die 0.22-Admins): kein Owner.
+func TestAuthOwnerID_FailsForSuperuser(t *testing.T) {
+	app := setupTestApp(t)
+	coll, err := app.FindCollectionByNameOrId(core.CollectionNameSuperusers)
+	if err != nil {
+		t.Fatalf("superusers collection: %v", err)
+	}
+	su := core.NewRecord(coll)
+	su.SetEmail("root@example.com")
+	su.SetPassword("test1234password")
+	if err := app.SaveNoValidate(su); err != nil {
+		t.Fatalf("save superuser: %v", err)
+	}
+	if _, err := authOwnerID(su); err == nil {
+		t.Error("authOwnerID akzeptiert Superuser als Owner")
 	}
 }
 
@@ -474,11 +460,11 @@ func TestAuthOwnerID_FailsWhenAuthRecordHasWrongType(t *testing.T) {
 func TestFieldtripFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 	app := setupTestApp(t)
 
-	coll, err := app.Dao().FindCollectionByNameOrId("fieldtrips")
+	coll, err := app.FindCollectionByNameOrId("fieldtrips")
 	if err != nil {
 		t.Fatalf("fieldtrips collection: %v", err)
 	}
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("owner", "user-id")
 	rec.Set("collecting_day", "2026-05-19")
 	// 22:00 UTC am 19.05. = 00:00 Berlin am 20.05. (CEST = UTC+2)
@@ -499,10 +485,10 @@ func TestFieldtripFromRecord_ConvertsUTCInstantsToBerlin(t *testing.T) {
 
 func TestWriteFieldtrip_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 	app := setupTestApp(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("fieldtrips")
+	coll, _ := app.FindCollectionByNameOrId("fieldtrips")
 
 	// Leerer Name → wird befüllt mit "Sammeltag DD.MM.YYYY"
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	writeFieldtrip(rec, &grouping.Fieldtrip{
 		UserID: "user-id",
 		Day:    time.Date(2026, 5, 19, 0, 0, 0, 0, berlin),
@@ -512,7 +498,7 @@ func TestWriteFieldtrip_FillsDefaultNameOnlyWhenEmpty(t *testing.T) {
 	}
 
 	// User-vergebener Title → bleibt erhalten
-	rec2 := models.NewRecord(coll)
+	rec2 := core.NewRecord(coll)
 	rec2.Set("title", "Heidehöhe")
 	writeFieldtrip(rec2, &grouping.Fieldtrip{
 		UserID: "user-id",
@@ -529,7 +515,7 @@ func TestProcessSample_DefaultsLocationStatusToPending(t *testing.T) {
 
 	rec := newSampleRecord(t, app)
 	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
-	if err := processSample(app.Dao(), rec, owner.Id); err != nil {
+	if err := processSample(app, rec, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 	if got := rec.GetString("location_status"); got != "pending" {
@@ -539,7 +525,7 @@ func TestProcessSample_DefaultsLocationStatusToPending(t *testing.T) {
 	rec2 := newSampleRecord(t, app)
 	rec2.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, berlin))
 	rec2.Set("location_status", "inherited")
-	if err := processSample(app.Dao(), rec2, owner.Id); err != nil {
+	if err := processSample(app, rec2, owner.Id); err != nil {
 		t.Fatalf("processSample: %v", err)
 	}
 	if got := rec2.GetString("location_status"); got != "inherited" {
@@ -568,7 +554,7 @@ func TestProcessSample_ClientElevationGetsLocationServiceSource(t *testing.T) {
 			rec.Set("begin_date", day.Add(time.Duration(i)*time.Minute))
 			rec.Set("elevation", c.elevation)
 			rec.Set("elevation_source", c.source)
-			if err := processSample(app.Dao(), rec, owner.Id); err != nil {
+			if err := processSample(app, rec, owner.Id); err != nil {
 				t.Fatalf("processSample: %v", err)
 			}
 			if got := rec.GetString("elevation_source"); got != c.wantSource {
@@ -582,9 +568,9 @@ func TestProcessSample_ClientElevationGetsLocationServiceSource(t *testing.T) {
 // followCollectingDayOnUpdate — Fieldtrip folgt dem Sammeltag
 // ────────────────────────────────────────────────────────────────────
 
-func reloadSample(t *testing.T, app *tests.TestApp, id string) *models.Record {
+func reloadSample(t *testing.T, app *tests.TestApp, id string) *core.Record {
 	t.Helper()
-	r, err := app.Dao().FindRecordById("samples", id)
+	r, err := app.FindRecordById("samples", id)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -603,13 +589,13 @@ func TestUpdate_RetrospectiveFollowsCollectingDay(t *testing.T) {
 	r := reloadSample(t, app, x.Id)
 	r.Set("begin_date", time.Date(2019, 5, 4, 10, 0, 0, 0, berlin))
 	r.Set("collecting_day", "2019-05-04")
-	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+	if err := followCollectingDayOnUpdate(app, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+	if err := resolveSampleIDOnUpdate(app, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Dao().SaveRecord(r); err != nil {
+	if err := app.SaveNoValidate(r); err != nil {
 		t.Fatal(err)
 	}
 
@@ -624,7 +610,7 @@ func TestUpdate_RetrospectiveFollowsCollectingDay(t *testing.T) {
 		t.Errorf("day/id: %q / %q", got.GetString("collecting_day"), got.GetString("sample_id"))
 	}
 	// Old fieldtrip is kept (even though now empty).
-	if _, err := app.Dao().FindRecordById("fieldtrips", oldFt); err != nil {
+	if _, err := app.FindRecordById("fieldtrips", oldFt); err != nil {
 		t.Errorf("old fieldtrip gone: %v", err)
 	}
 	// Window of the new fieldtrip covers the sample.
@@ -644,10 +630,10 @@ func TestUpdate_FieldSampleKeepsCollectingDayAndFieldtrip(t *testing.T) {
 
 	r := reloadSample(t, app, x.Id)
 	r.Set("collecting_day", "2019-05-04")
-	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+	if err := followCollectingDayOnUpdate(app, r); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Dao().SaveRecord(r); err != nil {
+	if err := app.SaveNoValidate(r); err != nil {
 		t.Fatal(err)
 	}
 	got := reloadSample(t, app, x.Id)
@@ -665,7 +651,7 @@ func TestUpdate_IsRetrospectiveCannotBeFlipped(t *testing.T) {
 	r := reloadSample(t, app, x.Id)
 	r.Set("is_retrospective", true)
 	r.Set("collecting_day", "2019-05-04")
-	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+	if err := followCollectingDayOnUpdate(app, r); err != nil {
 		t.Fatal(err)
 	}
 	if r.GetBool("is_retrospective") || r.GetString("fieldtrip") != oldFt {

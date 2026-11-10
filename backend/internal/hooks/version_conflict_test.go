@@ -4,31 +4,31 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/apis"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 )
 
-// Helper: build a *models.Record whose "original" snapshot has the
+// Helper: build a *core.Record whose "original" snapshot has the
 // given version, and whose pending state matches `incoming`. We mimic
 // what PocketBase does during an update: the record is loaded from
 // disk, the user-supplied payload is layered on top, and the hook
 // runs before `dao.SaveRecord` actually writes it back.
-func recordWithVersion(t *testing.T, current, incoming int) *models.Record {
+func recordWithVersion(t *testing.T, current, incoming int) *core.Record {
 	t.Helper()
 	app := setupTestApp(t)
-	coll, err := app.Dao().FindCollectionByNameOrId("samples")
+	coll, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		t.Fatalf("samples collection: %v", err)
 	}
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("version", current)
 	// "Save" the baseline so OriginalCopy() reflects `current`.
 	rec.MarkAsNew()
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("seed save: %v", err)
 	}
 	// Reload so the pristine copy lives inside OriginalCopy().
-	reloaded, err := app.Dao().FindRecordById("samples", rec.Id)
+	reloaded, err := app.FindRecordById("samples", rec.Id)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -65,8 +65,8 @@ func TestEnforceVersion_RejectsStaleEqualVersion(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected 409, got nil")
 	}
-	var apiErr *apis.ApiError
-	if !errors.As(err, &apiErr) || apiErr.Code != 409 {
+	var apiErr *router.ApiError
+	if !errors.As(err, &apiErr) || apiErr.Status != 409 {
 		t.Errorf("expected 409 ApiError, got %T %v", err, err)
 	}
 }
@@ -77,8 +77,8 @@ func TestEnforceVersion_RejectsStaleLowerVersion(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected 409, got nil")
 	}
-	var apiErr *apis.ApiError
-	if !errors.As(err, &apiErr) || apiErr.Code != 409 {
+	var apiErr *router.ApiError
+	if !errors.As(err, &apiErr) || apiErr.Status != 409 {
 		t.Errorf("expected 409 ApiError, got %T %v", err, err)
 	}
 }

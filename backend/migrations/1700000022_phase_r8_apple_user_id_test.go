@@ -7,11 +7,11 @@ import (
 
 func TestAppleUserIDColumnIsPresent(t *testing.T) {
 	app := setupTestApp(t)
-	users, err := app.Dao().FindCollectionByNameOrId("users")
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatalf("find users: %v", err)
 	}
-	if users.Schema.GetFieldByName("apple_user_id") == nil {
+	if users.Fields.GetByName("apple_user_id") == nil {
 		t.Fatal("users.apple_user_id missing after R8 migration")
 	}
 	found := false

@@ -22,11 +22,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 
 	"go.mett.io/fwd-backend/internal/geoplace"
@@ -43,13 +40,12 @@ const (
 	fieldtripsAdminAreaIdx = "CREATE INDEX idx_fieldtrips_admin_area ON fieldtrips (admin_area)"
 )
 
-func dropLegacyLocationUp(db dbx.Builder) error {
-	dao := daos.New(db)
-	if _, err := geoplace.MapLegacyManualPlacemarks(dao, slog.Default()); err != nil {
+func dropLegacyLocationUp(app core.App) error {
+	if _, err := geoplace.MapLegacyManualPlacemarks(app, slog.Default()); err != nil {
 		return fmt.Errorf("map legacy manual placemarks: %w", err)
 	}
 	for _, name := range []string{"placemarks", "samples", "fieldtrips"} {
-		coll, err := dao.FindCollectionByNameOrId(name)
+		coll, err := app.FindCollectionByNameOrId(name)
 		if err != nil {
 			return err
 		}
@@ -59,48 +55,40 @@ func dropLegacyLocationUp(db dbx.Builder) error {
 					!strings.Contains(s, "idx_fieldtrips_admin_area")
 			})
 		}
-		for _, f := range legacyLocationFields[name] {
-			if sf := coll.Schema.GetFieldByName(f); sf != nil {
-				coll.Schema.RemoveField(sf.Id)
-			}
-		}
-		if err := dao.SaveCollection(coll); err != nil {
+		removeFields(coll, legacyLocationFields[name]...)
+		if err := app.Save(coll); err != nil {
 			return err
 		}
 	}
-	if seq, err := dao.FindCollectionByNameOrId("sample_sequences"); err == nil {
-		return dao.DeleteCollection(seq)
-	}
-	return nil
+	return deleteCollectionIfExists(app, "sample_sequences")
 }
 
-func dropLegacyLocationDown(db dbx.Builder) error {
-	dao := daos.New(db)
-	text := func(n string) *schema.SchemaField {
-		return &schema.SchemaField{Name: n, Type: schema.FieldTypeText}
+func dropLegacyLocationDown(app core.App) error {
+	text := func(n string) core.Field {
+		return &core.TextField{Name: n}
 	}
-	fields := map[string][]*schema.SchemaField{
+	jsonField := func(n string) core.Field {
+		return &core.JSONField{Name: n, MaxSize: 2000000}
+	}
+	fields := map[string][]core.Field{
 		"placemarks": {
 			text("country"),
 			text("administrative_area"), text("sub_administrative_area"), text("locality"),
 			text("sub_locality"), text("postal_code"), text("name"), text("thoroughfare"),
 		},
-		"samples": {{Name: "mtb", Type: schema.FieldTypeJson, Options: &schema.JsonOptions{MaxSize: 2000000}}},
+		"samples": {jsonField("mtb")},
 		"fieldtrips": {
-			{Name: "admin_units", Type: schema.FieldTypeJson, Options: &schema.JsonOptions{MaxSize: 2000000}},
-			{Name: "mtb", Type: schema.FieldTypeJson, Options: &schema.JsonOptions{MaxSize: 2000000}},
+			jsonField("admin_units"), jsonField("mtb"),
 			text("country"), text("admin_area"),
 		},
 	}
 	for _, name := range []string{"placemarks", "samples", "fieldtrips"} {
-		coll, err := dao.FindCollectionByNameOrId(name)
+		coll, err := app.FindCollectionByNameOrId(name)
 		if err != nil {
 			return err
 		}
 		for _, f := range fields[name] {
-			if coll.Schema.GetFieldByName(f.Name) == nil {
-				coll.Schema.AddField(f)
-			}
+			addFieldIfMissing(coll, f)
 		}
 		if name == "fieldtrips" {
 			coll.Indexes = append(filterIndexes(coll.Indexes, func(s string) bool {
@@ -108,34 +96,28 @@ func dropLegacyLocationDown(db dbx.Builder) error {
 					!strings.Contains(s, "idx_fieldtrips_admin_area")
 			}), fieldtripsCountryIdx, fieldtripsAdminAreaIdx)
 		}
-		if err := dao.SaveCollection(coll); err != nil {
+		if err := app.Save(coll); err != nil {
 			return err
 		}
 	}
-	if _, err := dao.FindCollectionByNameOrId("sample_sequences"); err == nil {
+	if _, err := app.FindCollectionByNameOrId("sample_sequences"); err == nil {
 		return nil
 	}
-	users, err := dao.FindCollectionByNameOrId("users")
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
 	}
-	return dao.SaveCollection(&models.Collection{
-		Name: "sample_sequences",
-		Type: models.CollectionTypeBase,
-		Schema: schema.NewSchema(
-			&schema.SchemaField{Name: "collecting_day", Type: schema.FieldTypeText, Required: true},
-			&schema.SchemaField{Name: "last_seq", Type: schema.FieldTypeNumber, Required: true},
-			&schema.SchemaField{
-				Name: "owner", Type: schema.FieldTypeRelation,
-				Options: &schema.RelationOptions{
-					CollectionId: users.Id, MinSelect: types.Pointer(0), MaxSelect: types.Pointer(1),
-				},
-			},
-		),
-		Indexes: types.JsonArray[string]{
-			"CREATE UNIQUE INDEX idx_sample_sequences_owner_day ON sample_sequences (owner, collecting_day)",
+	seq := newBaseCollection("sample_sequences",
+		&core.TextField{Name: "collecting_day", Required: true},
+		&core.NumberField{Name: "last_seq", Required: true},
+		&core.RelationField{
+			Name: "owner", CollectionId: users.Id, MinSelect: 0, MaxSelect: 1,
 		},
-	})
+	)
+	seq.Indexes = types.JSONArray[string]{
+		"CREATE UNIQUE INDEX idx_sample_sequences_owner_day ON sample_sequences (owner, collecting_day)",
+	}
+	return app.Save(seq)
 }
 
 func init() {

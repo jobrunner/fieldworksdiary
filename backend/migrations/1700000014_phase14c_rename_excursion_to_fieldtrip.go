@@ -23,40 +23,35 @@ package migrations
 import (
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-
+	m.Register(func(app core.App) error {
 		// 1. Rename collection `excursions` → `fieldtrips`, plus its
 		//    own `night_excursion` field.
-		if coll, err := dao.FindCollectionByNameOrId("excursions"); err == nil && coll != nil {
+		if coll, err := app.FindCollectionByNameOrId("excursions"); err == nil && coll != nil {
 			coll.Name = "fieldtrips"
-			if f := coll.Schema.GetFieldByName("night_excursion"); f != nil {
-				f.Name = "night_fieldtrip"
-			}
+			renameField(coll, "night_excursion", "night_fieldtrip")
 			coll.Indexes = rewriteIndexes(coll.Indexes,
 				"excursions", "fieldtrips",
 				"idx_excursions_", "idx_fieldtrips_",
 				"(night_excursion)", "(night_fieldtrip)",
 			)
-			if err := dao.SaveCollection(coll); err != nil {
+			if err := app.Save(coll); err != nil {
 				return err
 			}
-		} else if coll, err := dao.FindCollectionByNameOrId("fieldtrips"); err == nil && coll != nil {
+		} else if coll, err := app.FindCollectionByNameOrId("fieldtrips"); err == nil && coll != nil {
 			// Idempotent path: collection already renamed but a previous
 			// run might have stopped before the inner field flip.
-			if f := coll.Schema.GetFieldByName("night_excursion"); f != nil {
-				f.Name = "night_fieldtrip"
+			if coll.Fields.GetByName("night_excursion") != nil {
+				renameField(coll, "night_excursion", "night_fieldtrip")
 				coll.Indexes = rewriteIndexes(coll.Indexes,
 					"(night_excursion)", "(night_fieldtrip)",
 				)
-				if err := dao.SaveCollection(coll); err != nil {
+				if err := app.Save(coll); err != nil {
 					return err
 				}
 			}
@@ -64,18 +59,16 @@ func init() {
 
 		// 2. Rename field `samples.excursion` → `samples.fieldtrip`
 		//    and the supporting index.
-		samples, err := dao.FindCollectionByNameOrId("samples")
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if f := samples.Schema.GetFieldByName("excursion"); f != nil {
-			f.Name = "fieldtrip"
-		}
+		renameField(samples, "excursion", "fieldtrip")
 		samples.Indexes = rewriteIndexes(samples.Indexes,
 			"(excursion)", "(fieldtrip)",
 			"idx_samples_excursion", "idx_samples_fieldtrip",
 		)
-		if err := dao.SaveCollection(samples); err != nil {
+		if err := app.Save(samples); err != nil {
 			return err
 		}
 
@@ -83,57 +76,51 @@ func init() {
 		//    `default_fieldtrip_split_km`. Pure DB-column rename;
 		//    nothing in code reads this yet, but keeping naming
 		//    consistent keeps Phase R3+ honest.
-		users, err := dao.FindCollectionByNameOrId("users")
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
-		if f := users.Schema.GetFieldByName("default_excursion_split_km"); f != nil {
-			f.Name = "default_fieldtrip_split_km"
-			if err := dao.SaveCollection(users); err != nil {
+		if users.Fields.GetByName("default_excursion_split_km") != nil {
+			renameField(users, "default_excursion_split_km", "default_fieldtrip_split_km")
+			if err := app.Save(users); err != nil {
 				return err
 			}
 		}
 		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-
-		if coll, err := dao.FindCollectionByNameOrId("fieldtrips"); err == nil && coll != nil {
+	}, func(app core.App) error {
+		if coll, err := app.FindCollectionByNameOrId("fieldtrips"); err == nil && coll != nil {
 			coll.Name = "excursions"
-			if f := coll.Schema.GetFieldByName("night_fieldtrip"); f != nil {
-				f.Name = "night_excursion"
-			}
+			renameField(coll, "night_fieldtrip", "night_excursion")
 			coll.Indexes = rewriteIndexes(coll.Indexes,
 				"fieldtrips", "excursions",
 				"idx_fieldtrips_", "idx_excursions_",
 				"(night_fieldtrip)", "(night_excursion)",
 			)
-			if err := dao.SaveCollection(coll); err != nil {
+			if err := app.Save(coll); err != nil {
 				return err
 			}
 		}
 
-		samples, err := dao.FindCollectionByNameOrId("samples")
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if f := samples.Schema.GetFieldByName("fieldtrip"); f != nil {
-			f.Name = "excursion"
-		}
+		renameField(samples, "fieldtrip", "excursion")
 		samples.Indexes = rewriteIndexes(samples.Indexes,
 			"(fieldtrip)", "(excursion)",
 			"idx_samples_fieldtrip", "idx_samples_excursion",
 		)
-		if err := dao.SaveCollection(samples); err != nil {
+		if err := app.Save(samples); err != nil {
 			return err
 		}
 
-		users, err := dao.FindCollectionByNameOrId("users")
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
-		if f := users.Schema.GetFieldByName("default_fieldtrip_split_km"); f != nil {
-			f.Name = "default_excursion_split_km"
-			if err := dao.SaveCollection(users); err != nil {
+		if users.Fields.GetByName("default_fieldtrip_split_km") != nil {
+			renameField(users, "default_fieldtrip_split_km", "default_excursion_split_km")
+			if err := app.Save(users); err != nil {
 				return err
 			}
 		}
@@ -144,11 +131,11 @@ func init() {
 // rewriteIndexes applies pairs of (old, new) substring substitutions
 // to every index statement. Pairs are processed in order so callers
 // can stage replacements (e.g. table name first, then index prefix).
-func rewriteIndexes(in types.JsonArray[string], pairs ...string) types.JsonArray[string] {
+func rewriteIndexes(in types.JSONArray[string], pairs ...string) types.JSONArray[string] {
 	if len(pairs)%2 != 0 {
 		panic("rewriteIndexes: pairs must come in twos")
 	}
-	out := make(types.JsonArray[string], 0, len(in))
+	out := make(types.JSONArray[string], 0, len(in))
 	for _, stmt := range in {
 		for i := 0; i < len(pairs); i += 2 {
 			stmt = strings.ReplaceAll(stmt, pairs[i], pairs[i+1])

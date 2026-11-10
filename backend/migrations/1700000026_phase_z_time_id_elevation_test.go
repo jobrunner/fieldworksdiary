@@ -4,16 +4,16 @@ import (
 	"testing"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
 // phaseZRollback reverts the Phase Z migration so a test can seed
 // legacy-shaped rows and then run the Up path on them.
-func phaseZRollback(t *testing.T, app *tests.TestApp) *daos.Dao {
+func phaseZRollback(t *testing.T, app *tests.TestApp) core.App {
 	t.Helper()
-	dao := app.Dao()
-	if err := phaseZDown(dao.DB()); err != nil {
+	dao := app
+	if err := phaseZDown(dao); err != nil {
 		t.Fatalf("down: %v", err)
 	}
 	return dao
@@ -30,11 +30,11 @@ func TestPhaseZ_RenamesTimeZone(t *testing.T) {
 	app := setupTestApp(t)
 	dao := phaseZRollback(t, app)
 	phaseZExec(t, dao.DB(), `INSERT INTO samples (id, time_zone) VALUES ('smpz00000000001', 'Atlantic/Canary')`, nil)
-	if err := phaseZUp(dao.DB()); err != nil {
+	if err := phaseZUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	s, _ := dao.FindCollectionByNameOrId("samples")
-	if s.Schema.GetFieldByName("time_zone") != nil || s.Schema.GetFieldByName("timezone") == nil {
+	if s.Fields.GetByName("time_zone") != nil || s.Fields.GetByName("timezone") == nil {
 		t.Fatalf("rename not applied")
 	}
 	var tz string
@@ -52,7 +52,7 @@ func TestPhaseZ_MovesDEMIntoElevation(t *testing.T) {
 	db := dao.DB()
 	phaseZExec(t, db, `INSERT INTO samples (id, elevation, elevation_source, elevation_dem, elevation_dem_accuracy)
 		VALUES ('smpz00000000001', 0, '', 1147, 4), ('smpz00000000002', 0, 'location_service', 12, 3)`, nil)
-	if err := phaseZUp(db); err != nil {
+	if err := phaseZUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	var elev, acc float64
@@ -73,7 +73,7 @@ func TestPhaseZ_MovesDEMIntoElevation(t *testing.T) {
 	}
 	s, _ := dao.FindCollectionByNameOrId("samples")
 	for _, n := range []string{"elevation_dem", "elevation_dem_accuracy"} {
-		if s.Schema.GetFieldByName(n) != nil {
+		if s.Fields.GetByName(n) != nil {
 			t.Errorf("%s still present", n)
 		}
 	}
@@ -89,7 +89,7 @@ func TestPhaseZ_SuffixesExistingDuplicates(t *testing.T) {
 		('smpz00000000003', 'userB', '250611/3', '2025-06-11 12:00:00.000Z'),
 		('smpz00000000004', 'userA', '', '2025-06-11 12:00:00.000Z'),
 		('smpz00000000005', 'userA', '', '2025-06-11 13:00:00.000Z')`, nil)
-	if err := phaseZUp(db); err != nil {
+	if err := phaseZUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	get := func(id string) (string, string) {
@@ -122,7 +122,7 @@ func TestPhaseZ_BackfillsCollectingDayAndSource(t *testing.T) {
 	db := dao.DB()
 	phaseZExec(t, db, `INSERT INTO fieldtrips (id, collecting_day) VALUES ('ftz000000000001', '2025-06-11')`, nil)
 	phaseZExec(t, db, `INSERT INTO samples (id, fieldtrip) VALUES ('smpz00000000001', 'ftz000000000001')`, nil)
-	if err := phaseZUp(db); err != nil {
+	if err := phaseZUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	var day, src, ftTZ string
@@ -145,14 +145,14 @@ func TestPhaseZ_UserSettingsFields(t *testing.T) {
 	app := setupTestApp(t)
 	dao := phaseZRollback(t, app)
 	db := dao.DB()
-	phaseZExec(t, db, `INSERT INTO users (id, email, username, tokenKey, passwordHash, day_cutoff_hour)
+	phaseZExec(t, db, `INSERT INTO users (id, email, username, tokenKey, password, day_cutoff_hour)
 		VALUES ('usrz00000000001', 'z@example.com', 'z', 'tk', 'ph', 7)`, nil)
-	if err := phaseZUp(db); err != nil {
+	if err := phaseZUp(dao); err != nil {
 		t.Fatalf("up: %v", err)
 	}
 	u, _ := dao.FindCollectionByNameOrId("users")
 	for _, n := range []string{"sample_id_format", "sample_id_prefix", "sample_id_offset", "day_cutoff_hour"} {
-		if u.Schema.GetFieldByName(n) == nil {
+		if u.Fields.GetByName(n) == nil {
 			t.Errorf("users.%s missing", n)
 		}
 	}

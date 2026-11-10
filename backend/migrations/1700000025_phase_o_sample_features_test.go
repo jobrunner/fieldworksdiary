@@ -7,13 +7,13 @@ import (
 
 func TestSampleFeaturesMigration_Schema(t *testing.T) {
 	app := setupTestApp(t)
-	c, err := app.Dao().FindCollectionByNameOrId("sample_features")
+	c, err := app.FindCollectionByNameOrId("sample_features")
 	if err != nil {
 		t.Fatalf("find sample_features: %v", err)
 	}
 	for _, name := range []string{"owner", "sample", "source_id", "source_name",
 		"layer", "feature_id", "properties", "license", "fetched_at"} {
-		if c.Schema.GetFieldByName(name) == nil {
+		if c.Fields.GetByName(name) == nil {
 			t.Errorf("sample_features.%s missing", name)
 		}
 	}
