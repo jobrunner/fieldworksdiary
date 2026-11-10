@@ -237,6 +237,9 @@ func uniqueSampleID(dao *daos.Dao, ownerID, wanted, excludeID string) (string, e
 func RegisterSampleIDUpdate(app *pocketbase.PocketBase) {
 	app.OnRecordBeforeUpdateRequest("samples").Add(func(e *core.RecordUpdateEvent) error {
 		keepStrongerTimezone(e.Record)
+		if err := followCollectingDayOnUpdate(app.Dao(), e.Record); err != nil {
+			return err
+		}
 		return resolveSampleIDOnUpdate(app.Dao(), e.Record)
 	})
 }
@@ -258,6 +261,65 @@ func keepStrongerTimezone(rec *models.Record) {
 		rec.Set("timezone", orig.GetString("timezone"))
 		rec.Set("timezone_source", was)
 	}
+}
+
+// followCollectingDayOnUpdate keeps the fieldtrip in line with the
+// collecting day of retrospective samples ("nachgetragen"):
+//
+//   - is_retrospective is create-only; a flipped value is reset to the
+//     stored one, so a field sample can never become retrospective.
+//   - A field sample keeps its stored collecting_day (the client value
+//     is ignored) and with it its fieldtrip.
+//   - A retrospective sample whose collecting_day changed moves to the
+//     fieldtrip of the new day (found or created, window extended like
+//     on create). The old fieldtrip stays untouched, even when empty.
+//     The sample_id is not touched here.
+func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
+	orig := rec.OriginalCopy()
+	if orig == nil {
+		return nil
+	}
+	retro := orig.GetBool("is_retrospective")
+	rec.Set("is_retrospective", retro)
+
+	oldDay := orig.GetString("collecting_day")
+	if !retro {
+		if oldDay != "" {
+			rec.Set("collecting_day", oldDay)
+		}
+		return nil
+	}
+
+	newDay := rec.GetString("collecting_day")
+	if newDay == oldDay {
+		return nil
+	}
+	loc := loadLocation(rec.GetString("timezone"))
+	day, err := time.ParseInLocation("2006-01-02", newDay, loc)
+	if err != nil {
+		// Not a valid day: keep the stored one.
+		rec.Set("collecting_day", oldDay)
+		return nil
+	}
+	begin := rec.GetDateTime("begin_date").Time()
+	if begin.IsZero() {
+		begin = day
+	}
+	ownerID := rec.GetString("owner")
+	var ftID string
+	err = dao.RunInTransaction(func(txDao *daos.Dao) error {
+		ft, err := grouping.FindOrCreate(newPBRepo(txDao), ownerID, day, begin.In(loc))
+		if err != nil {
+			return fmt.Errorf("fieldtrip: %w", err)
+		}
+		ftID = ft.ID
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	rec.Set("fieldtrip", ftID)
+	return nil
 }
 
 func resolveSampleIDOnUpdate(dao *daos.Dao, rec *models.Record) error {

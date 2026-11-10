@@ -586,3 +586,98 @@ func TestProcessSample_ClientElevationGetsLocationServiceSource(t *testing.T) {
 		})
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────
+// followCollectingDayOnUpdate — Fieldtrip folgt dem Sammeltag
+// ────────────────────────────────────────────────────────────────────
+
+func reloadSample(t *testing.T, app *tests.TestApp, id string) *models.Record {
+	t.Helper()
+	r, err := app.Dao().FindRecordById("samples", id)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	return r
+}
+
+func TestUpdate_RetrospectiveFollowsCollectingDay(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "retro@example.com")
+	x := createSample(t, app, owner.Id, map[string]any{
+		"sample_id": "R1", "is_retrospective": true,
+		"begin_date": time.Date(2026, 11, 10, 10, 0, 0, 0, berlin), "timezone": "Europe/Berlin",
+	})
+	oldFt := x.GetString("fieldtrip")
+
+	r := reloadSample(t, app, x.Id)
+	r.Set("begin_date", time.Date(2019, 5, 4, 10, 0, 0, 0, berlin))
+	r.Set("collecting_day", "2019-05-04")
+	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := resolveSampleIDOnUpdate(app.Dao(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dao().SaveRecord(r); err != nil {
+		t.Fatal(err)
+	}
+
+	got := reloadSample(t, app, x.Id)
+	if got.GetString("fieldtrip") == oldFt {
+		t.Fatal("fieldtrip not reassigned")
+	}
+	if d := fieldtripOf(t, app, got).GetString("collecting_day"); d != "2019-05-04" {
+		t.Errorf("new fieldtrip day = %q", d)
+	}
+	if got.GetString("collecting_day") != "2019-05-04" || got.GetString("sample_id") != "R1" {
+		t.Errorf("day/id: %q / %q", got.GetString("collecting_day"), got.GetString("sample_id"))
+	}
+	// Old fieldtrip is kept (even though now empty).
+	if _, err := app.Dao().FindRecordById("fieldtrips", oldFt); err != nil {
+		t.Errorf("old fieldtrip gone: %v", err)
+	}
+	// Window of the new fieldtrip covers the sample.
+	ft := fieldtripOf(t, app, got)
+	if ft.GetDateTime("begin_date").Time().After(got.GetDateTime("begin_date").Time()) {
+		t.Errorf("fieldtrip window does not include sample")
+	}
+}
+
+func TestUpdate_FieldSampleKeepsCollectingDayAndFieldtrip(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "field@example.com")
+	x := createSample(t, app, owner.Id, map[string]any{
+		"sample_id": "F1", "begin_date": time.Date(2026, 11, 10, 10, 0, 0, 0, berlin),
+	})
+	oldFt, oldDay := x.GetString("fieldtrip"), x.GetString("collecting_day")
+
+	r := reloadSample(t, app, x.Id)
+	r.Set("collecting_day", "2019-05-04")
+	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Dao().SaveRecord(r); err != nil {
+		t.Fatal(err)
+	}
+	got := reloadSample(t, app, x.Id)
+	if got.GetString("fieldtrip") != oldFt || got.GetString("collecting_day") != oldDay {
+		t.Errorf("field sample moved: %q / %q", got.GetString("fieldtrip"), got.GetString("collecting_day"))
+	}
+}
+
+func TestUpdate_IsRetrospectiveCannotBeFlipped(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "flip@example.com")
+	x := createSample(t, app, owner.Id, map[string]any{"sample_id": "G1"})
+	oldFt := x.GetString("fieldtrip")
+
+	r := reloadSample(t, app, x.Id)
+	r.Set("is_retrospective", true)
+	r.Set("collecting_day", "2019-05-04")
+	if err := followCollectingDayOnUpdate(app.Dao(), r); err != nil {
+		t.Fatal(err)
+	}
+	if r.GetBool("is_retrospective") || r.GetString("fieldtrip") != oldFt {
+		t.Errorf("flip accepted: retro=%v ft=%q", r.GetBool("is_retrospective"), r.GetString("fieldtrip"))
+	}
+}
