@@ -29,6 +29,8 @@ struct PrimaryButton: View {
             .frame(maxWidth: .infinity, minHeight: 44)
         }
         .buttonStyle(.borderedProminent)
+        // Explicit, so iOS 18 renders the same capsule as iOS 26's default.
+        .buttonBorderShape(.capsule)
         .tint(AppColor.brandPrimary)
         .disabled(!isEnabled || isLoading)
     }
