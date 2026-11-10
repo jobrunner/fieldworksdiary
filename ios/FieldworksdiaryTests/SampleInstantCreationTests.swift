@@ -8,6 +8,7 @@ private final class SilentFixSource: PendingFixSource {
     private(set) var running = false
     func start() { running = true }
     func stop() { running = false }
+    func emit(_ fix: LocationProvider.Fix) { onFix?(fix) }
 }
 
 /// Phase E: instant creation on the home screen and the editor that
@@ -112,6 +113,72 @@ final class SampleInstantCreationTests: XCTestCase {
         XCTAssertEqual(pendingFixes.pendingCount, 0)
     }
 
+    func testCreateSample_DoubleTap_CreatesOneSample() throws {
+        let home = makeHome(fix: nil)
+
+        XCTAssertNotNil(home.createSample())
+        XCTAssertNil(home.createSample(), "editor push in flight → second tap ignored")
+
+        XCTAssertEqual(try samples.count(), 1)
+        home.newSample = nil // editor popped
+        XCTAssertNotNil(home.createSample())
+        XCTAssertEqual(try samples.count(), 2)
+    }
+
+    func testLateFix_FusesLocalityAndInheritsPlaceOffline() async throws {
+        let noon = berlinDate("2026-06-05T12:00:00")
+        var earlier = try samples.createLocal(lat: 49.0, lon: 9.0, collectedFrom: noon.addingTimeInterval(-600))
+        earlier.placemark = "pm-earlier"
+        try samples.update(earlier)
+
+        let placemarks = LocalPlacemarkStore(database: database)
+        let features = LocalSampleFeatureStore(database: database)
+        let resolver = SampleLocationResolver(ortus: nil, samples: samples, placemarks: placemarks,
+                                              features: features, mutations: mutations)
+        let done = expectation(description: "late fix pipeline")
+        pendingFixes = PendingFixService(
+            store: samples, mutations: mutations, source: fixSource, timerInterval: nil,
+            onCoordinateSet: { [unowned self] id in
+                SampleCreation.completeLateFix(
+                    sampleID: id, store: samples, localitiesStore: localities,
+                    mutationsStore: mutations, resolver: resolver, sync: sync,
+                    completion: { done.fulfill() }
+                )
+            }
+        )
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample(now: noon))
+        XCTAssertNil(try samples.fetchById(created.id)?.locality)
+
+        fixSource.emit(LocationProvider.Fix(latitude: 49.79, longitude: 9.94, horizontalAccuracy: 8,
+                                            verticalAccuracy: 4, altitude: 180))
+        await fulfillment(of: [done], timeout: 2)
+
+        let stored = try XCTUnwrap(samples.fetchById(created.id))
+        XCTAssertEqual(stored.latitude, 49.79)
+        XCTAssertNotNil(stored.locality, "fused like a sample created with a fix")
+        XCTAssertEqual(try mutations.fetch(entityType: .locality).count, 1)
+        XCTAssertEqual(stored.placemark, "pm-earlier", "offline → place of the earlier sample of the day")
+        XCTAssertEqual(stored.locationStatus, .inherited)
+    }
+
+    // MARK: - pending fix state in the editor
+
+    func testEditor_NewSampleWithoutCoordinate_LocatingUntilServiceGivesUp() throws {
+        let created = try XCTUnwrap(makeHome(fix: nil).createSample())
+
+        let fresh = makeVM(created)
+        XCTAssertEqual(fresh.locationStatus, .locating)
+        fresh.endPendingFix()
+        XCTAssertEqual(fresh.locationStatus, .idle)
+
+        let late = SampleEditorViewModel(
+            sampleID: created.id, isNew: true, store: samples, photoStore: photos,
+            fieldtripStore: fieldtrips, localitiesStore: localities, mutationsStore: mutations,
+            sync: sync, now: { Date().addingTimeInterval(PendingFixService.timeLimit + 1) }
+        )
+        XCTAssertEqual(late.locationStatus, .idle, "past the 5 minutes nobody is locating")
+    }
+
     // MARK: - finishEditing
 
     func testFinishEditing_SavesNotes() throws {
@@ -181,8 +248,10 @@ final class SampleInstantCreationTests: XCTestCase {
 
         vm.promptedID = other.sampleID
         XCTAssertFalse(vm.submitPromptedID())
+        XCTAssertEqual(vm.promptReason, "„JB-1“ ist bereits vergeben.")
         vm.promptedID = "  "
         XCTAssertFalse(vm.submitPromptedID())
+        XCTAssertEqual(vm.promptReason, "Bitte eine Sample-ID eingeben.")
 
         XCTAssertNotEqual(try samples.fetchById(created.id)?.sampleID, "JB-1")
         XCTAssertFalse(vm.finished)
@@ -309,6 +378,14 @@ final class SampleInstantCreationTests: XCTestCase {
     }
 
     // MARK: - helpers
+
+    private func berlinDate(_ iso: String) -> Date {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = berlin
+        f.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return f.date(from: iso) ?? Date()
+    }
 
     private func makeHome(fix: LocationProvider.Fix?) -> HomeViewModel {
         HomeViewModel(

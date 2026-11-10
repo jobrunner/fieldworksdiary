@@ -86,6 +86,37 @@ enum SampleCreation {
     }
 }
 
+extension SampleCreation {
+    /// A late fix from `PendingFixService` landed on an instantly
+    /// created sample: same pipeline as a sample created with a fix —
+    /// offline locality fusion, then place resolution (online, else
+    /// inherited offline) and a sync kick.
+    static func completeLateFix(
+        sampleID: String,
+        store: LocalSampleStore,
+        localitiesStore: LocalLocalityStore,
+        mutationsStore: PendingMutationsStore,
+        resolver: SampleLocationResolver?,
+        sync: SyncRunner,
+        completion: (@MainActor () -> Void)? = nil
+    ) {
+        if let sample = try? store.fetchById(sampleID),
+           let lat = sample.latitude, let lon = sample.longitude,
+           (sample.locality ?? "").isEmpty
+        {
+            do {
+                try attachFusedLocality(
+                    sampleID: sampleID, latitude: lat, longitude: lon,
+                    store: store, localitiesStore: localitiesStore, mutationsStore: mutationsStore
+                )
+            } catch {
+                Log.persistence.error("locality fusion after late fix failed: \(error.localizedDescription)")
+            }
+        }
+        resolvePlaceThenSync(sampleID: sampleID, resolver: resolver, sync: sync, completion: completion)
+    }
+}
+
 /// „Sample anlegen“ in field mode (Phase E): inserts the sample right
 /// away — before the editor opens — with the Phase Z id suggestion,
 /// time window, zone and collecting day, queues its create and kicks

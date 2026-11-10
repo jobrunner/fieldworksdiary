@@ -35,6 +35,9 @@ final class HomeViewModel: ObservableObject {
     @Published var fieldtripCount: Int = 0
     @Published var localityCount: Int = 0
     @Published var photoCount: Int = 0
+    /// The instantly created sample whose editor is pushed; nil once
+    /// it is popped. While set, further taps create nothing (double tap).
+    @Published var newSample: InstantSampleCreator.Created?
     /// Set when the instant creation failed; drives an alert.
     @Published var createError: String?
 
@@ -70,12 +73,15 @@ final class HomeViewModel: ObservableObject {
     }
 
     /// „Sample anlegen“: creates the sample locally right away, queues
-    /// its create and kicks the sync. Returns what the editor needs, or
-    /// nil (with `createError` set) when the insert failed.
+    /// its create, kicks the sync and sets `newSample` (pushes the
+    /// editor). Returns it, or nil when an editor is already being
+    /// pushed or the insert failed (then with `createError` set).
+    @discardableResult
     func createSample(now: Date = Date()) -> InstantSampleCreator.Created? {
-        guard let creator else { return nil }
+        guard let creator, newSample == nil else { return nil }
         do {
             let created = try creator.create(now: now)
+            newSample = created
             refresh()
             return created
         } catch {

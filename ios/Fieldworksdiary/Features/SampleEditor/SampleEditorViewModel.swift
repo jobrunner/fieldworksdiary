@@ -90,6 +90,9 @@ final class SampleEditorViewModel: ObservableObject {
     @Published var idPrompt: IDPrompt?
     /// Text field of the `.emptyID` dialog.
     @Published var promptedID = ""
+    /// Why the last entry in the `.emptyID` dialog was refused; shown
+    /// as the dialog's message.
+    @Published private(set) var promptReason: String?
 
     /// The sample was created instantly on the home screen (Phase E).
     /// Only new samples must not end up with an empty id.
@@ -138,8 +141,11 @@ final class SampleEditorViewModel: ObservableObject {
     private let placemarkStore: LocalPlacemarkStore?
 
     private var observerTask: Task<Void, Never>?
+    private let now: () -> Date
     /// Observation of the saved row (`observeRow()`).
     private var rowObservation: Task<Void, Never>?
+    /// Ends the „locating“ state when `PendingFixService` gives up.
+    private var fixDeadlineTask: Task<Void, Never>?
 
     init(
         sampleID: String?,
@@ -152,7 +158,8 @@ final class SampleEditorViewModel: ObservableObject {
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
         locationResolver: SampleLocationResolver? = nil,
-        placemarkStore: LocalPlacemarkStore? = nil
+        placemarkStore: LocalPlacemarkStore? = nil,
+        now: @escaping () -> Date = Date.init
     ) {
         self.store = store
         self.photoStore = photoStore
@@ -163,6 +170,7 @@ final class SampleEditorViewModel: ObservableObject {
         self.locationResolver = locationResolver
         self.placemarkStore = placemarkStore
         location = LocationProvider()
+        self.now = now
         self.isNew = isNew
         self.suggestedRunning = suggestedRunning
 
@@ -170,8 +178,7 @@ final class SampleEditorViewModel: ObservableObject {
             adoptExisting(existing)
             if isNew {
                 suggestedCode = code
-                // PendingFixService is locating for it.
-                if !existing.hasCoordinate { locationStatus = .locating }
+                trackPendingFix(existing, now: now())
             }
         } else {
             // Seed the code field with the would-be sequence so the
@@ -184,6 +191,29 @@ final class SampleEditorViewModel: ObservableObject {
     deinit {
         observerTask?.cancel()
         rowObservation?.cancel()
+        fixDeadlineTask?.cancel()
+    }
+
+    /// While `PendingFixService` waits for a fix for this new sample
+    /// (at most `PendingFixService.timeLimit` from creation) the editor
+    /// shows „locating“; afterwards „without coordinate“.
+    private func trackPendingFix(_ sample: LocalSample, now: Date) {
+        guard !sample.hasCoordinate else { return }
+        let remaining = sample.createdAt.addingTimeInterval(PendingFixService.timeLimit).timeIntervalSince(now)
+        guard remaining > 0 else { return }
+        locationStatus = .locating
+        fixDeadlineTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(remaining))
+            if Task.isCancelled { return }
+            self?.endPendingFix()
+        }
+    }
+
+    /// The service gave up (or the fix landed): stop showing „locating“.
+    func endPendingFix() {
+        fixDeadlineTask?.cancel()
+        fixDeadlineTask = nil
+        if locationStatus == .locating { locationStatus = .idle }
     }
 
     var isExistingSample: Bool {
@@ -405,6 +435,7 @@ final class SampleEditorViewModel: ObservableObject {
         }
         if isNew, typed.isEmpty {
             promptedID = ""
+            promptReason = nil
             idPrompt = .emptyID
             return false
         }
@@ -419,9 +450,13 @@ final class SampleEditorViewModel: ObservableObject {
         let entered = promptedID.trimmingCharacters(in: .whitespacesAndNewlines)
         idPrompt = nil
         guard !entered.isEmpty, !isTaken(entered) else {
+            promptReason = entered.isEmpty
+                ? "Bitte eine Sample-ID eingeben."
+                : "„\(entered)“ ist bereits vergeben."
             represent(.emptyID)
             return false
         }
+        promptReason = nil
         code = entered
         guard persist(id: .typed) else { return false }
         finish()
@@ -834,6 +869,7 @@ final class SampleEditorViewModel: ObservableObject {
         }
         if let lat = fresh.latitude, let lon = fresh.longitude {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+            if isNew { endPendingFix() }
         }
         accuracyM = fresh.horizontalAccuracy
         altitudeM = fresh.elevation

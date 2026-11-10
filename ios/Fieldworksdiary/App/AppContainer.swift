@@ -116,16 +116,24 @@ final class AppContainer: ObservableObject {
             mutations: mutations,
             source: BackgroundFixSource(),
             onCoordinateSet: { sampleID in
-                let resolver = SampleLocationResolver(
-                    ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
-                    samples: store,
-                    placemarks: placemarksStore,
-                    features: sampleFeatures,
-                    mutations: mutations
-                )
+                // Same pipeline as a sample created with a fix: fusion,
+                // place (online, else inherited), sync.
                 Task { @MainActor in
-                    _ = await resolver.resolveOnline(sampleID: sampleID)
-                    sync.kick()
+                    let resolver = SampleLocationResolver(
+                        ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
+                        samples: store,
+                        placemarks: placemarksStore,
+                        features: sampleFeatures,
+                        mutations: mutations
+                    )
+                    SampleCreation.completeLateFix(
+                        sampleID: sampleID,
+                        store: store,
+                        localitiesStore: localitiesStore,
+                        mutationsStore: mutations,
+                        resolver: resolver,
+                        sync: sync
+                    )
                 }
             }
         )

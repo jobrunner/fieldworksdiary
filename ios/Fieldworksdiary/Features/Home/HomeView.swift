@@ -34,8 +34,6 @@ struct HomeView: View {
 
 private struct HomeContent: View {
     @StateObject private var viewModel: HomeViewModel
-    /// The instantly created sample whose editor is pushed.
-    @State private var newSample: InstantSampleCreator.Created?
 
     private let sync: SyncRunner
 
@@ -69,7 +67,7 @@ private struct HomeContent: View {
                         collectorName: viewModel.collectorName,
                         activeFieldtrip: viewModel.activeFieldtrip,
                         recentSample: viewModel.recentSample,
-                        onAddSample: { newSample = viewModel.createSample() }
+                        onAddSample: { viewModel.createSample() }
                     )
                     menuList
                 }
@@ -78,12 +76,12 @@ private struct HomeContent: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { viewModel.refresh() }
             .onChange(of: sync.inFlight) { _, _ in viewModel.refresh() }
-            .onChange(of: newSample) { _, created in
+            .onChange(of: viewModel.newSample) { _, created in
                 // Refresh once the editor is popped — covers both a
                 // saved and a deleted (empty id) new sample.
                 if created == nil { viewModel.refresh() }
             }
-            .navigationDestination(item: $newSample) { created in
+            .navigationDestination(item: $viewModel.newSample) { created in
                 SampleEditorView(
                     sampleID: created.id,
                     isNew: true,

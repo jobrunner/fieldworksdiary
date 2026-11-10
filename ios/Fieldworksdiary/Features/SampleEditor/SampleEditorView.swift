@@ -250,6 +250,10 @@ private struct SampleEditorContent: View {
             Button("Sample löschen", role: .destructive) {
                 if viewModel.deleteNewSample() { dismiss() }
             }
+        } message: {
+            if let reason = viewModel.promptReason {
+                Text(reason)
+            }
         }
         .alert(
             "Diese Sample-ID ist bereits vergeben.",
@@ -863,10 +867,21 @@ private struct SampleEditorContent: View {
         if viewModel.isExistingSample, let coord = viewModel.coordinate {
             return .fixed(CLLocation(latitude: coord.latitude, longitude: coord.longitude))
         }
+        if hasNoCoordinate {
+            return .failed("Ohne Koordinate")
+        }
         return viewModel.locationStatus
     }
 
+    /// A saved sample without coordinate that nobody is locating for
+    /// (legacy row, or `PendingFixService` gave up).
+    private var hasNoCoordinate: Bool {
+        viewModel.isExistingSample && viewModel.coordinate == nil
+            && viewModel.locationStatus != .locating
+    }
+
     private var coordinateText: String {
+        if hasNoCoordinate { return "Ohne Koordinate" }
         guard let c = viewModel.coordinate else {
             switch viewModel.locationStatus {
             case .denied: return "GPS gesperrt"
@@ -956,6 +971,8 @@ private struct SampleEditorContent: View {
         var parts: [String] = []
         if let c = viewModel.coordinate {
             parts.append(String(format: "Koordinate %.4f Komma %.4f", c.latitude, c.longitude))
+        } else if hasNoCoordinate {
+            parts.append("Ohne Koordinate")
         } else {
             parts.append("Position wird gesucht")
         }
