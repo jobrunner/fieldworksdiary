@@ -187,6 +187,26 @@ final class LocalSampleStore {
         }, reader: database.reader)
     }
 
+    /// AsyncSequence over the samples (all, or those of one fieldtrip)
+    /// together with every cached placemark. Emits whenever either table
+    /// changes, so place lines derived from samples follow a hydration
+    /// (samples first, their placemarks right after) without the screen
+    /// having to reappear.
+    func observeWithPlacemarks(fieldtrip: String? = nil) -> AsyncValueObservation<SamplePlaceSnapshot> {
+        AsyncValueObservation(observation: ValueObservation.tracking { db in
+            var request = LocalSample.order(Column("begin_date").desc)
+            if let fieldtrip {
+                request = request.filter(Column("fieldtrip") == fieldtrip)
+            }
+            let samples = try request.fetchAll(db)
+            let placemarks = try LocalPlacemark.fetchAll(db)
+            return SamplePlaceSnapshot(
+                samples: samples,
+                placemarks: Dictionary(placemarks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            )
+        }, reader: database.reader)
+    }
+
     /// The id that *would* be suggested for the next sample created at
     /// `collectedFrom`. No side effects — the running counter does not
     /// advance. `running` is the consumed number when the format uses
@@ -833,6 +853,13 @@ extension ElevationSource {
         case .manual: 2
         }
     }
+}
+
+/// One read of samples plus the cached placemarks by id, emitted by
+/// `LocalSampleStore.observeWithPlacemarks(fieldtrip:)`.
+struct SamplePlaceSnapshot {
+    let samples: [LocalSample]
+    let placemarks: [String: LocalPlacemark]
 }
 
 /// Thin AsyncSequence facade over GRDB's ValueObservation. Makes it

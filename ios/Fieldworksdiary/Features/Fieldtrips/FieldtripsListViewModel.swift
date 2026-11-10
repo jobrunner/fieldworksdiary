@@ -25,6 +25,7 @@ final class FieldtripsListViewModel: ObservableObject {
     private let samples: LocalSampleStore?
     private let placemarks: LocalPlacemarkStore?
     private var observationTask: Task<Void, Never>?
+    private var placesObservationTask: Task<Void, Never>?
 
     init(
         store: LocalFieldtripStore,
@@ -38,7 +39,10 @@ final class FieldtripsListViewModel: ObservableObject {
         self.placemarks = placemarks
     }
 
-    deinit { observationTask?.cancel() }
+    deinit {
+        observationTask?.cancel()
+        placesObservationTask?.cancel()
+    }
 
     func start() {
         observationTask?.cancel()
@@ -46,7 +50,19 @@ final class FieldtripsListViewModel: ObservableObject {
             guard let self else { return }
             for await items in self.store.observeAll() {
                 self.all = items
-                self.reloadPlaces()
+                self.rebuildVisible()
+            }
+        }
+        // Place lines follow every sample/placemark write, e.g. the
+        // samples hydration after a reinstall, which runs outside this
+        // screen's refresh.
+        placesObservationTask?.cancel()
+        if let samples, placemarks != nil {
+            placesObservationTask = Task { [weak self] in
+                for await snapshot in samples.observeWithPlacemarks() {
+                    guard let self else { return }
+                    self.applyPlaces(samples: snapshot.samples, placemarks: snapshot.placemarks)
+                }
             }
         }
         Task { await refresh() }
@@ -63,21 +79,28 @@ final class FieldtripsListViewModel: ObservableObject {
     /// Re-reads the samples' places (cheap: two local reads) and
     /// re-applies the filter.
     func reloadPlaces() {
-        if let samples, let placemarks {
-            let all = (try? samples.fetchAll()) ?? []
-            let cached = (try? placemarks.fetchAllByID()) ?? [:]
-            placeIndex = FieldtripsFilter.placeIndex(
-                samples: all.map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) },
-                placemarks: cached
-            )
-            placeSummaries = FieldtripPlaceSummary.index(
-                samples: all.map {
-                    (fieldtrip: $0.fieldtrip, placemark: $0.placemark,
-                     mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName)
-                },
-                placemarks: cached
-            )
+        guard let samples, let placemarks else {
+            rebuildVisible()
+            return
         }
+        applyPlaces(
+            samples: (try? samples.fetchAll()) ?? [],
+            placemarks: (try? placemarks.fetchAllByID()) ?? [:]
+        )
+    }
+
+    private func applyPlaces(samples all: [LocalSample], placemarks cached: [String: LocalPlacemark]) {
+        placeIndex = FieldtripsFilter.placeIndex(
+            samples: all.map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) },
+            placemarks: cached
+        )
+        placeSummaries = FieldtripPlaceSummary.index(
+            samples: all.map {
+                (fieldtrip: $0.fieldtrip, placemark: $0.placemark,
+                 mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName)
+            },
+            placemarks: cached
+        )
         rebuildVisible()
     }
 

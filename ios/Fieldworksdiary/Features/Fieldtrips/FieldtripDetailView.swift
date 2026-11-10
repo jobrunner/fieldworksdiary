@@ -59,6 +59,7 @@ struct FieldtripDetailView: View {
         .navigationTitle(local.map(displayName) ?? "Exkursion")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
+        .task(id: fieldtripID) { await observePlaceSummary() }
         .refreshable { await reload() }
     }
 
@@ -369,7 +370,7 @@ struct FieldtripDetailView: View {
     }
 
     private func header(_ current: LocalFieldtrip) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             HStack {
                 Text(current.collectingDay)
                     .font(.title3.monospacedDigit())
@@ -394,7 +395,7 @@ struct FieldtripDetailView: View {
                 }
             }
             if let mtb = placeSummary?.mtb {
-                HStack(spacing: 6) {
+                HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "square.grid.2x2")
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
@@ -478,23 +479,23 @@ struct FieldtripDetailView: View {
         return formatter.string(from: date)
     }
 
-    private func loadPlaceSummary() {
-        let samples = (try? container.store.fetchByFieldtrip(fieldtripID)) ?? []
-        let cached = (try? container.placemarksStore.fetchAllByID()) ?? [:]
-        placeSummary = FieldtripPlaceSummary.summarize(samples.map {
-            FieldtripPlaceSummary.Sample(
-                place: $0.placemark.flatMap { cached[$0] }?.place,
-                mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName
-            )
-        })
+    /// Keeps the header's place line in step with the fieldtrip's
+    /// samples and their cached places (edits, hydration, enrichment).
+    private func observePlaceSummary() async {
+        for await snapshot in container.store.observeWithPlacemarks(fieldtrip: fieldtripID) {
+            placeSummary = FieldtripPlaceSummary.summarize(snapshot.samples.map {
+                FieldtripPlaceSummary.Sample(
+                    place: $0.placemark.flatMap { snapshot.placemarks[$0] }?.place,
+                    mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName
+                )
+            })
+        }
     }
 
     private func reload() async {
         local = (try? container.fieldtrips.fetchById(fieldtripID))
-        loadPlaceSummary()
         await container.hydrator.pullOne(fieldtripID)
         local = (try? container.fieldtrips.fetchById(fieldtripID)) ?? local
-        loadPlaceSummary()
         loadingError = container.hydrator.lastError
     }
 
