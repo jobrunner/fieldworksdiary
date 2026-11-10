@@ -118,7 +118,8 @@ func MapLegacyManualPlacemarks(dao *daos.Dao, logger *slog.Logger) (int, error) 
 				slog.String("user_id", o))
 		}
 		done++
-		logger.Info("legacy placemarks: manual placemark mapped",
+		logger.Info(
+			"legacy placemarks: manual placemark mapped",
 			slog.String("placemark_id", pm.Id),
 			slog.String("user_id", owner),
 			slog.String("old_country", old["country"]),

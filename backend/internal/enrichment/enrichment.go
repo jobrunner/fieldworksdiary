@@ -151,7 +151,8 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 
 	resp, err := e.Ortus.Query(ctx, lat, lon)
 	if err != nil {
-		log.Warn("enrichment: ortus query failed",
+		log.Warn(
+			"enrichment: ortus query failed",
 			slog.String("service", "ortus"),
 			slog.Any("err", err),
 		)
@@ -244,7 +245,8 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		log.Warn("enrichment: write failed", slog.Any("err", err))
 		return
 	}
-	log.Info("enrichment: sample enriched",
+	log.Info(
+		"enrichment: sample enriched",
 		slog.String("service", "ortus"),
 		slog.String("location_status", finalStatus),
 		slog.Int("features", len(res.Features)),

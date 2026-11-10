@@ -68,7 +68,8 @@ func main() {
 
 	app := pocketbase.New()
 
-	slog.Info("starting fieldworksdiary",
+	slog.Info(
+		"starting fieldworksdiary",
 		slog.String("version", version.Version),
 		slog.String("commit", version.Commit),
 	)
