@@ -63,7 +63,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     // MARK: - dialog „Mit Koordinate“
 
     func testDialog_Success_CreatesRetrospectiveSampleWithPlaceDataFromOneQuery() async throws {
-        let ortus = StubOrtus(.success(try Self.decode(Self.answerJSON(lat: 49.6812304, lon: 10.0313449))))
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.6812304, lon: 10.0313449))))
         let vm = makeDialog(ortus)
         vm.system = .etrs89utm32
         vm.first = "574400"
@@ -95,7 +95,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testDialog_OrtusZoneUsedForSample() async throws {
-        let ortus = StubOrtus(.success(try Self.decode(Self.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
         let vm = makeDialog(ortus)
         vm.first = "28,68"
         vm.second = "-17,76"
@@ -151,7 +151,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testDialog_AnswerWithoutWGS84_IsAFailure() async throws {
-        let vm = makeDialog(StubOrtus(.success(try Self.decode("{}"))))
+        let vm = makeDialog(StubOrtus(.success(try OrtusFixtures.decode("{}"))))
         vm.first = "49.68"
         vm.second = "10.03"
 
@@ -195,7 +195,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testDialog_KeptSuggestion_HandsRunningToEditor_TypedIDVerbatim() async throws {
-        let answer = try Self.decode(Self.answerJSON(lat: 49.68123, lon: 10.03134))
+        let answer = try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134))
         let kept = makeDialog(StubOrtus(.success(answer)))
         kept.first = "49.68123"
         kept.second = "10.03134"
@@ -248,7 +248,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testPhotoWithGPS_Success_CaptureTimeReadInOrtusZone() async throws {
-        let ortus = StubOrtus(.success(try Self.decode(Self.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
         // No offset in the photo: the wall clock 23:30 is read in the
         // Ortus zone (Canary, 22:30 UTC), not in the device zone (Berlin).
         let data = try Self.makeImage(
@@ -299,7 +299,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertEqual(seed.errorMessage, "Keine Verbindung zu Ortus. Bitte später erneut versuchen.")
         XCTAssertEqual(try samples.count(), 0, "nothing created yet")
 
-        let ortus = StubOrtus(.success(try Self.decode(Self.answerJSON(lat: 49.68123, lon: 10.03134))))
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134))))
         let vm = RetrospectiveCoordinateViewModel(
             ortus: ortus, creator: makeCreator(), displayFormat: .decimalSign,
             prefill: seed.input, initialError: seed.errorMessage, photo: seed.photo
@@ -458,56 +458,5 @@ final class RetrospectiveEntryTests: XCTestCase {
         CGImageDestinationAddImage(destination, image, properties.isEmpty ? nil : properties as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw ImageError.encode }
         return data as Data
-    }
-
-    private static func decode(_ json: String) throws -> OrtusResponse {
-        try JSONDecoder().decode(OrtusResponse.self, from: Data(json.utf8))
-    }
-
-    /// Ochsenfurt place data (trimmed `shared/testdata/ortus/query_de_ochsenfurt.json`)
-    /// with the given WGS84 position and time zone.
-    private static func answerJSON(lat: Double, lon: Double, zone: String = "Europe/Berlin") -> String {
-        """
-        {
-          "wgs84": {"lon": \(lon), "lat": \(lat)},
-          "results": [
-            {"source_id": "tk25-blattschnitt-de", "source_name": "tk25-blattschnitt-de.gpkg",
-             "features": [{"id": 0, "layer": "sheets",
-                           "properties": {"id": "6326", "dtknummer": "6326", "blattname": "Ochsenfurt"}}]},
-            {"source_id": "timezones-2026a", "source_name": "timezones-2026a.gpkg",
-             "features": [{"id": 1, "layer": "zones", "properties": {"tzid": "\(zone)"}}]}
-          ],
-          "gazetteer": {
-            "admin": {"country_iso": "DE", "hierarchy": [
-              {"level": 8, "name": "Ochsenfurt", "name_native": "", "equivalent": "municipality"},
-              {"level": 4, "name": "Bayern", "name_native": "", "equivalent": "state"},
-              {"level": 2, "name": "Deutschland", "name_native": "", "equivalent": "country"}
-            ]},
-            "islands": null, "mountains": null, "bearing": null, "exposure": null,
-            "elevation": {"meters": 236.0, "accuracy_m": 4.0, "sea_level": false}
-          }
-        }
-        """
-    }
-}
-
-/// Records every query and answers with a canned result.
-private final class StubOrtus: OrtusQuerying, @unchecked Sendable {
-    private let result: Result<OrtusResponse, Error>
-    private(set) var inputQueries: [CoordinateInput] = []
-    private(set) var pointQueries = 0
-
-    init(_ result: Result<OrtusResponse, Error>) {
-        self.result = result
-    }
-
-    func query(lat _: Double, lon _: Double) async throws -> OrtusResponse {
-        pointQueries += 1
-        return try result.get()
-    }
-
-    func query(input: CoordinateInput) async throws -> OrtusResponse {
-        inputQueries.append(input)
-        return try result.get()
     }
 }

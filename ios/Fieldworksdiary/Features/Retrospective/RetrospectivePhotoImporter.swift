@@ -58,7 +58,7 @@ struct RetrospectivePhotoImporter {
         do {
             response = try await ortus.query(input: input)
         } catch {
-            if RetrospectiveCoordinateViewModel.isCancellation(error) || Task.isCancelled {
+            if OrtusQueryError.isCancellation(error) || Task.isCancelled {
                 throw CancellationError()
             }
             let message = (error as? OrtusQueryError)?.userMessage

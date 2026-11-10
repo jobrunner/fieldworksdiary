@@ -30,6 +30,26 @@ enum OrtusQueryError: Error, Equatable {
             "Ortus konnte die Koordinate nicht umrechnen."
         }
     }
+
+    /// Message for any failure of a typed-coordinate query: unparsable
+    /// input is caught locally, Ortus failures carry their own text.
+    static func userMessage(for error: Error) -> String {
+        switch error {
+        case let ortusError as OrtusQueryError:
+            ortusError.userMessage
+        case is CoordinateInputError:
+            "Bitte eine gültige Koordinate eingeben."
+        default:
+            OrtusQueryError.server(message: nil).userMessage
+        }
+    }
+
+    /// The query was cancelled (dialog closed, view left) — no error to show.
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
+        return false
+    }
 }
 
 enum OrtusClientError: LocalizedError {

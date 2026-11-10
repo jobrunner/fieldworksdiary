@@ -166,7 +166,7 @@ struct RetrospectiveEntryView: ViewModifier {
             } catch is CancellationError {
                 return
             } catch {
-                if RetrospectiveCoordinateViewModel.isCancellation(error) { return }
+                if OrtusQueryError.isCancellation(error) { return }
                 Log.ui.error("photo import failed: \(error.localizedDescription)")
                 importError = "Das Foto konnte nicht übernommen werden."
             }

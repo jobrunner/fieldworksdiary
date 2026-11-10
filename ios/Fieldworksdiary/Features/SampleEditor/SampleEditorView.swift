@@ -265,17 +265,11 @@ private struct SampleEditorContent: View {
                 if viewModel.keepPreviousID() { dismiss() }
             }
         }
-        .confirmationDialog(
-            "Ortsangaben neu übernehmen?",
+        .retakePlaceDialog(
             isPresented: $viewModel.askRetakePlace,
-            titleVisibility: .visible
-        ) {
-            Button("Übernehmen") { viewModel.applyCoordinateCorrection(keepManualPlace: false) }
-            Button("Meine Angaben behalten") { viewModel.applyCoordinateCorrection(keepManualPlace: true) }
-            Button("Abbrechen", role: .cancel) { viewModel.cancelCoordinateCorrection() }
-        } message: {
-            Text("Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?")
-        }
+            onAnswer: { viewModel.applyCoordinateCorrection(keepManualPlace: $0) },
+            onCancel: { viewModel.cancelCoordinateCorrection() }
+        )
         .sheet(isPresented: $showingCorrectionPicker, onDismiss: {
             guard let c = pickedCorrection else { return }
             pickedCorrection = nil

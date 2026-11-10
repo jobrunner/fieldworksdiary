@@ -85,7 +85,7 @@ final class RetrospectiveCoordinateViewModel: ObservableObject {
         do {
             _ = try input.queryItems()
         } catch {
-            errorMessage = Self.message(for: error)
+            errorMessage = OrtusQueryError.userMessage(for: error)
             return nil
         }
         guard let ortus else {
@@ -96,8 +96,8 @@ final class RetrospectiveCoordinateViewModel: ObservableObject {
         do {
             response = try await ortus.query(input: input)
         } catch {
-            if Self.isCancellation(error) || Task.isCancelled { return nil }
-            errorMessage = Self.message(for: error)
+            if OrtusQueryError.isCancellation(error) || Task.isCancelled { return nil }
+            errorMessage = OrtusQueryError.userMessage(for: error)
             return nil
         }
         // Dialog cancelled while Ortus answered: nothing may appear.
@@ -122,25 +122,6 @@ final class RetrospectiveCoordinateViewModel: ObservableObject {
             Log.persistence.error("retrospective create failed: \(error.localizedDescription)")
             errorMessage = "Die Probe konnte nicht gespeichert werden."
             return nil
-        }
-    }
-
-    // MARK: - private
-
-    static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
-        return false
-    }
-
-    private static func message(for error: Error) -> String {
-        switch error {
-        case let ortusError as OrtusQueryError:
-            ortusError.userMessage
-        case is CoordinateInputError:
-            "Bitte eine gültige Koordinate eingeben."
-        default:
-            OrtusQueryError.server(message: nil).userMessage
         }
     }
 }

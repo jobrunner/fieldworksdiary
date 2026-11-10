@@ -669,6 +669,21 @@ final class LocalSampleStore {
         }
     }
 
+    /// Horizontal accuracy typed in the edit form (metres; nil = none).
+    /// The coordinate and its source stay. A nil is not sent as a clear:
+    /// the server keeps a value it has (see `SampleLocationFields`).
+    func setHorizontalAccuracy(
+        id: String,
+        horizontalAccuracy: Double?,
+        mutationsStore: PendingMutationsStore
+    ) throws {
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore, payload: SampleUpdatePayload()) { sample in
+            guard sample.horizontalAccuracy != horizontalAccuracy else { return false }
+            sample.horizontalAccuracy = horizontalAccuracy
+            return true
+        }
+    }
+
     /// „Übernehmen“ on „Neue Ortsangaben verfügbar“: the backend's
     /// suggestion becomes the placemark, status `backend_service`.
     /// No-op without a suggestion.

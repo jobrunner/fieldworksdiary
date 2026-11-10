@@ -75,9 +75,11 @@ struct PlaceEditorView: View {
 }
 
 /// Country picker plus one text field per place field of that
-/// country. Shared by the sample place editor and the locality
-/// override sheet; the owner keeps the `PlaceForm` state.
+/// country. Shared by the sample place editor, the edit form's
+/// „Ortsdaten“ group and the locality override sheet; the owner keeps
+/// the `PlaceForm` state. `header` titles the first section.
 struct PlaceFormSections: View {
+    var header = "Land"
     let countries: [(iso: String, name: String)]
     let countryISO: String
     let fields: [PlaceForm.Field]
@@ -101,7 +103,7 @@ struct PlaceFormSections: View {
                 }
             }
         } header: {
-            Text("Land")
+            Text(header)
         } footer: {
             if countryISO.isEmpty {
                 Text("Wähle zuerst das Land – danach erscheinen dessen Verwaltungsebenen.")

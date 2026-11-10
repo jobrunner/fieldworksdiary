@@ -61,8 +61,8 @@ struct RetrospectiveSampleCreator {
         photo: Data?
     ) throws -> InstantSampleCreator.Created {
         guard let wgs84 = response.wgs84 else { throw OrtusQueryError.noWGS84 }
-        let lat = Self.round6(wgs84.lat)
-        let lon = Self.round6(wgs84.lon)
+        let lat = CoordinateCorrection.round6(wgs84.lat)
+        let lon = CoordinateCorrection.round6(wgs84.lon)
         let ortusZone = OrtusMapper.map(response, lat: lat, lon: lon).geo.timezone
             .flatMap { TimeZone(identifier: $0) }
         let zone = ortusZone ?? deviceZone()
@@ -157,9 +157,5 @@ struct RetrospectiveSampleCreator {
         } catch {
             Log.persistence.error("retrospective photo persist failed: \(error.localizedDescription)")
         }
-    }
-
-    private static func round6(_ value: Double) -> Double {
-        (value * 1_000_000).rounded() / 1_000_000
     }
 }
