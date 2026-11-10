@@ -320,7 +320,7 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(TimeZoneCatalog.displayName("America/Argentina/Buenos_Aires"), "Argentina/Buenos Aires")
     }
 
-    private func makeVM(sampleID: String?) -> SampleEditorViewModel {
+    private func makeVM(sampleID: String) -> SampleEditorViewModel {
         SampleEditorViewModel(
             sampleID: sampleID,
             store: samples,

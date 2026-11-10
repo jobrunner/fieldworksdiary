@@ -4,9 +4,9 @@ import SwiftUI
 /// previous 5-tab bar.
 ///
 /// „Sample anlegen“ creates the sample instantly (Phase E) and pushes
-/// its editor onto the stack. „Probe nachtragen“ opens the unsaved
-/// create path in „Nachträglich“ mode (coordinate from the map, saved
-/// with „Probe anlegen“). Other destinations push via `NavigationLink`
+/// its editor onto the stack. „Probe nachtragen“ offers „Mit
+/// Koordinate“ and „Aus Foto“ (Phase N); the sample created there is
+/// pushed the same way. Other destinations push via `NavigationLink`
 /// and reuse the existing list screens.
 struct HomeView: View {
     @EnvironmentObject var container: AppContainer
@@ -38,6 +38,7 @@ private struct HomeContent: View {
     @StateObject private var viewModel: HomeViewModel
 
     private let sync: SyncRunner
+    @State private var showingRetrospective = false
 
     /// Divider inset that lines up with the row titles: row padding +
     /// icon + icon spacing; grows with the icon under Dynamic Type.
@@ -88,6 +89,9 @@ private struct HomeContent: View {
                 // saved and a deleted (empty id) new sample.
                 if created == nil { viewModel.refresh() }
             }
+            .retrospectiveEntry(isPresented: $showingRetrospective) { created in
+                viewModel.newSample = created
+            }
             .navigationDestination(item: $viewModel.newSample) { created in
                 SampleEditorView(
                     sampleID: created.id,
@@ -115,9 +119,16 @@ private struct HomeContent: View {
                 title: "Letzte Probe",
                 destination: { recentSampleDestination }) // last sample shortcut
 
-            row(icon: "clock.arrow.circlepath",
-                title: "Probe nachtragen",
-                destination: { SampleEditorView(sampleID: nil, initialMode: .later) })
+            Button {
+                showingRetrospective = true
+            } label: {
+                HomeMenuRow(title: "Probe nachtragen", systemImage: "clock.arrow.circlepath")
+                    .padding(.horizontal, AppSpacing.lg)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Mit Koordinate oder aus einem Foto.")
+            Divider()
+                .padding(.leading, dividerInset)
 
             row(icon: "photo.on.rectangle.angled",
                 title: "Proben",

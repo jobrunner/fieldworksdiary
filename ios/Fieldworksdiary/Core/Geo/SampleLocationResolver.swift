@@ -74,15 +74,21 @@ final class SampleLocationResolver {
             return false
         }
 
-        let result = OrtusMapper.map(response, lat: lat, lon: lon, table: labels)
-        do {
-            return try apply(result, sampleID: sampleID, lat: lat, lon: lon)
-        } catch {
-            Log.persistence.error(
-                "ortus result write failed for sample \(sampleID, privacy: .public): \(error.localizedDescription)"
-            )
-            return false
-        }
+        return apply(response, sampleID: sampleID, lat: lat, lon: lon)
+    }
+
+    /// Writes an Ortus answer that is already at hand (the „Probe
+    /// nachtragen“ dialog asked Ortus before the sample existed) — same
+    /// mapping and rules as `resolveOnline`, without a second request.
+    /// Returns `false` when the sample has no coordinate or nothing was
+    /// written.
+    @discardableResult
+    func apply(_ response: OrtusResponse, sampleID: String) -> Bool {
+        guard let sample = try? samples.fetchById(sampleID),
+              let lat = sample.latitude, let lon = sample.longitude
+        else { return false }
+        if sample.locationStatus == .backendService { return true }
+        return apply(response, sampleID: sampleID, lat: lat, lon: lon)
     }
 
     /// Offline fallback: copies the placemark of the most recent
@@ -106,6 +112,19 @@ final class SampleLocationResolver {
     }
 
     // MARK: - private
+
+    /// Maps the answer for the queried point and writes it.
+    private func apply(_ response: OrtusResponse, sampleID: String, lat: Double, lon: Double) -> Bool {
+        let result = OrtusMapper.map(response, lat: lat, lon: lon, table: labels)
+        do {
+            return try apply(result, sampleID: sampleID, lat: lat, lon: lon)
+        } catch {
+            Log.persistence.error(
+                "ortus result write failed for sample \(sampleID, privacy: .public): \(error.localizedDescription)"
+            )
+            return false
+        }
+    }
 
     /// Re-reads the sample (it may have changed while Ortus answered)
     /// and writes placemark, status, geo values, height and features.

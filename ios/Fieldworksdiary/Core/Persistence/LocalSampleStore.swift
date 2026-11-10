@@ -289,9 +289,11 @@ final class LocalSampleStore {
     /// advance. `running` is the consumed number when the format uses
     /// `<n>`; the caller passes the id back via `createLocal` only if
     /// the user kept it, otherwise the counter must stay untouched.
-    func peekSuggestion(for collectedFrom: Date = Date()) -> (id: String, running: Int?) {
+    /// `zone` reads the collecting day in another zone than the device
+    /// zone (a photo's capture day in the Ortus zone of its position).
+    func peekSuggestion(for collectedFrom: Date = Date(), in zone: TimeZone? = nil) -> (id: String, running: Int?) {
         let settings = settingsProvider()
-        let day = SampleTime.collectingDay(collectedFrom, cutoffHour: settings.cutoffHour, in: timeZone)
+        let day = SampleTime.collectingDay(collectedFrom, cutoffHour: settings.cutoffHour, in: zone ?? timeZone)
         let userId = self.userId
         let result = try? database.reader.read { db in
             try Self.suggestion(db, userId: userId, day: day, settings: settings)

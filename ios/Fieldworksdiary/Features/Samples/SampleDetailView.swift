@@ -66,14 +66,6 @@ struct SampleDetailView: View {
                             .accessibilityLabel(sample.marked ? "Markierung entfernen" : "Probe markieren")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        SampleEditorView(sampleID: nil)
-                    } label: {
-                        Image(systemName: "plus")
-                            .accessibilityLabel("Neue Probe anlegen")
-                    }
-                }
             }
         }
         .task {

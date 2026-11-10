@@ -20,8 +20,8 @@ import UIKit
 ///   │  [ static map snippet with pin ]            │
 ///   └─────────────────────────────────────────────┘
 ///
-/// The top stays editable through the entire flow; the bottom auto-
-/// fills as GPS lands + the sync round-trip enriches the row.
+/// The top stays editable; the bottom follows the row as a background
+/// fix lands and the sync round-trip enriches it.
 ///
 /// Saving (Phase E): no save button for a saved sample. The custom
 /// back button saves and validates the id; going to the background
@@ -31,16 +31,12 @@ import UIKit
 /// every way out goes through `finishEditing()`. `onDisappear` stays
 /// as the last-resort save (pop-to-root, an unknown gesture).
 struct SampleEditorView: View {
-    /// nil ⇒ unsaved create path (manual „Nachträglich“ flow, GPS
-    /// starts, „Probe anlegen“ inserts the row).
-    /// non-nil ⇒ the persisted sample is adopted on init.
-    let sampleID: String?
+    /// Local id of the persisted sample, adopted on init.
+    let sampleID: String
     /// The sample was just created instantly on the home screen.
     var isNew: Bool = false
     /// Running number of its suggested id (see `InstantSampleCreator`).
     var suggestedRunning: Int?
-    /// Mode of the unsaved create path; `.later` for „Probe nachtragen“.
-    var initialMode: SampleEditorViewModel.Mode = .field
 
     @EnvironmentObject var container: AppContainer
 
@@ -57,8 +53,7 @@ struct SampleEditorView: View {
             sync: container.sync,
             locationResolver: container.makeLocationResolver(),
             placemarkStore: container.placemarksStore,
-            pendingFixes: container.pendingFixes,
-            initialMode: initialMode
+            pendingFixes: container.pendingFixes
         )
     }
 }
@@ -73,7 +68,6 @@ private struct SampleEditorContent: View {
     @FocusState private var notesFocused: Bool
     @FocusState private var codeFocused: Bool
 
-    @State private var showingCoordinatePicker = false
     @State private var showingTimeZonePicker = false
     @State private var showingCorrectionPicker = false
     /// Coordinate picked on the correction map. Handed to the view
@@ -90,7 +84,7 @@ private struct SampleEditorContent: View {
     @ScaledMetric(relativeTo: .body) private var thumbSize: CGFloat = 72
 
     init(
-        sampleID: String?,
+        sampleID: String,
         isNew: Bool,
         suggestedRunning: Int?,
         store: LocalSampleStore,
@@ -101,8 +95,7 @@ private struct SampleEditorContent: View {
         sync: SyncRunner,
         locationResolver: SampleLocationResolver,
         placemarkStore: LocalPlacemarkStore,
-        pendingFixes: PendingFixService,
-        initialMode: SampleEditorViewModel.Mode
+        pendingFixes: PendingFixService
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
@@ -116,8 +109,7 @@ private struct SampleEditorContent: View {
             sync: sync,
             locationResolver: locationResolver,
             placemarkStore: placemarkStore,
-            pendingFixes: pendingFixes,
-            initialMode: initialMode
+            pendingFixes: pendingFixes
         ))
     }
 
@@ -218,14 +210,9 @@ private struct SampleEditorContent: View {
                     }
                     .frame(minWidth: 44, minHeight: 44)
                 }
-            } else {
-                ToolbarItem(placement: .bottomBar) {
-                    saveButton
-                }
             }
         }
         .task {
-            viewModel.startGPS()
             viewModel.refreshDerivedFields()
             viewModel.observeRow()
         }
@@ -328,9 +315,6 @@ private struct SampleEditorContent: View {
 
     private var editableSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.lg) {
-            if !viewModel.isExistingSample {
-                modePicker
-            }
             TextField("Code", text: $viewModel.code)
                 .font(.title2.weight(.semibold).monospaced())
                 .textInputAutocapitalization(.characters)
@@ -370,10 +354,6 @@ private struct SampleEditorContent: View {
                 photoStrip
             }
 
-            if viewModel.mode == .later {
-                manualCoordinateRow
-            }
-
             if let saveError = viewModel.saveError {
                 Text(saveError)
                     .font(.footnote)
@@ -386,42 +366,6 @@ private struct SampleEditorContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, AppSpacing.md)
         .padding(.bottom, AppSpacing.lg)
-        .sheet(isPresented: $showingCoordinatePicker) {
-            CoordinatePickerView(selected: Binding(
-                get: { viewModel.coordinate },
-                set: { newValue in
-                    if let c = newValue {
-                        viewModel.setManualCoordinate(latitude: c.latitude, longitude: c.longitude)
-                    }
-                }
-            ))
-        }
-    }
-
-    /// "Jetzt im Feld" (GPS + Fusion) vs. "Nachträglich" (Koordinate
-    /// von Hand). „Geplant" folgt mit R11.
-    private var modePicker: some View {
-        Picker("Modus", selection: $viewModel.mode) {
-            Text("Jetzt im Feld").tag(SampleEditorViewModel.Mode.field)
-            Text("Nachträglich").tag(SampleEditorViewModel.Mode.later)
-        }
-        .pickerStyle(.segmented)
-        .accessibilityLabel("Erfassungsmodus")
-    }
-
-    private var manualCoordinateRow: some View {
-        Button {
-            showingCoordinatePicker = true
-        } label: {
-            HStack(spacing: AppSpacing.sm) {
-                Image(systemName: "mappin.and.ellipse")
-                    .accessibilityHidden(true)
-                Text(viewModel.coordinate == nil ? "Koordinate auf Karte wählen" : "Koordinate ändern")
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        }
-        .accessibilityHint("Öffnet eine Karte zum Setzen der Koordinate.")
     }
 
     private var photoStrip: some View {
@@ -844,31 +788,6 @@ private struct SampleEditorContent: View {
         .environment(\.timeZone, viewModel.timeZone)
     }
 
-    // MARK: - save bar
-
-    private var saveButton: some View {
-        Button {
-            Task {
-                await viewModel.save()
-                if viewModel.saveError == nil {
-                    notesFocused = false
-                    codeFocused = false
-                }
-            }
-        } label: {
-            HStack {
-                if viewModel.isSaving { ProgressView().tint(.white) }
-                Text(viewModel.isSaving ? "Speichere …" : "Probe anlegen")
-                    .font(.headline)
-            }
-            .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(AppColor.brandPrimary)
-        .disabled(!viewModel.canSave)
-        .accessibilityHint("Speichert die Probe lokal und stößt den Sync an.")
-    }
-
     // MARK: - derived view state
 
     /// Once the sample is saved we stop showing the "locating" icon
@@ -1042,7 +961,7 @@ private struct SavedPhotoThumbnail: View {
 }
 
 #Preview {
-    SampleEditorView(sampleID: nil)
+    SampleEditorView(sampleID: "preview")
         .environmentObject(AppContainer())
 }
 

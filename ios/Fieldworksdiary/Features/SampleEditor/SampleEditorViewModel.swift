@@ -12,16 +12,12 @@ import UIKit
 /// `saveEdits()` saves without dialogs (app goes to the background,
 /// view disappears). The row is observed, so a coordinate written by
 /// `PendingFixService` or enrichment from the sync shows up while
-/// code and notes stay user-owned.
-///
-/// Unsaved create path (`sampleID == nil`, the manual „Nachträglich“
-/// flow): the constructor seeds `code` from the id suggestion, GPS or
-/// a map pick provides the coordinate, and `save()` („Probe anlegen“)
-/// inserts the row; from then on it behaves like a saved sample.
+/// code and notes stay user-owned. Every editor is opened for a
+/// persisted row (Phase N removed the unsaved create path).
 @MainActor
 final class SampleEditorViewModel: ObservableObject {
-    /// Photo not yet persisted to disk. We keep it in memory until
-    /// `save()` so a dismissed editor leaves no orphans on disk.
+    /// Photo not yet persisted to disk. We keep it in memory until the
+    /// next save so a dismissed editor leaves no orphans on disk.
     struct PendingPhoto: Identifiable, Equatable {
         let id: String
         let image: UIImage
@@ -29,23 +25,6 @@ final class SampleEditorViewModel: ObservableObject {
         static func == (lhs: PendingPhoto, rhs: PendingPhoto) -> Bool {
             lhs.id == rhs.id
         }
-    }
-
-    /// How the sample's location is obtained (Spec §7 / R8d).
-    /// `.planned` (a sample pre-staged before going out) is R11 — not
-    /// offered yet.
-    enum Mode: Equatable {
-        /// Live GPS fix → coordinate is `location_service`-sourced and
-        /// gets offline-fused against existing localities.
-        case field
-        /// Coordinate entered by hand on a map → `user`-sourced, no
-        /// fusion (the user is curating, not collecting in place).
-        case later
-    }
-
-    /// Drives GPS start/stop and whether `save()` runs offline fusion.
-    @Published var mode: Mode = .field {
-        didSet { handleModeChange(from: oldValue) }
     }
 
     @Published var code: String = ""
@@ -58,16 +37,12 @@ final class SampleEditorViewModel: ObservableObject {
     @Published private(set) var timezoneID = "Europe/Berlin"
     @Published private(set) var timezoneSource: TimezoneSource?
     @Published private(set) var locationStatus: LocationProvider.Status = .idle
-    /// Best-known coordinate for the bottom card. Either the live GPS
-    /// fix or — once saved — the persisted sample's coord.
+    /// The persisted sample's coordinate for the bottom card.
     @Published private(set) var coordinate: CLLocationCoordinate2D?
     @Published private(set) var accuracyM: Double?
     @Published private(set) var altitudeM: Double?
-    /// Vertical accuracy of `altitudeM` from the GPS fix; stored on the
-    /// sample as `vertical_accuracy`.
-    private var verticalAccuracyM: Double?
-    /// nil while the sample lives only in the editor; populated once
-    /// `save()` writes the row.
+    /// The adopted row; nil only when it was deleted before the editor
+    /// opened.
     @Published private(set) var savedSample: LocalSample?
     @Published private(set) var savedPhotos: [LocalPhoto] = []
     @Published private(set) var savedFieldtrip: LocalFieldtrip?
@@ -133,7 +108,6 @@ final class SampleEditorViewModel: ObservableObject {
     private let localitiesStore: LocalLocalityStore
     private let mutationsStore: PendingMutationsStore
     private let sync: SyncRunner
-    private let location: LocationProvider
     /// On-device place resolution after save (Phase O2). nil skips it
     /// (tests that don't care about place data).
     private let locationResolver: SampleLocationResolver?
@@ -143,7 +117,6 @@ final class SampleEditorViewModel: ObservableObject {
     /// nil in tests that don't care.
     private let pendingFixes: PendingFixService?
 
-    private var observerTask: Task<Void, Never>?
     private let now: () -> Date
     /// Observation of the saved row (`observeRow()`).
     private var rowObservation: Task<Void, Never>?
@@ -151,7 +124,7 @@ final class SampleEditorViewModel: ObservableObject {
     private var fixDeadlineTask: Task<Void, Never>?
 
     init(
-        sampleID: String?,
+        sampleID: String,
         isNew: Bool = false,
         suggestedRunning: Int? = nil,
         store: LocalSampleStore,
@@ -163,7 +136,6 @@ final class SampleEditorViewModel: ObservableObject {
         locationResolver: SampleLocationResolver? = nil,
         placemarkStore: LocalPlacemarkStore? = nil,
         pendingFixes: PendingFixService? = nil,
-        initialMode: Mode = .field,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -175,30 +147,20 @@ final class SampleEditorViewModel: ObservableObject {
         self.locationResolver = locationResolver
         self.placemarkStore = placemarkStore
         self.pendingFixes = pendingFixes
-        location = LocationProvider()
         self.now = now
         self.isNew = isNew
         self.suggestedRunning = suggestedRunning
 
-        if let sampleID, let existing = try? store.fetchById(sampleID) {
+        if let existing = try? store.fetchById(sampleID) {
             adoptExisting(existing)
             if isNew {
                 suggestedCode = code
                 trackPendingFix(existing, now: now())
             }
-        } else {
-            // Seed the code field with the would-be sequence so the
-            // user starts with a sensible default instead of an empty
-            // text field. They can still edit if they want.
-            code = store.peekNextCode()
-            // „Probe nachtragen“ on the home screen opens the create
-            // path straight in `.later` (no GPS start).
-            mode = initialMode
         }
     }
 
     deinit {
-        observerTask?.cancel()
         rowObservation?.cancel()
         fixDeadlineTask?.cancel()
     }
@@ -280,67 +242,7 @@ final class SampleEditorViewModel: ObservableObject {
         if isSaving { return false }
         // An empty sample id is valid (stored as "").
         if codeValidationError != nil { return false }
-        if isExistingSample {
-            return hasUnsavedEdits
-        }
-        // Create path: need a coordinate.
-        return coordinate != nil
-    }
-
-    // MARK: - GPS
-
-    func startGPS() {
-        // Only relevant on the create path in field mode; for existing
-        // samples the coordinate is already in `savedSample`, and in
-        // `.later` mode the user picks the coordinate by hand.
-        guard savedSample == nil, mode == .field else { return }
-        location.requestFix()
-        observeLocation()
-    }
-
-    /// Manual coordinate for `.later` mode (picked on the map). Clears
-    /// the GPS-derived accuracy/altitude — those don't apply to a
-    /// hand-placed point.
-    func setManualCoordinate(latitude: Double, longitude: Double) {
-        coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        accuracyM = nil
-        altitudeM = nil
-        verticalAccuracyM = nil
-    }
-
-    private func handleModeChange(from previous: Mode) {
-        guard previous != mode, savedSample == nil else { return }
-        switch mode {
-        case .field:
-            startGPS()
-        case .later:
-            // Stop listening to GPS; keep whatever coordinate is shown
-            // so a quick toggle doesn't lose the user's pick.
-            observerTask?.cancel()
-            observerTask = nil
-        }
-    }
-
-    private func observeLocation() {
-        observerTask?.cancel()
-        observerTask = Task { [weak self] in
-            guard let self else { return }
-            for await status in self.location.$status.values {
-                if Task.isCancelled { return }
-                self.locationStatus = status
-                if case let .fixed(loc) = status {
-                    let fix = LocationProvider.Fix(loc)
-                    self.coordinate = CLLocationCoordinate2D(latitude: fix.latitude, longitude: fix.longitude)
-                    self.accuracyM = fix.horizontalAccuracy
-                    self.altitudeM = fix.elevation
-                    self.verticalAccuracyM = fix.verticalAccuracy
-                }
-            }
-        }
-    }
-
-    func retryGPS() {
-        location.requestFix()
+        return isExistingSample && hasUnsavedEdits
     }
 
     // MARK: - photos
@@ -431,8 +333,7 @@ final class SampleEditorViewModel: ObservableObject {
     /// id (Spec Ziel 3). Returns true when the editor may close; false
     /// when `idPrompt` asks the user first or the save failed.
     func finishEditing() -> Bool {
-        // Unsaved create path: nothing persisted, leaving discards the
-        // draft (as before).
+        // The row is gone (deleted meanwhile): nothing to save.
         guard savedSample != nil else {
             finished = true
             return true
@@ -618,54 +519,6 @@ final class SampleEditorViewModel: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             self?.idPrompt = prompt
-        }
-    }
-
-    func save() async {
-        guard let coordinate else { return }
-        guard !isSaving else { return }
-
-        isSaving = true
-        defer { isSaving = false }
-        saveError = nil
-
-        let userCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        do {
-            let sample = try store.createLocal(
-                lat: coordinate.latitude,
-                lon: coordinate.longitude,
-                accuracy: accuracyM,
-                verticalAccuracy: verticalAccuracyM,
-                elevation: altitudeM,
-                notes: trimmedNotes,
-                // Unchanged suggestion → store takes it (and advances the
-                // running counter); anything else, incl. "", is verbatim.
-                overrideCode: userCode == store.peekNextCode() ? nil : userCode,
-                locationSource: mode == .field ? .locationService : .user
-            )
-            try persistPhotos(for: sample)
-            // Offline fusion only for live GPS samples (Spec §5.1):
-            // attach to a nearby locality or spin up a fresh one.
-            if mode == .field {
-                try? SampleCreation.attachFusedLocality(
-                    sampleID: sample.id,
-                    latitude: coordinate.latitude,
-                    longitude: coordinate.longitude,
-                    store: store,
-                    localitiesStore: localitiesStore,
-                    mutationsStore: mutationsStore
-                )
-            }
-            // Re-read so `adoptExisting` reflects the locality we just set.
-            let fresh = (try? store.fetchById(sample.id)) ?? sample
-            adoptExisting(fresh)
-            observeRow()
-            SampleCreation.resolvePlaceThenSync(
-                sampleID: sample.id, resolver: locationResolver, sync: sync
-            )
-        } catch {
-            saveError = error.localizedDescription
         }
     }
 
