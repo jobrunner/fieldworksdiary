@@ -132,6 +132,7 @@ struct SampleClient {
         body["begin_date"] = wireFormatter.string(from: input.collectedFrom)
         if let end = input.collectedTo { body["end_date"] = wireFormatter.string(from: end) }
         body["is_all_day"] = input.isAllDay
+        if input.isRetrospective { body["is_retrospective"] = true }
         body["timezone"] = input.timezone
         if let source = input.timezoneSource { body["timezone_source"] = source.rawValue }
         if let day = input.collectingDay, !day.isEmpty { body["collecting_day"] = day }

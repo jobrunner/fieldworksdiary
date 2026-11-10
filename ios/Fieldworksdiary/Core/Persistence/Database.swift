@@ -72,6 +72,7 @@ final class Database {
         migrator.registerMigration("v15_drop_legacy_location", migrate: migrateV15)
         migrator.registerMigration("v16_sample_coordinate_optional", migrate: migrateV16)
         migrator.registerMigration("v17_locality_origins", migrate: migrateV17)
+        migrator.registerMigration("v18_sample_is_retrospective", migrate: migrateV18)
         return migrator
     }
 
@@ -546,6 +547,14 @@ final class Database {
         try db.create(table: "locality_origins") { t in
             t.primaryKey("locality_id", .text)
             t.column("sample_id", .text).notNull()
+        }
+    }
+
+    /// Phase N: samples entered afterwards („Probe nachtragen“). Their
+    /// collecting day follows the begin date instead of staying fixed.
+    private static func migrateV18(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_samples") { t in
+            t.add(column: "is_retrospective", .boolean).notNull().defaults(to: false)
         }
     }
 }

@@ -45,6 +45,8 @@ struct Sample: Decodable, Identifiable, Equatable {
     let timezoneSource: TimezoneSource?
     /// Collecting day `YYYY-MM-DD`; nil when the server sent none.
     let collectingDay: String?
+    /// Entered afterwards (`samples.is_retrospective`); false when absent.
+    let isRetrospective: Bool
     /// Free-text notes (substrate, host plant, weather, …) collected
     /// in the add-sample form. PocketBase serialises empty editor
     /// fields as `""` — we decode those to nil for cleaner UI checks.
@@ -81,6 +83,7 @@ struct Sample: Decodable, Identifiable, Equatable {
         case legacyTimeZone = "time_zone"
         case timezoneSource = "timezone_source"
         case collectingDay = "collecting_day"
+        case isRetrospective = "is_retrospective"
         case locationSource = "location_source"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
@@ -119,6 +122,7 @@ struct Sample: Decodable, Identifiable, Equatable {
         timezone = decodeNonEmpty(c, .timezone) ?? decodeNonEmpty(c, .legacyTimeZone) ?? "Europe/Berlin"
         timezoneSource = decodeNonEmpty(c, .timezoneSource).flatMap(TimezoneSource.init(rawValue:))
         collectingDay = decodeNonEmpty(c, .collectingDay)
+        isRetrospective = (try? c.decode(Bool.self, forKey: .isRetrospective)) ?? false
         notes = decodeNonEmpty(c, .notes)
         marked = (try? c.decode(Bool.self, forKey: .marked)) ?? false
         version = (try? c.decode(Int.self, forKey: .version)) ?? 1

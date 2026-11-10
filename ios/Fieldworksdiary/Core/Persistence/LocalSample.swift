@@ -94,6 +94,13 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var bearingCompass: String?
     var bearingInside: Bool = false
 
+    // MARK: Phase N
+
+    /// Entered afterwards („Probe nachtragen“): the collecting day
+    /// follows the begin date. Fixed at creation; the backend ignores a
+    /// flip on update.
+    var isRetrospective: Bool = false
+
     enum CodingKeys: String, CodingKey {
         case id
         case backendId = "backend_id"
@@ -131,6 +138,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case bearingDistanceKm = "bearing_distance_km"
         case bearingCompass = "bearing_compass"
         case bearingInside = "bearing_inside"
+        case isRetrospective = "is_retrospective"
     }
 
     static let databaseTableName = "local_samples"

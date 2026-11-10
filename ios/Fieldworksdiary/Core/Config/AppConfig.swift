@@ -98,6 +98,12 @@ final class AppConfig: ObservableObject {
         }
     }
 
+    /// How coordinates are displayed (Phase N). Device-local; display
+    /// only, storage stays WGS84 decimal.
+    @Published var coordinateDisplayFormat: CoordinateDisplayFormat {
+        didSet { UserDefaults.standard.set(coordinateDisplayFormat.rawValue, forKey: Keys.coordinateDisplayFormat) }
+    }
+
     /// Last handed-out number of the running counter. Local only.
     var lastRunningNumber: Int {
         get { UserDefaults.standard.integer(forKey: Keys.lastRunningNumber) }
@@ -159,6 +165,8 @@ final class AppConfig: ObservableObject {
         sampleIDPrefix = defaults.string(forKey: Keys.sampleIDPrefix) ?? ""
         sampleIDOffset = max(defaults.integer(forKey: Keys.sampleIDOffset), 0)
         dayCutoffHour = min(max(defaults.integer(forKey: Keys.dayCutoffHour), 0), 23)
+        coordinateDisplayFormat = defaults.string(forKey: Keys.coordinateDisplayFormat)
+            .flatMap(CoordinateDisplayFormat.init(rawValue:)) ?? .default
     }
 
     fileprivate enum Keys {
@@ -168,6 +176,7 @@ final class AppConfig: ObservableObject {
         static let sampleIDPrefix = SampleIDSettings.Keys.prefix
         static let sampleIDOffset = SampleIDSettings.Keys.offset
         static let dayCutoffHour = SampleIDSettings.Keys.cutoffHour
+        static let coordinateDisplayFormat = "AppConfig.coordinateDisplayFormat"
         static let lastRunningNumber = SampleIDSettings.Keys.lastRunning
     }
 }

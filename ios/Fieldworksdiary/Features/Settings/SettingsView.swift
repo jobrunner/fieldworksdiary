@@ -36,6 +36,7 @@ struct SettingsScreen: View {
             dataSection
             sampleIDSection
             rolloverSection
+            coordinateFormatSection
             endpointSection
             ortusEndpointSection
             aboutSection
@@ -188,6 +189,27 @@ struct SettingsScreen: View {
         } footer: {
             Text("Gilt in der Ortszeit des Samples.")
         }
+    }
+
+    private var coordinateFormatSection: some View {
+        Section {
+            Picker("Koordinatenformat", selection: $config.coordinateDisplayFormat) {
+                ForEach(CoordinateDisplayFormat.allCases, id: \.self) { format in
+                    Text(format.title).tag(format)
+                }
+            }
+            LabeledContent("Beispiel") {
+                Text(coordinateFormatExample)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+        } footer: {
+            Text("Gespeichert wird immer WGS 84 (Dezimalgrad). Das Format betrifft nur die Anzeige.")
+        }
+    }
+
+    private var coordinateFormatExample: String {
+        CoordinateConverter.format(lat: 49.681230, lon: 10.031340, as: config.coordinateDisplayFormat) ?? "–"
     }
 
     private var currentTemplate: SampleIDTemplate {

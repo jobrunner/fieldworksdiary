@@ -167,6 +167,8 @@ struct SampleCreateInput: Equatable {
     /// End of the time window (UTC); nil for legacy rows.
     var collectedTo: Date?
     var isAllDay = false
+    /// Entered afterwards; only honoured by the backend on create.
+    var isRetrospective = false
 }
 
 /// Payload-Bundle für `SamplePushClient.updateSample`: user-editierbare
@@ -1048,7 +1050,7 @@ final class SyncRunner: ObservableObject {
         ((try? mutationsStore.fetch(entityType: .sample)) ?? []).contains { $0.entityId == localID }
     }
 
-    private static func createInput(_ s: LocalSample, location: SampleLocationFields) -> SampleCreateInput {
+    static func createInput(_ s: LocalSample, location: SampleLocationFields) -> SampleCreateInput {
         SampleCreateInput(
             location: location,
             collectedFrom: s.beginDate,
@@ -1061,7 +1063,8 @@ final class SyncRunner: ObservableObject {
             timezoneSource: s.timezoneSource,
             collectingDay: s.collectingDay,
             collectedTo: s.endDate,
-            isAllDay: s.isAllDay
+            isAllDay: s.isAllDay,
+            isRetrospective: s.isRetrospective
         )
     }
 

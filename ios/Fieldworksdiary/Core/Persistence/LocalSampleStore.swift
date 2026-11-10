@@ -127,6 +127,79 @@ final class LocalSampleStore {
         return sample
     }
 
+    /// Inserts a sample entered afterwards („Probe nachtragen“) and
+    /// queues its `.sample/.create`.
+    ///
+    /// Time: the window is the Phase Z default window around
+    /// `beginDate`, read in `timezone`; the collecting day follows the
+    /// begin date with the configured rollover in that zone (and keeps
+    /// following it, see `saveEdits`). `code` is stored verbatim; the
+    /// running counter is not touched. The coordinate may be nil (photo
+    /// without GPS). Nothing registers with `PendingFixService`: a
+    /// retrospective sample never gets a background fix. Provenance of
+    /// the coordinate is `.user` (typed or taken from a photo).
+    @discardableResult
+    func createRetrospective(
+        code: String,
+        latitude: Double?,
+        longitude: Double?,
+        beginDate: Date,
+        timezone: String,
+        timezoneSource: TimezoneSource,
+        mutationsStore: PendingMutationsStore
+    ) throws -> LocalSample {
+        let zone = TimeZone(identifier: timezone) ?? self.timeZone
+        let window = SampleTime.defaultWindow(createdAt: beginDate, in: zone)
+        let dayKey = SampleTime.collectingDay(window.begin, cutoffHour: settingsProvider().cutoffHour, in: zone)
+        let userId = self.userId
+        let sample = try database.writer.write { db in
+            let now = Date()
+            var sample = LocalSample(
+                id: UUID().uuidString,
+                backendId: nil,
+                sampleID: code,
+                originalCode: nil,
+                userId: userId,
+                collectingDay: dayKey,
+                latitude: latitude,
+                longitude: longitude,
+                horizontalAccuracy: nil,
+                verticalAccuracy: nil,
+                elevation: nil,
+                beginDate: window.begin,
+                endDate: window.end,
+                isAllDay: false,
+                timezone: zone.identifier,
+                timezoneSource: timezoneSource,
+                notes: "",
+                marked: false,
+                fieldtrip: nil,
+                locality: nil,
+                locationSource: LocationSource.user.rawValue,
+                version: 1,
+                mtbSheetNumber: nil,
+                mtbSheetName: nil,
+                syncStatus: .pending,
+                syncError: nil,
+                createdAt: now,
+                updatedAt: now,
+                elevationSource: nil,
+                isRetrospective: true
+            )
+            try sample.insert(db)
+            return sample
+        }
+        _ = try mutationsStore.enqueue(entityType: .sample, entityId: sample.id, op: .create, payload: Data())
+        return sample
+    }
+
+    /// Collecting day of a begin instant read in `zone`. All-day rows
+    /// are pinned to midnight, so the rollover must not apply: their
+    /// day is the calendar day.
+    static func collectingDay(begin: Date, isAllDay: Bool, zone: TimeZone, cutoffHour: Int) -> String {
+        SampleTime.collectingDay(begin, cutoffHour: isAllDay ? 0 : cutoffHour, in: zone)
+    }
+
     /// Suggestion for `day` from the user's non-empty local ids.
     private static func suggestion(
         _ db: GRDB.Database, userId: String, day: String, settings: SampleIDSettings
@@ -435,6 +508,19 @@ final class LocalSampleStore {
             stored.endDate = sample.endDate
             stored.timezone = sample.timezone
             stored.timezoneSource = sample.timezoneSource
+            stored.isAllDay = sample.isAllDay
+            if stored.isRetrospective {
+                // A retrospective sample's day follows its begin date;
+                // a field sample keeps the day it was collected on.
+                // The update always carries `begin_date`, `timezone` and
+                // `collecting_day` together (SyncRunner), which the
+                // backend needs to re-assign the fieldtrip.
+                let zone = TimeZone(identifier: stored.timezone) ?? self.timeZone
+                stored.collectingDay = Self.collectingDay(
+                    begin: stored.beginDate, isAllDay: stored.isAllDay, zone: zone,
+                    cutoffHour: settingsProvider().cutoffHour
+                )
+            }
             stored.updatedAt = Date()
             try stored.update(db)
             return stored.backendId
@@ -818,6 +904,7 @@ final class LocalSampleStore {
         local.originalCode = r.originalCode
         local.userId = userId
         local.collectingDay = dayKey
+        local.isRetrospective = r.isRetrospective
         local.latitude = r.latitude ?? local.latitude
         local.longitude = r.longitude ?? local.longitude
         local.horizontalAccuracy = r.horizontalAccuracy ?? local.horizontalAccuracy
@@ -879,7 +966,8 @@ final class LocalSampleStore {
             syncStatus: .synced,
             syncError: nil,
             createdAt: r.beginDate ?? now,
-            updatedAt: r.clientUpdatedAt ?? now
+            updatedAt: r.clientUpdatedAt ?? now,
+            isRetrospective: r.isRetrospective
         )
     }
 }
