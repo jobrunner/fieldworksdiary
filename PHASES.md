@@ -1093,9 +1093,10 @@ Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026
 - [x] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
 - [ ] Task 18: Phase O2 abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach O2 done
 
-Phase O3 – Backfill und Aufräumen (läuft erst nach Phase Z; Task 20 bekommt die Migration `1700000027`)
+Phase O3 – Backfill und Aufräumen — **in progress** (gestartet 2026-11-10 auf `feat/sample-zeit-id`, nach Phase Z; Task 20 bekommt die Migration `1700000027`)
 - [ ] Task 19: Backfill-Kommando
 - [ ] Task 20: Alte Spalten entfernen
+- [ ] Task 21: Hydration-Cursor statt 200er-Limit (Final-O2 I-3)
 
 ## Phase Z – Zeitzone, Sample-ID, Höhe
 
