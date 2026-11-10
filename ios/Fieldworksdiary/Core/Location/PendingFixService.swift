@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 protocol PendingFixSource: AnyObject {
     /// Called for every fix the source considers fresh. The service
-    /// applies the accuracy threshold itself.
+    /// applies the accuracy part of `LocationThreshold.accepts` itself.
     var onFix: (@MainActor (LocationProvider.Fix) -> Void)? { get set }
     func start()
     func stop()
@@ -107,9 +107,9 @@ final class PendingFixService {
 
     private func handle(_ fix: LocationProvider.Fix) {
         expireOverdue()
-        guard let accuracy = fix.horizontalAccuracy,
-              accuracy <= LocationThreshold.horizontalAccuracy
-        else { return }
+        // Same predicate as the editor's GPS (freshness is checked by
+        // the source, which still has the timestamp).
+        guard LocationThreshold.accepts(fix) else { return }
         for id in Array(pending.keys) {
             apply(fix, to: id)
         }

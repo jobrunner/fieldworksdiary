@@ -3,10 +3,32 @@ import Foundation
 
 /// Matches the old app's filter values: same thresholds for
 /// horizontal/vertical accuracy and fix freshness.
+///
+/// `accepts(_:)` is the one predicate every consumer uses (editor GPS,
+/// the instant creation's `recentFix`, `PendingFixService`), so a fix
+/// is usable everywhere or nowhere.
 enum LocationThreshold {
     static let horizontalAccuracy: CLLocationAccuracy = 100
     static let verticalAccuracy: CLLocationAccuracy = 100
     static let staleness: TimeInterval = 15
+
+    /// Precision check on a fix: a valid horizontal accuracy within
+    /// `horizontalAccuracy`, and a vertical accuracy within
+    /// `verticalAccuracy` when the fix has a valid altitude (CoreLocation
+    /// marks a missing altitude with a negative value, which `Fix` turns
+    /// into nil — that never rejected a fix before either).
+    static func accepts(_ fix: LocationProvider.Fix) -> Bool {
+        guard let horizontal = fix.horizontalAccuracy, horizontal <= horizontalAccuracy else { return false }
+        if let vertical = fix.verticalAccuracy, vertical > verticalAccuracy { return false }
+        return true
+    }
+
+    /// Freshness (`staleness`) plus `accepts(_ fix:)` for a raw
+    /// CoreLocation fix.
+    static func accepts(_ location: CLLocation, now: Date = Date()) -> Bool {
+        abs(location.timestamp.timeIntervalSince(now)) <= staleness
+            && accepts(LocationProvider.Fix(location))
+    }
 }
 
 @MainActor
@@ -72,12 +94,7 @@ final class LocationProvider: NSObject, ObservableObject {
     /// only when one is already there and leaves the rest to
     /// `PendingFixService`.
     static func recentFix(from manager: CLLocationManager = CLLocationManager()) -> Fix? {
-        guard let loc = manager.location,
-              abs(loc.timestamp.timeIntervalSinceNow) <= LocationThreshold.staleness,
-              loc.horizontalAccuracy >= 0,
-              loc.horizontalAccuracy <= LocationThreshold.horizontalAccuracy,
-              abs(loc.verticalAccuracy) <= LocationThreshold.verticalAccuracy
-        else { return nil }
+        guard let loc = manager.location, LocationThreshold.accepts(loc) else { return nil }
         return Fix(loc)
     }
 
@@ -117,17 +134,9 @@ extension LocationProvider: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
 
-        // Reject stale cached locations (same threshold as old app).
-        guard abs(loc.timestamp.timeIntervalSinceNow) <= LocationThreshold.staleness else {
-            return
-        }
-
-        // Reject imprecise fixes; keep updating until accuracy is good.
-        guard loc.horizontalAccuracy <= LocationThreshold.horizontalAccuracy,
-              abs(loc.verticalAccuracy) <= LocationThreshold.verticalAccuracy
-        else {
-            return
-        }
+        // Reject stale cached locations and imprecise fixes (same
+        // thresholds as the old app); keep updating until one is good.
+        guard LocationThreshold.accepts(loc) else { return }
 
         // Good fix: stop the continuous updates.
         manager.stopUpdatingLocation()

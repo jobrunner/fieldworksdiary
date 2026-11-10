@@ -46,9 +46,11 @@ final class PendingFixServiceTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    private func fix(accuracy: Double = 10, lat: Double = 47.5, lon: Double = 11.5) -> LocationProvider.Fix {
+    private func fix(accuracy: Double = 10, vertical: Double = 5,
+                     lat: Double = 47.5, lon: Double = 11.5) -> LocationProvider.Fix
+    {
         LocationProvider.Fix(latitude: lat, longitude: lon, horizontalAccuracy: accuracy,
-                             verticalAccuracy: 5, altitude: 640)
+                             verticalAccuracy: vertical, altitude: 640)
     }
 
     /// A sample without coordinate, created at `createdAt`.
@@ -136,6 +138,25 @@ final class PendingFixServiceTests: XCTestCase {
 
         source.emit(fix(accuracy: 20))
         XCTAssertTrue(try XCTUnwrap(store.fetchById(sample.id)).hasCoordinate)
+    }
+
+    func testFixWithImpreciseAltitudeIsIgnoredLikeInTheEditor() throws {
+        let sample = try seedSampleWithoutCoordinate()
+        service.register(sampleID: sample.id, createdAt: clock)
+
+        source.emit(fix(accuracy: 10, vertical: LocationThreshold.verticalAccuracy + 1))
+
+        XCTAssertFalse(try XCTUnwrap(store.fetchById(sample.id)).hasCoordinate)
+        XCTAssertTrue(source.running)
+    }
+
+    func testThresholdPredicate() {
+        XCTAssertTrue(LocationThreshold.accepts(fix(accuracy: 10, vertical: 5)))
+        XCTAssertTrue(LocationThreshold.accepts(fix(accuracy: 10, vertical: -1)),
+                      "no valid altitude never rejected a fix")
+        XCTAssertFalse(LocationThreshold.accepts(fix(accuracy: -1)), "invalid horizontal accuracy")
+        XCTAssertFalse(LocationThreshold.accepts(fix(accuracy: LocationThreshold.horizontalAccuracy + 1)))
+        XCTAssertFalse(LocationThreshold.accepts(fix(vertical: LocationThreshold.verticalAccuracy + 1)))
     }
 
     func testResumePendingPicksUpYoungSamplesWithoutCoordinateOnly() throws {
