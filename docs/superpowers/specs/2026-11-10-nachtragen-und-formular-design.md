@@ -141,7 +141,10 @@ gestellt. Kein fest verdrahteter Endpoint im Code.
 - Sammler-Gruppe, Habitat/Relevés, Wetterdaten.
 - Account-Umbau (Owner per `ownerId` statt E-Mail, durchgehende Zugriffsregeln, Login-Wechsel ohne
   Zugangsverlust) — eigenes Projekt, wird in `PHASES.md` notiert.
-- Backend-Änderungen (Ortus wird vom Client gefragt; das Backend reichert wie bisher mit WGS84 an).
+- Backend-Änderungen außer der einen unten (Ortus wird vom Client gefragt; das Backend reichert wie
+  bisher mit WGS84 an). Ausnahme, folgt aus der Sammeltag-Entscheidung: ein Feld für „nachgetragen“
+  (Migration) und im Update-Hook die Neuzuordnung zum Fieldtrip, wenn sich `collecting_day` eines
+  nachgetragenen Samples ändert. Sonst landet ein Altfund im Fieldtrip des Erfassungstags.
 
 ## Entscheidungen von Claude (zur Prüfung durch Jo)
 
