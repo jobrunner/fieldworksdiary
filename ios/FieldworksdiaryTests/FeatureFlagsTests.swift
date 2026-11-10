@@ -1,4 +1,5 @@
 @testable import Fieldworksdiary
+import FliptClient
 import XCTest
 
 private final class FakeEvaluator: FeatureFlagEvaluating, @unchecked Sendable {
@@ -62,20 +63,82 @@ final class FeatureFlagsTests: XCTestCase {
         XCTAssertNotNil(FeatureFlags.defaultContext()["app_version"])
     }
 
-    func testFactoryFailureKeepsFalse() async throws {
+    private func waitUntil(_ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    func testFactoryFailureKeepsFalse() async {
         struct Boom: Error {}
         let flags = FeatureFlags(entityIDProvider: { "u1" })
-        flags.start(url: "https://example.invalid", factory: { _ in throw Boom() })
-        try await Task.sleep(for: .milliseconds(200))
+        let attempts = Counter()
+        flags.start(url: "https://example.invalid", factory: { _ in
+            _ = attempts.next()
+            throw Boom()
+        }, retryDelays: [])
+        await waitUntil { attempts.value >= 1 }
         XCTAssertFalse(flags.isEnabled("x"))
     }
 
-    func testFactorySuccessInstallsEvaluator() async throws {
+    func testFactorySuccessInstallsEvaluator() async {
         let fake = FakeEvaluator(enabledKeys: ["x"])
         let flags = FeatureFlags(entityIDProvider: { "u1" })
         flags.start(url: "https://example.invalid", factory: { _ in fake })
-        try await Task.sleep(for: .milliseconds(200))
+        await waitUntil { flags.evaluator != nil }
         XCTAssertTrue(flags.isEnabled("x"))
         XCTAssertEqual(flags.debugSnapshot().map(\.key), ["x"])
     }
+
+    func testRetriesAfterFailure() async {
+        struct Boom: Error {}
+        let attempts = Counter()
+        let fake = FakeEvaluator(enabledKeys: ["x"])
+        let flags = FeatureFlags(entityIDProvider: { "u1" })
+        flags.start(url: "https://example.invalid", factory: { _ in
+            if attempts.next() < 2 { throw Boom() }
+            return fake
+        }, retryDelays: [.milliseconds(10), .milliseconds(10)])
+        await waitUntil { flags.evaluator != nil }
+        XCTAssertTrue(flags.isEnabled("x"))
+        XCTAssertEqual(attempts.value, 2)
+    }
+
+    func testRepeatedStartBuildsOnlyOneClient() async {
+        let attempts = Counter()
+        let flags = FeatureFlags(entityIDProvider: { "u1" })
+        let factory: FeatureFlags.EvaluatorFactory = { _ in
+            _ = attempts.next()
+            Thread.sleep(forTimeInterval: 0.1)
+            return FakeEvaluator()
+        }
+        flags.start(url: "https://example.invalid", factory: factory)
+        flags.start(url: "https://example.invalid", factory: factory)
+        await waitUntil { flags.evaluator != nil }
+        flags.start(url: "https://example.invalid", factory: factory)
+        XCTAssertEqual(attempts.value, 1)
+    }
+
+    /// Echter Client ohne Fake: Kaltstart ohne Netz darf weder abstürzen
+    /// noch hängen. Läuft die Auswertung durch, ist der nil-Engine-Pfad
+    /// des SDK unkritisch.
+    func testRealClientOfflineDoesNotCrash() throws {
+        let client = try FliptClient(
+            url: "http://127.0.0.1:9",
+            requestTimeout: .seconds(2),
+            errorStrategy: .fallback
+        )
+        _ = try? client.evaluateBoolean(flagKey: "x", entityID: "u1", evalContext: [:])
+        _ = try? client.listFlags()
+        client.close()
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    /// Returns the number of earlier calls.
+    func next() -> Int { lock.lock(); defer { lock.unlock() }; count += 1; return count - 1 }
 }

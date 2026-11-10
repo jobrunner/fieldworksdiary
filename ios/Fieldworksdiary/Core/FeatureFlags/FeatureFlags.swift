@@ -16,21 +16,19 @@ final class FliptFlagEvaluator: FeatureFlagEvaluating, @unchecked Sendable {
     private let client: FliptClient
     private let lock = NSLock()
 
-    /// Baut den Client und holt den ersten Snapshot — blockiert (Netz),
-    /// darum nur abseits des Main-Threads aufrufen. Wirft, wenn der
-    /// Client keinen Zustand liefern kann.
+    /// Baut den Client und holt den ersten Snapshot — blockiert (Netz,
+    /// Timeout 10 s), darum nur auf einem Nicht-Main-, Nicht-Cooperative-
+    /// Thread aufrufen. Wirft nur bei ungültigen Optionen.
     static func make(url: String) throws -> FliptFlagEvaluator {
         let client = try FliptClient(
             environment: "default",
             namespace: "default",
             url: url,
+            requestTimeout: .seconds(10),
             updateInterval: .seconds(120),
             fetchMode: .polling,
             errorStrategy: .fallback
         )
-        // Probe: ein kaputter Engine-Zustand fällt hier auf, nicht erst
-        // bei der ersten Auswertung im UI.
-        _ = try client.listFlags()
         return FliptFlagEvaluator(client: client)
     }
 
@@ -73,6 +71,7 @@ final class FeatureFlags: ObservableObject {
 
     @Published private(set) var evaluator: FeatureFlagEvaluating?
 
+    private var isStarting = false
     private let entityIDProvider: () -> String?
     private let context: [String: String]
 
@@ -90,18 +89,39 @@ final class FeatureFlags: ObservableObject {
         return ["platform": "ios", "app_version": version]
     }
 
-    /// Baut den Client im Hintergrund. Fehler werden geloggt, die Flags
-    /// bleiben dann `false`.
+    /// Baut den Client im Hintergrund (eigener GCD-Thread, blockiert nie
+    /// den Main-Thread oder den Cooperative Pool). Bei Fehlern wird mit
+    /// Backoff wiederholt; wiederholte Aufrufe (z. B. beim Aktivwerden
+    /// der App) starten nie einen zweiten Build.
     func start(url: String,
-               factory: @escaping EvaluatorFactory = { try FliptFlagEvaluator.make(url: $0) })
+               factory: @escaping EvaluatorFactory = { try FliptFlagEvaluator.make(url: $0) },
+               retryDelays: [Duration] = [.seconds(30), .seconds(120), .seconds(600)])
     {
-        guard !url.isEmpty, evaluator == nil else { return }
-        Task.detached(priority: .utility) { [weak self] in
-            do {
-                let built = try factory(url)
-                await self?.install(built)
-            } catch {
-                Log.app.warning("feature flags unavailable: \(error.localizedDescription, privacy: .public)")
+        guard !url.isEmpty, evaluator == nil, !isStarting else { return }
+        isStarting = true
+        Task { [weak self] in
+            var delays = retryDelays[...]
+            while true {
+                let result: Result<FeatureFlagEvaluating, Error> = await withCheckedContinuation { cont in
+                    DispatchQueue.global(qos: .utility).async {
+                        cont.resume(returning: Result { try factory(url) })
+                    }
+                }
+                guard let self else { return }
+                switch result {
+                case let .success(built):
+                    install(built)
+                    isStarting = false
+                    return
+                case let .failure(error):
+                    Log.app.warning("feature flags unavailable: \(error.localizedDescription, privacy: .public)")
+                    guard let delay = delays.popFirst() else {
+                        // Nächster Versuch beim nächsten `start` (App aktiv).
+                        isStarting = false
+                        return
+                    }
+                    try? await Task.sleep(for: delay)
+                }
             }
         }
     }
