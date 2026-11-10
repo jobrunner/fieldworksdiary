@@ -219,12 +219,17 @@ jobs:
           mkdir -p ../dist
           cyclonedx-gomod mod -json -licenses -output ../dist/sbom-backend.cdx.json
 
+      # modernc.org/mathutil (über PocketBase -> modernc.org/sqlite) ist
+      # BSD-3-Clause, der Lizenztext ist aber so umformuliert, dass der
+      # go-licenses-Classifier ihn nicht erkennt. Manuell geprüft
+      # (v1.7.1).
       - name: License-Check
         working-directory: backend
         run: |
           go-licenses check ./... \
             --ignore go.mett.io/fwd-backend \
-            --ignore github.com/jmespath/go-jmespath
+            --ignore github.com/jmespath/go-jmespath \
+            --ignore modernc.org/mathutil
 
       - name: License-Report (CSV)
         working-directory: backend
