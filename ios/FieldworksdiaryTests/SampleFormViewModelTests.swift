@@ -1,4 +1,5 @@
 @testable import Fieldworksdiary
+import CoreLocation
 import FieldworksGeo
 import XCTest
 
@@ -120,6 +121,73 @@ final class SampleFormViewModelTests: XCTestCase {
         stored = try XCTUnwrap(samples.fetchById(sample.id))
         XCTAssertEqual(stored.beginDate, newBegin, "time is saved regardless")
         XCTAssertEqual(stored.latitude, 49.0)
+    }
+
+    // MARK: - query task (owned by the model)
+
+    func testStartQuery_CompletesWithoutTheView() async throws {
+        let sample = try seed(lat: 49.0, lon: 10.0)
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+            OrtusFixtures.answerJSON(lat: 49.6815634, lon: 10.0312817)
+        )))
+        let vm = makeVM(sample.id, ortus: ortus)
+        vm.system = .gk3
+        vm.first = "3574500"
+        vm.second = "5505500"
+
+        let task = try XCTUnwrap(vm.startQuery())
+        XCTAssertTrue(vm.startQuery() == task, "one query at a time")
+        await task.value
+
+        XCTAssertEqual(ortus.inputQueries.count, 1)
+        XCTAssertEqual(try XCTUnwrap(samples.fetchById(sample.id)).latitude, 49.681563)
+    }
+
+    func testLeavingTheForm_CancelsTheQuery() async throws {
+        let sample = try seed(lat: 49.0, lon: 10.0)
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+            OrtusFixtures.answerJSON(lat: 49.6815634, lon: 10.0312817)
+        )))
+        let vm = makeVM(sample.id, ortus: ortus)
+
+        let task = try XCTUnwrap(vm.startQuery())
+        XCTAssertTrue(vm.finishEditing())
+        await task.value
+
+        XCTAssertTrue(ortus.inputQueries.isEmpty, "cancelled before it ran")
+        XCTAssertEqual(try XCTUnwrap(samples.fetchById(sample.id)).latitude, 49.0)
+    }
+
+    // MARK: - map without coordinate
+
+    func testMapStart_WithCoordinate_ShowsIt() throws {
+        let sample = try seed(lat: 49.68123, lon: 10.03134)
+        let vm = makeVM(sample.id, ortus: nil, lastKnown: CLLocationCoordinate2D(latitude: 1, longitude: 2))
+
+        XCTAssertEqual(vm.mapStart, .coordinate(CLLocationCoordinate2D(latitude: 49.68123, longitude: 10.03134)))
+    }
+
+    func testMapStart_WithoutCoordinate_LastKnownElseDefault() throws {
+        let sample = try seed(lat: nil, lon: nil)
+        let last = CLLocationCoordinate2D(latitude: 48.1, longitude: 11.5)
+
+        XCTAssertEqual(makeVM(sample.id, ortus: nil, lastKnown: last).mapStart, .lastKnown(last))
+        XCTAssertEqual(makeVM(sample.id, ortus: nil).mapStart, .defaultRegion)
+    }
+
+    func testMapPick_WithoutCoordinate_StoresPointAsWGS84() throws {
+        let sample = try seed(lat: nil, lon: nil)
+        let vm = makeVM(sample.id, ortus: nil)
+
+        vm.mapPicked(latitude: 49.6815634, longitude: 10.0312817)
+
+        let stored = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(stored.latitude, 49.681563)
+        XCTAssertEqual(stored.longitude, 10.031282)
+        XCTAssertEqual(vm.system, .wgs84)
+        XCTAssertEqual(vm.first, "49.681563")
+        XCTAssertEqual(vm.mapStart, .coordinate(CLLocationCoordinate2D(latitude: 49.681563, longitude: 10.031282)))
+        XCTAssertTrue(vm.finishEditing())
     }
 
     func testOffline_NoClient_OfflineMessage() async throws {
@@ -402,7 +470,8 @@ final class SampleFormViewModelTests: XCTestCase {
     }
 
     private func makeVM(
-        _ id: String, ortus: OrtusQuerying?, format: CoordinateDisplayFormat = .decimalSign
+        _ id: String, ortus: OrtusQuerying?, format: CoordinateDisplayFormat = .decimalSign,
+        lastKnown: CLLocationCoordinate2D? = nil
     ) -> SampleFormViewModel {
         // The resolver shares the stub, so a second request would show
         // up in its `pointQueries`.
@@ -411,7 +480,8 @@ final class SampleFormViewModelTests: XCTestCase {
         )
         return SampleFormViewModel(
             sampleID: id, store: samples, localitiesStore: localities, placemarkStore: placemarks,
-            mutationsStore: mutations, sync: sync, ortus: ortus, resolver: resolver, displayFormat: format
+            mutationsStore: mutations, sync: sync, ortus: ortus, resolver: resolver, displayFormat: format,
+            lastKnownLocation: { lastKnown }
         )
     }
 

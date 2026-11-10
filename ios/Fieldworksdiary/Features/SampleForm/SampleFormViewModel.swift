@@ -99,7 +99,13 @@ final class SampleFormViewModel: ObservableObject {
     /// `AppConfig.coordinateDisplayFormat`: MGRS prefills MGRS.
     private let displayFormat: CoordinateDisplayFormat
     private let correction: CoordinateCorrection
+    /// Device position CoreLocation already holds (no prompt, no
+    /// updates); where the map starts for a sample without coordinate.
+    private let lastKnownLocation: () -> CLLocationCoordinate2D?
     private var rowObservation: Task<Void, Never>?
+    /// „Ortsdaten neu abfragen“ in flight. Owned here, not by the view:
+    /// a Form section disappears while scrolling, the query must not.
+    private var queryTask: Task<Void, Never>?
 
     private struct PlaceSource: Equatable {
         var placemark: String?
@@ -122,9 +128,11 @@ final class SampleFormViewModel: ObservableObject {
         sync: SyncRunner,
         ortus: OrtusQuerying?,
         resolver: SampleLocationResolver?,
-        displayFormat: CoordinateDisplayFormat = .default
+        displayFormat: CoordinateDisplayFormat = .default,
+        lastKnownLocation: @escaping () -> CLLocationCoordinate2D? = { LocationProvider.lastKnownCoordinate() }
     ) {
         self.sampleID = sampleID
+        self.lastKnownLocation = lastKnownLocation
         self.displayFormat = displayFormat
         self.store = store
         self.placemarkStore = placemarkStore
@@ -145,6 +153,7 @@ final class SampleFormViewModel: ObservableObject {
 
     deinit {
         rowObservation?.cancel()
+        queryTask?.cancel()
     }
 
     var sampleExists: Bool { time != nil }
@@ -196,8 +205,37 @@ final class SampleFormViewModel: ObservableObject {
         horizontalAccuracyText.trimmingCharacters(in: .whitespacesAndNewlines) != initialHorizontalAccuracyText
     }
 
-    /// Where „Auf Karte zeigen“ starts: a typed WGS 84 position, else the
-    /// stored one; nil hides the button.
+    /// Where the map starts and what the button says.
+    enum MapStart: Equatable {
+        /// „Auf Karte zeigen“: the point is preselected.
+        case coordinate(CLLocationCoordinate2D)
+        /// „Auf Karte wählen“ at the device's last known position.
+        case lastKnown(CLLocationCoordinate2D)
+        /// „Auf Karte wählen“ at the map's default region.
+        case defaultRegion
+
+        static func == (lhs: MapStart, rhs: MapStart) -> Bool {
+            switch (lhs, rhs) {
+            case let (.coordinate(a), .coordinate(b)), let (.lastKnown(a), .lastKnown(b)):
+                a.latitude == b.latitude && a.longitude == b.longitude
+            case (.defaultRegion, .defaultRegion):
+                true
+            default:
+                false
+            }
+        }
+    }
+
+    /// The map button is always there: with a position (typed WGS 84 or
+    /// stored) it shows it, without one the user picks a point, starting
+    /// at the last known device position or the default region.
+    var mapStart: MapStart {
+        if let mapCenter { return .coordinate(mapCenter) }
+        if let last = lastKnownLocation() { return .lastKnown(last) }
+        return .defaultRegion
+    }
+
+    /// A typed WGS 84 position, else the stored one; nil without either.
     var mapCenter: CLLocationCoordinate2D? {
         if system == .wgs84,
            let lat = CoordinateConverter.parseGeographicComponent(first, isLatitude: true),
@@ -208,13 +246,33 @@ final class SampleFormViewModel: ObservableObject {
         return storedCoordinate
     }
 
+    /// „Ortsdaten neu abfragen“ from the view: runs `queryOrtus()` in a
+    /// task this model owns, so it outlives the section's disappear
+    /// while scrolling. One at a time; cancelled only when the form is
+    /// left (`finishEditing`, „Verwerfen“, deinit).
+    @discardableResult
+    func startQuery() -> Task<Void, Never>? {
+        guard queryTask == nil else { return queryTask }
+        let task = Task { [weak self] in
+            await self?.queryOrtus()
+            self?.queryTask = nil
+        }
+        queryTask = task
+        return task
+    }
+
+    func cancelQuery() {
+        queryTask?.cancel()
+        queryTask = nil
+    }
+
     /// „Ortsdaten neu abfragen“: Ortus converts the input; its WGS 84
     /// answer becomes the stored position, then its place data, zone and
     /// height are written (correction rules). Any failure stays inline,
     /// the input and the stored coordinate untouched; a cancelled query
     /// stays silent.
     func queryOrtus() async {
-        guard !isQuerying, sampleExists else { return }
+        guard !isQuerying, sampleExists, !Task.isCancelled else { return }
         coordinateError = nil
         let input = queryInput
         do {
@@ -338,6 +396,7 @@ final class SampleFormViewModel: ObservableObject {
             askDiscardCoordinate = true
             return false
         }
+        cancelQuery()
         finished = true
         return true
     }
@@ -346,6 +405,7 @@ final class SampleFormViewModel: ObservableObject {
     /// dropped; everything else was saved already.
     func discardCoordinateAndFinish() {
         askDiscardCoordinate = false
+        cancelQuery()
         resetCoordinateInput()
         finished = true
     }

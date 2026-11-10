@@ -98,6 +98,13 @@ final class LocationProvider: NSObject, ObservableObject {
         return Fix(loc)
     }
 
+    /// The last position CoreLocation holds, however old or coarse; nil
+    /// without one or without permission. Asks for nothing and starts no
+    /// updates — only for centring a map.
+    nonisolated static func lastKnownCoordinate(from manager: CLLocationManager = CLLocationManager()) -> CLLocationCoordinate2D? {
+        manager.location?.coordinate
+    }
+
     func requestFix() {
         switch manager.authorizationStatus {
         case .notDetermined:

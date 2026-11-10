@@ -4,8 +4,10 @@ import SwiftUI
 
 /// Group „Koordinate“ of the edit form: „Koordinatensystem“, the fields
 /// of that system, height, horizontal and vertical error, „Auf Karte
-/// zeigen“ and „Ortsdaten neu abfragen“. A typed position is taken over
-/// only through those two actions; errors stay inline in the group.
+/// zeigen“ („Auf Karte wählen“ without a position) and „Ortsdaten neu
+/// abfragen“. A typed position is taken over only through those two
+/// actions; errors stay inline in the group. The query runs in the view
+/// model: this section disappears while the form scrolls.
 struct CoordinateGroupView: View {
     @ObservedObject var viewModel: SampleFormViewModel
     /// Height and vertical error (shared with the „Ortsdaten“ group).
@@ -13,7 +15,8 @@ struct CoordinateGroupView: View {
 
     @State private var showingMap = false
     @State private var pickedOnMap: CLLocationCoordinate2D?
-    @State private var queryTask: Task<Void, Never>?
+    /// Taken when the map opens, so the sheet keeps its start point.
+    @State private var mapStart: SampleFormViewModel.MapStart = .defaultRegion
     @FocusState private var focusedField: Field?
 
     private enum Field: Hashable { case first, second, elevation, horizontal, vertical }
@@ -49,15 +52,18 @@ struct CoordinateGroupView: View {
                          field: .vertical, keyboard: .decimalPad)
             inlineError(place.accuracyError)
 
-            if viewModel.mapCenter != nil {
-                Button {
-                    focusedField = nil
-                    showingMap = true
-                } label: {
+            Button {
+                focusedField = nil
+                mapStart = viewModel.mapStart
+                showingMap = true
+            } label: {
+                if viewModel.mapCenter != nil {
                     Label("Auf Karte zeigen", systemImage: "map")
+                } else {
+                    Label("Auf Karte wählen", systemImage: "map")
                 }
-                .accessibilityHint("Öffnet die Karte; ein gesetzter Punkt wird als Koordinate übernommen.")
             }
+            .accessibilityHint("Öffnet die Karte; ein gesetzter Punkt wird als Koordinate übernommen.")
             Button(action: query) {
                 HStack(spacing: AppSpacing.sm) {
                     Label("Ortsdaten neu abfragen", systemImage: "arrow.clockwise")
@@ -89,26 +95,37 @@ struct CoordinateGroupView: View {
                 AccessibilityNotification.Announcement(message).post()
             }
         }
-        .onDisappear { queryTask?.cancel() }
         .sheet(isPresented: $showingMap, onDismiss: {
             guard let picked = pickedOnMap else { return }
             pickedOnMap = nil
             viewModel.mapPicked(latitude: picked.latitude, longitude: picked.longitude)
         }) {
-            CoordinatePickerView(selected: Binding(
-                get: { pickedOnMap ?? viewModel.mapCenter },
-                set: { pickedOnMap = $0 }
-            ))
+            CoordinatePickerView(
+                selected: Binding(
+                    get: { pickedOnMap ?? startCoordinate },
+                    set: { pickedOnMap = $0 }
+                ),
+                initialFix: lastKnownFix
+            )
         }
     }
 
     private func query() {
-        guard queryTask == nil else { return }
         focusedField = nil
-        queryTask = Task {
-            await viewModel.queryOrtus()
-            queryTask = nil
-        }
+        viewModel.startQuery()
+    }
+
+    /// Preselected point: only an existing position.
+    private var startCoordinate: CLLocationCoordinate2D? {
+        if case let .coordinate(c) = mapStart { return c }
+        return nil
+    }
+
+    /// The device's last known position centres the map (and is offered
+    /// as the point) when the sample has none; else the map's default.
+    private var lastKnownFix: CLLocation? {
+        if case let .lastKnown(c) = mapStart { return CLLocation(latitude: c.latitude, longitude: c.longitude) }
+        return nil
     }
 
     /// Label above a text field (the field's placeholder stays free for
