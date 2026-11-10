@@ -17,6 +17,8 @@ final class PendingFixServiceTests: XCTestCase {
     private var mutations: PendingMutationsStore!
     private var source: FakeFixSource!
     private var service: PendingFixService!
+    private var defaults: UserDefaults!
+    private let suiteName = "PendingFixServiceTests"
     private var clock = Date(timeIntervalSince1970: 1_800_000_000)
     private var resolved: [String] = []
     // swiftlint:disable:next force_unwrapping
@@ -28,16 +30,26 @@ final class PendingFixServiceTests: XCTestCase {
         store = LocalSampleStore(database: database, userId: "u1", timeZone: berlin,
                                  settings: { SampleIDSettings(cutoffHour: 5) })
         mutations = PendingMutationsStore(database: database)
+        defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
         source = FakeFixSource()
         resolved = []
-        service = PendingFixService(
-            store: store, mutations: mutations, source: source,
+        service = makeService()
+    }
+
+    /// A fresh service on the same database and defaults — what a new
+    /// process sees after the app was killed.
+    private func makeService() -> PendingFixService {
+        PendingFixService(
+            store: store, mutations: mutations, source: source, defaults: defaults,
             now: { [unowned self] in clock }, timerInterval: nil,
             onCoordinateSet: { [unowned self] in resolved.append($0) }
         )
     }
 
     override func tearDownWithError() throws {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
         service = nil
         source = nil
         mutations = nil
@@ -159,18 +171,74 @@ final class PendingFixServiceTests: XCTestCase {
         XCTAssertFalse(LocationThreshold.accepts(fix(vertical: LocationThreshold.verticalAccuracy + 1)))
     }
 
-    func testResumePendingPicksUpYoungSamplesWithoutCoordinateOnly() throws {
+    func testResumePending_ResumesOnlySamplesRegisteredOnThisDevice() throws {
         let young = try seedSampleWithoutCoordinate(createdAt: clock.addingTimeInterval(-60))
         let old = try seedSampleWithoutCoordinate(createdAt: clock.addingTimeInterval(-600))
         let withCoordinate = try store.createLocal(lat: 1, lon: 1)
+        service.register(sampleID: young.id, createdAt: young.createdAt)
+        service.register(sampleID: old.id, createdAt: old.createdAt) // too old → refused
 
+        // Hydrated row of another device: young, without coordinate,
+        // never registered here.
+        let foreign = try seedSampleWithoutCoordinate(createdAt: clock.addingTimeInterval(-30))
+
+        // App killed and relaunched: a new service resumes.
+        service = makeService()
+        XCTAssertEqual(service.pendingCount, 0)
         service.resumePending()
+        XCTAssertEqual(service.pendingCount, 1)
         XCTAssertTrue(source.running)
         source.emit(fix())
 
         XCTAssertTrue(try XCTUnwrap(store.fetchById(young.id)).hasCoordinate)
         XCTAssertFalse(try XCTUnwrap(store.fetchById(old.id)).hasCoordinate)
+        XCTAssertFalse(try XCTUnwrap(store.fetchById(foreign.id)).hasCoordinate,
+                       "a sample not registered on this device is never touched")
         XCTAssertEqual(try XCTUnwrap(store.fetchById(withCoordinate.id)).latitude, 1)
         XCTAssertEqual(resolved, [young.id])
+        XCTAssertNil(defaults.data(forKey: PendingFixService.registrationsKey), "fixed → registration gone")
+    }
+
+    func testResumePending_SkipsRowOfAnotherUserAndDropsExpired() throws {
+        let sample = try seedSampleWithoutCoordinate(createdAt: clock.addingTimeInterval(-60))
+        service.register(sampleID: sample.id, createdAt: sample.createdAt)
+        try database.writer.write { db in
+            try db.execute(sql: "UPDATE local_samples SET user_id = 'u2' WHERE id = ?", arguments: [sample.id])
+        }
+
+        service = makeService()
+        service.resumePending()
+
+        XCTAssertEqual(service.pendingCount, 0)
+        XCTAssertFalse(source.running)
+        XCTAssertNil(defaults.data(forKey: PendingFixService.registrationsKey))
+
+        // Expiry while the app was gone.
+        try database.writer.write { db in
+            try db.execute(sql: "UPDATE local_samples SET user_id = 'u1' WHERE id = ?", arguments: [sample.id])
+        }
+        service.register(sampleID: sample.id, createdAt: sample.createdAt)
+        clock = clock.addingTimeInterval(PendingFixService.timeLimit)
+        service = makeService()
+        service.resumePending()
+        XCTAssertEqual(service.pendingCount, 0)
+        XCTAssertNil(defaults.data(forKey: PendingFixService.registrationsKey))
+    }
+
+    func testCancelAndResetForgetRegistrations() throws {
+        let a = try seedSampleWithoutCoordinate()
+        let b = try seedSampleWithoutCoordinate()
+        service.register(sampleID: a.id, createdAt: clock)
+        service.register(sampleID: b.id, createdAt: clock)
+
+        service.cancel(sampleID: a.id)
+        XCTAssertEqual(service.pendingCount, 1)
+        service.reset()
+        XCTAssertEqual(service.pendingCount, 0)
+        XCTAssertFalse(source.running)
+
+        service = makeService()
+        service.resumePending()
+        XCTAssertEqual(service.pendingCount, 0)
     }
 }

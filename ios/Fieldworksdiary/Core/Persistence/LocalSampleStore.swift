@@ -258,17 +258,6 @@ final class LocalSampleStore {
         }
     }
 
-    /// Samples without a coordinate (`hasCoordinate == false`) created
-    /// after `date`. Used by `PendingFixService.resumePending`.
-    func fetchWithoutCoordinate(createdAfter date: Date) throws -> [LocalSample] {
-        try database.reader.read { db in
-            try LocalSample
-                .filter(Column("latitude") == nil || Column("longitude") == nil)
-                .filter(Column("created_at") > date)
-                .fetchAll(db)
-        }
-    }
-
     /// AsyncSequence over one sample row; emits nil once it is gone.
     /// The editor uses it to show a coordinate `PendingFixService`
     /// writes while the editor is open.

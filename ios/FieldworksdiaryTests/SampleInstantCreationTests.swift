@@ -58,7 +58,7 @@ final class SampleInstantCreationTests: XCTestCase {
         )
         fixSource = SilentFixSource()
         pendingFixes = PendingFixService(
-            store: samples, mutations: mutations, source: fixSource, timerInterval: nil
+            store: samples, mutations: mutations, source: fixSource, defaults: defaults, timerInterval: nil
         )
     }
 
@@ -137,7 +137,7 @@ final class SampleInstantCreationTests: XCTestCase {
                                               features: features, mutations: mutations)
         let done = expectation(description: "late fix pipeline")
         pendingFixes = PendingFixService(
-            store: samples, mutations: mutations, source: fixSource, timerInterval: nil,
+            store: samples, mutations: mutations, source: fixSource, defaults: defaults, timerInterval: nil,
             onCoordinateSet: { [unowned self] id in
                 SampleCreation.completeLateFix(
                     sampleID: id, store: samples, localitiesStore: localities,
@@ -263,11 +263,14 @@ final class SampleInstantCreationTests: XCTestCase {
         vm.code = ""
         _ = vm.finishEditing()
 
+        XCTAssertEqual(pendingFixes.pendingCount, 1)
+
         XCTAssertTrue(vm.deleteNewSample())
 
         XCTAssertNil(try samples.fetchById(created.id))
         XCTAssertEqual(try mutations.fetch(entityType: .sample).count, 0, "never pushed → nothing for the server")
         XCTAssertTrue(vm.finished)
+        XCTAssertEqual(pendingFixes.pendingCount, 0, "deleted → no longer waiting for a fix")
     }
 
     func testEmptyIDPrompt_DeleteSample_AlreadyPushed_QueuesServerDelete() throws {
@@ -420,7 +423,8 @@ final class SampleInstantCreationTests: XCTestCase {
             fieldtripStore: fieldtrips,
             localitiesStore: localities,
             mutationsStore: mutations,
-            sync: sync
+            sync: sync,
+            pendingFixes: pendingFixes
         )
     }
 }

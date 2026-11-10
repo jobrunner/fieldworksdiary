@@ -234,6 +234,8 @@ final class AppContainer: ObservableObject {
             try mutations.reset()
             remapPuller.resetCursor()
             samplesHydrator.resetCursor()
+            // Waiting fixes belong to the wiped rows.
+            pendingFixes.reset()
         } catch {
             // Wipe failures are non-fatal — der neue User sieht
             // maximal Stale-Rows, die der Rule-Filter ohnehin

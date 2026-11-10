@@ -53,7 +53,8 @@ struct SampleEditorView: View {
             mutationsStore: container.mutations,
             sync: container.sync,
             locationResolver: container.makeLocationResolver(),
-            placemarkStore: container.placemarksStore
+            placemarkStore: container.placemarksStore,
+            pendingFixes: container.pendingFixes
         )
     }
 }
@@ -95,7 +96,8 @@ private struct SampleEditorContent: View {
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
         locationResolver: SampleLocationResolver,
-        placemarkStore: LocalPlacemarkStore
+        placemarkStore: LocalPlacemarkStore,
+        pendingFixes: PendingFixService
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
@@ -108,7 +110,8 @@ private struct SampleEditorContent: View {
             mutationsStore: mutationsStore,
             sync: sync,
             locationResolver: locationResolver,
-            placemarkStore: placemarkStore
+            placemarkStore: placemarkStore,
+            pendingFixes: pendingFixes
         ))
     }
 

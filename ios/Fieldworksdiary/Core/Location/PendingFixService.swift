@@ -19,6 +19,14 @@ protocol PendingFixSource: AnyObject {
 /// several samples; every sample is written exactly once. Gives up
 /// after `timeLimit` per sample.
 ///
+/// Only samples registered on *this device* are ever touched: every
+/// registration is persisted (sample id, user id, creation instant) in
+/// `UserDefaults`, and `resumePending` re-registers exactly those —
+/// never a hydrated row of another device that happens to lack a
+/// coordinate. A registration is dropped once its sample got a
+/// coordinate, was deleted or ran out of time; `reset()` drops all of
+/// them on a user switch.
+///
 /// Writes through `LocalSampleStore.updateCoordinate` (location source
 /// GPS), the existing path that clears derived values and queues the
 /// sync. `onCoordinateSet` lets the app run place resolution and kick
@@ -28,10 +36,21 @@ protocol PendingFixSource: AnyObject {
 final class PendingFixService {
     /// Per-sample limit for waiting on a fix: 5 minutes.
     static let timeLimit: TimeInterval = 5 * 60
+    /// UserDefaults key of the persisted registrations.
+    static let registrationsKey = "location.pendingFixRegistrations"
+
+    /// One sample waiting for a fix, as persisted.
+    struct Registration: Codable, Equatable {
+        let sampleID: String
+        /// `LocalSampleStore.userId` at registration time.
+        let userID: String
+        let createdAt: Date
+    }
 
     private let store: LocalSampleStore
     private let mutations: PendingMutationsStore
     private let source: PendingFixSource
+    private let defaults: UserDefaults
     private let now: () -> Date
     private let timerInterval: TimeInterval?
     private let onCoordinateSet: (String) -> Void
@@ -47,6 +66,7 @@ final class PendingFixService {
         store: LocalSampleStore,
         mutations: PendingMutationsStore,
         source: PendingFixSource,
+        defaults: UserDefaults = .standard,
         now: @escaping () -> Date = Date.init,
         timerInterval: TimeInterval? = 30,
         onCoordinateSet: @escaping (String) -> Void = { _ in }
@@ -54,6 +74,7 @@ final class PendingFixService {
         self.store = store
         self.mutations = mutations
         self.source = source
+        self.defaults = defaults
         self.now = now
         self.timerInterval = timerInterval
         self.onCoordinateSet = onCoordinateSet
@@ -73,23 +94,59 @@ final class PendingFixService {
             return
         }
         pending[sampleID] = createdAt
+        var stored = loadRegistrations().filter { $0.sampleID != sampleID }
+        stored.append(Registration(sampleID: sampleID, userID: store.userId, createdAt: createdAt))
+        saveRegistrations(stored)
         updateLocating()
     }
 
-    /// App became active: re-register samples without coordinate that
-    /// are younger than the time limit (the process may have been
-    /// killed while waiting).
+    /// Stops waiting for a sample (e.g. it was deleted).
+    func cancel(sampleID: String) {
+        drop(sampleID)
+        updateLocating()
+    }
+
+    /// App became active: re-register the samples registered on this
+    /// device that are still without coordinate and younger than the
+    /// time limit (the process may have been killed while waiting).
+    /// A registration counts only while its sample row belongs to the
+    /// user that registered it.
     func resumePending() {
-        let cutoff = now().addingTimeInterval(-Self.timeLimit)
-        do {
-            for sample in try store.fetchWithoutCoordinate(createdAfter: cutoff)
-            where pending[sample.id] == nil {
-                pending[sample.id] = sample.createdAt
+        let current = now()
+        var kept: [Registration] = []
+        for registration in loadRegistrations() {
+            guard current.timeIntervalSince(registration.createdAt) < Self.timeLimit else {
+                pending[registration.sampleID] = nil
+                continue
             }
-        } catch {
-            Log.persistence.error("pending fix resume failed: \(error.localizedDescription)")
+            let sample: LocalSample?
+            do {
+                sample = try store.fetchById(registration.sampleID)
+            } catch {
+                // Keep it: a read error says nothing about the sample.
+                Log.persistence.error("pending fix resume failed: \(error.localizedDescription)")
+                kept.append(registration)
+                continue
+            }
+            guard let sample, !sample.hasCoordinate, sample.userId == registration.userID else {
+                pending[registration.sampleID] = nil
+                continue
+            }
+            kept.append(registration)
+            if pending[sample.id] == nil {
+                pending[sample.id] = registration.createdAt
+            }
         }
+        saveRegistrations(kept)
         expireOverdue()
+        updateLocating()
+    }
+
+    /// Forgets every registration (user switch / sign-out: the local
+    /// rows are wiped, nothing may be resumed for the next user).
+    func reset() {
+        pending.removeAll()
+        defaults.removeObject(forKey: Self.registrationsKey)
         updateLocating()
     }
 
@@ -97,7 +154,7 @@ final class PendingFixService {
     func expireOverdue() {
         let current = now()
         for (id, createdAt) in pending where current.timeIntervalSince(createdAt) >= Self.timeLimit {
-            pending[id] = nil
+            drop(id)
             Log.location.warning("gave up waiting for a fix, sample \(id, privacy: .public)")
         }
         updateLocating()
@@ -116,14 +173,44 @@ final class PendingFixService {
         updateLocating()
     }
 
+    /// Removes a sample from memory and from the persisted list.
+    private func drop(_ id: String) {
+        pending[id] = nil
+        let stored = loadRegistrations()
+        let remaining = stored.filter { $0.sampleID != id }
+        if remaining.count != stored.count { saveRegistrations(remaining) }
+    }
+
+    private func loadRegistrations() -> [Registration] {
+        guard let data = defaults.data(forKey: Self.registrationsKey) else { return [] }
+        do {
+            return try JSONDecoder().decode([Registration].self, from: data)
+        } catch {
+            Log.persistence.error("pending fix registrations unreadable: \(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func saveRegistrations(_ registrations: [Registration]) {
+        guard !registrations.isEmpty else {
+            defaults.removeObject(forKey: Self.registrationsKey)
+            return
+        }
+        do {
+            defaults.set(try JSONEncoder().encode(registrations), forKey: Self.registrationsKey)
+        } catch {
+            Log.persistence.error("pending fix registrations not saved: \(error.localizedDescription)")
+        }
+    }
+
     private func apply(_ fix: LocationProvider.Fix, to id: String) {
         do {
             guard let sample = try store.fetchById(id) else {
-                pending[id] = nil
+                drop(id)
                 return
             }
             if sample.hasCoordinate {
-                pending[id] = nil
+                drop(id)
                 Log.location.info("pending fix skipped, sample \(id, privacy: .public) has a coordinate")
                 return
             }
@@ -137,7 +224,7 @@ final class PendingFixService {
                 locationSource: .locationService,
                 mutationsStore: mutations
             )
-            pending[id] = nil
+            drop(id)
             Log.location.info("pending fix applied to sample \(id, privacy: .public)")
             onCoordinateSet(id)
         } catch {

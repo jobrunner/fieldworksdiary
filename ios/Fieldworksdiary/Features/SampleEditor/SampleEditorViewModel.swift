@@ -139,6 +139,9 @@ final class SampleEditorViewModel: ObservableObject {
     private let locationResolver: SampleLocationResolver?
     /// Local placemark cache for the place section. nil hides it.
     private let placemarkStore: LocalPlacemarkStore?
+    /// Background fix of a new sample; told when the sample is deleted.
+    /// nil in tests that don't care.
+    private let pendingFixes: PendingFixService?
 
     private var observerTask: Task<Void, Never>?
     private let now: () -> Date
@@ -159,6 +162,7 @@ final class SampleEditorViewModel: ObservableObject {
         sync: SyncRunner,
         locationResolver: SampleLocationResolver? = nil,
         placemarkStore: LocalPlacemarkStore? = nil,
+        pendingFixes: PendingFixService? = nil,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -169,6 +173,7 @@ final class SampleEditorViewModel: ObservableObject {
         self.sync = sync
         self.locationResolver = locationResolver
         self.placemarkStore = placemarkStore
+        self.pendingFixes = pendingFixes
         location = LocationProvider()
         self.now = now
         self.isNew = isNew
@@ -475,6 +480,8 @@ final class SampleEditorViewModel: ObservableObject {
             saveError = "Die Probe konnte nicht gelöscht werden."
             return false
         }
+        pendingFixes?.cancel(sampleID: id)
+        endPendingFix()
         rowObservation?.cancel()
         rowObservation = nil
         finished = true
