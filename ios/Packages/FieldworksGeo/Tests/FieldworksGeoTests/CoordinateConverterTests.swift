@@ -16,6 +16,12 @@ final class CoordinateConverterTests: XCTestCase {
         XCTAssertEqual(Set(titles).count, titles.count)
     }
 
+    func testSystemNameGroupsDegreeFormats() {
+        XCTAssertEqual(CoordinateDisplayFormat.mgrs.systemName, "MGRS")
+        XCTAssertEqual(CoordinateDisplayFormat.utm.systemName, "UTM")
+        XCTAssertEqual(CoordinateDisplayFormat.dmsDirection.systemName, "Geographische Koordinaten")
+    }
+
     func testFormatsNorthEast() {
         XCTAssertEqual(f(ne, .decimalSign), "+49.681230 +10.031340")
         XCTAssertEqual(f(ne, .decimalDirection), "N49.681230 E10.031340")

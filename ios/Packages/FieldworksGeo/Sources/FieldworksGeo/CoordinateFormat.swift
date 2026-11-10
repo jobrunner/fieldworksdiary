@@ -26,4 +26,14 @@ public enum CoordinateDisplayFormat: String, CaseIterable, Codable, Sendable {
         case .mgrs: return "MGRS"
         }
     }
+
+    /// Name des Koordinatensystems über dem Wert in der Sample-Ansicht:
+    /// alle Grad-Schreibweisen sind „Geographische Koordinaten“.
+    public var systemName: String {
+        switch self {
+        case .utm: return "UTM"
+        case .mgrs: return "MGRS"
+        default: return "Geographische Koordinaten"
+        }
+    }
 }

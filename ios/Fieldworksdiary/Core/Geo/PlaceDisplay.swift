@@ -86,8 +86,9 @@ enum PlaceDisplay {
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
-    /// One terrain line below the gazetteer line: „Peilung“,
-    /// „Exposition“, „Hangneigung“, or a label-less „eben“.
+    /// One terrain line below the gazetteer line: the label-less
+    /// bearing („2 km WNW Ochsenfurt“), „Exposition“, „Hangneigung“, or
+    /// a label-less „eben“.
     struct DetailLine: Identifiable, Equatable {
         let label: String?
         let value: String
@@ -99,16 +100,18 @@ enum PlaceDisplay {
     /// Bearing, aspect and slope of a sample, only the present ones.
     /// Flat terrain shows „eben“ instead of aspect and slope.
     static func detailLines(_ sample: LocalSample) -> [DetailLine] {
-        detailLines(bearingLabel: sample.bearingLabel, aspectCompass: sample.aspectCompass,
+        detailLines(bearingLabel: sample.bearingLabel, bearingDistanceKm: sample.bearingDistanceKm,
+                    bearingInside: sample.bearingInside, aspectCompass: sample.aspectCompass,
                     aspectDeg: sample.aspectDeg, slopeDeg: sample.slopeDeg, terrainFlat: sample.terrainFlat)
     }
 
-    static func detailLines(bearingLabel: String?, aspectCompass: String?, aspectDeg: Double?,
+    static func detailLines(bearingLabel: String?, bearingDistanceKm: Double? = nil, bearingInside: Bool = false,
+                            aspectCompass: String?, aspectDeg: Double?,
                             slopeDeg: Double?, terrainFlat: Bool) -> [DetailLine]
     {
         var lines: [DetailLine] = []
-        if let bearing = bearingLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !bearing.isEmpty {
-            lines.append(DetailLine(label: "Peilung", value: bearing))
+        if let bearing = meaningfulBearing(bearingLabel, distanceKm: bearingDistanceKm, inside: bearingInside) {
+            lines.append(DetailLine(label: nil, value: bearing))
         }
         if terrainFlat {
             lines.append(DetailLine(label: nil, value: "eben"))
@@ -128,19 +131,32 @@ enum PlaceDisplay {
         return lines
     }
 
-    /// Coordinate in the chosen display format plus the format's name
-    /// for the caption below. Falls back to signed decimal degrees when
-    /// the format can't express the point (e.g. UTM near the poles).
+    /// The bearing only when it says more than the gazetteer line: not
+    /// inside the reference place („in Ochsenfurt“) and at least half a
+    /// kilometre away, so the label never reads „0 km …“.
+    static func meaningfulBearing(_ label: String?, distanceKm: Double?, inside: Bool) -> String? {
+        guard !inside, let text = label?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty, !text.lowercased().hasPrefix("in ")
+        else { return nil }
+        if let distanceKm, distanceKm < 0.5 { return nil }
+        return text
+    }
+
+    /// Coordinate in the chosen display format plus the coordinate
+    /// system's name for the caption above („MGRS“, „UTM“,
+    /// „Geographische Koordinaten“). Falls back to signed decimal
+    /// degrees when the format can't express the point (e.g. UTM near
+    /// the poles).
     static func coordinate(latitude: Double, longitude: Double,
                            format: CoordinateDisplayFormat) -> (text: String, caption: String)
     {
         if let text = CoordinateConverter.format(lat: latitude, lon: longitude, as: format) {
-            return (text, format.title)
+            return (text, format.systemName)
         }
         let fallback = CoordinateDisplayFormat.decimalSign
         let text = CoordinateConverter.format(lat: latitude, lon: longitude, as: fallback)
             ?? String(format: "%.6f, %.6f", latitude, longitude)
-        return (text, fallback.title)
+        return (text, fallback.systemName)
     }
 
     /// Name for list rows: the municipality, else the next higher

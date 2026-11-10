@@ -135,7 +135,7 @@ final class PlaceDisplayTests: XCTestCase {
             bearingLabel: "2 km WNW Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5,
             slopeDeg: 8.4, terrainFlat: false
         )
-        XCTAssertEqual(lines.map(\.label), ["Peilung", "Exposition", "Hangneigung"])
+        XCTAssertEqual(lines.map(\.label), [nil, "Exposition", "Hangneigung"])
         XCTAssertEqual(lines.map(\.value), ["2 km WNW Ochsenfurt", "SSW (203°)", "8°"])
 
         let onlyCompass = PlaceDisplay.detailLines(
@@ -148,12 +148,24 @@ final class PlaceDisplayTests: XCTestCase {
         ).isEmpty)
     }
 
+    func testDetailLines_BearingOnlyWhenItAddsInformation() {
+        func bearing(_ label: String?, km: Double?, inside: Bool) -> [PlaceDisplay.DetailLine] {
+            PlaceDisplay.detailLines(bearingLabel: label, bearingDistanceKm: km, bearingInside: inside,
+                                     aspectCompass: nil, aspectDeg: nil, slopeDeg: nil, terrainFlat: false)
+        }
+        XCTAssertEqual(bearing("2 km WNW Ochsenfurt", km: 2.3, inside: false),
+                       [PlaceDisplay.DetailLine(label: nil, value: "2 km WNW Ochsenfurt")])
+        XCTAssertTrue(bearing("in Ochsenfurt", km: 0, inside: true).isEmpty)
+        XCTAssertTrue(bearing("in Ochsenfurt", km: nil, inside: false).isEmpty)
+        XCTAssertTrue(bearing("0 km N Ochsenfurt", km: 0.3, inside: false).isEmpty)
+    }
+
     func testDetailLines_FlatTerrainShowsEbenInsteadOfAspectAndSlope() {
         let lines = PlaceDisplay.detailLines(
             bearingLabel: "Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5, slopeDeg: 0.4, terrainFlat: true
         )
         XCTAssertEqual(lines, [
-            PlaceDisplay.DetailLine(label: "Peilung", value: "Ochsenfurt"),
+            PlaceDisplay.DetailLine(label: nil, value: "Ochsenfurt"),
             PlaceDisplay.DetailLine(label: nil, value: "eben")
         ])
     }
@@ -161,7 +173,7 @@ final class PlaceDisplayTests: XCTestCase {
     func testCoordinate_FollowsDisplayFormat() {
         let decimal = PlaceDisplay.coordinate(latitude: 49.681230, longitude: 10.031340, format: .decimalSign)
         XCTAssertEqual(decimal.text, "+49.681230 +10.031340")
-        XCTAssertEqual(decimal.caption, CoordinateDisplayFormat.decimalSign.title)
+        XCTAssertEqual(decimal.caption, "Geographische Koordinaten")
 
         let mgrs = PlaceDisplay.coordinate(latitude: 49.681230, longitude: 10.031340, format: .mgrs)
         XCTAssertTrue(mgrs.text.hasPrefix("32U NA 744"), mgrs.text)

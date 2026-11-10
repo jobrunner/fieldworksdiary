@@ -12,9 +12,8 @@ import UIKit
 ///   │  Foto-Strip                                 │
 ///   ├─────────────────────────────────────────────┤
 ///   │  STANDORT UND ZEIT                          │
-///   │   GPS icon + coords + format + altitude     │
+///   │   GPS icon + system / coords + altitude     │
 ///   │   Gazetteer-Zeile, Peilung, Exposition, MTB │
-///   │   Sammeltag / Exkursion                     │
 ///   │   Datum, Uhrzeit, Sonne / Mond              │
 ///   ├─────────────────────────────────────────────┤
 ///   │  [ static map snippet with pin ]            │
@@ -75,7 +74,7 @@ private struct SampleEditorContent: View {
 
     /// Width of the leading icon column in the location rows; grows
     /// with Dynamic Type so the icons keep their proportion.
-    @ScaledMetric(relativeTo: .body) private var iconColumnWidth: CGFloat = 40
+    @ScaledMetric(relativeTo: .body) private var iconColumnWidth: CGFloat = 28
     /// Photo thumbnail edge in the editor's strip.
     @ScaledMetric(relativeTo: .body) private var thumbSize: CGFloat = 72
 
@@ -105,22 +104,11 @@ private struct SampleEditorContent: View {
         ))
     }
 
-    /// Linker Außen-Inset für den Editor-Inhalt. Auf iOS 26 schiebt
-    /// der NavigationStack-Push die Destination etwas nach links —
-    /// SwiftUI rechnet logisch korrekt (frames und safeAreaInsets
-    /// melden null), aber die GPU rendert verschoben. Wir kompensieren
-    /// mit zusätzlichen 16pt `contentMargins(.leading)` nur unter iOS 26.
-    ///
-    /// 16pt ist ein iterativer Mittelwert: +32 war zu großzügig (Editor
-    /// hatte ~70pt links statt ~20pt wie die Proben-Liste), +0 brachte
-    /// das Original-Clipping zurück.
-    ///
-    /// TODO: nach Apple-Fix oder iOS-26.x-Update entfernen.
+    /// Horizontal content inset, the same on both sides. The former
+    /// iOS-26 extra 16 pt on the left (render shift after the push) is
+    /// gone: the shift no longer shows, the extra inset did.
     private var leadingMargin: CGFloat {
-        if #available(iOS 26.0, *) {
-            return AppSpacing.lg + AppSpacing.lg // 32pt total
-        }
-        return AppSpacing.lg
+        AppSpacing.lg
     }
 
     private var trailingMargin: CGFloat {
@@ -407,9 +395,6 @@ private struct SampleEditorContent: View {
                 // edge of the icon column inside each row.
                 Divider().padding(.leading, iconColumnWidth)
                 placeSection
-            } else if fieldtripName != nil {
-                Divider().padding(.leading, iconColumnWidth)
-                fieldtripRow
             }
 
             Divider().padding(.leading, iconColumnWidth)
@@ -429,7 +414,7 @@ private struct SampleEditorContent: View {
     }
 
     private var locationRow: some View {
-        HStack(alignment: .top, spacing: AppSpacing.lg) {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
             GPSStatusIcon(status: locationIconStatus)
                 .frame(width: iconColumnWidth)
                 .padding(.top, AppSpacing.xs)
@@ -455,19 +440,21 @@ private struct SampleEditorContent: View {
         .accessibilityLabel(locationA11yLabel)
     }
 
+    /// System name on top (aligned with „Höhe“), the coordinate, then
+    /// the horizontal accuracy. Labels secondary, values primary.
     private var coordinateBlock: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-            // No line limit: `ViewThatFits` in `locationRow` stacks the
-            // blocks when the coordinate doesn't fit on one line.
-            Text(coordinateText)
-                .font(.body.monospacedDigit())
             if let caption = coordinateDisplay?.caption {
                 Text(caption)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            // No line limit: `ViewThatFits` in `locationRow` stacks the
+            // blocks when the coordinate doesn't fit on one line.
+            Text(coordinateText)
+                .font(.body.monospacedDigit())
             if let acc = viewModel.accuracyM {
-                HStack(spacing: AppSpacing.xs) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xs) {
                     Text("Genauigkeit").foregroundStyle(.secondary)
                     Text(String(format: "±%.0f m", acc))
                 }
@@ -484,19 +471,18 @@ private struct SampleEditorContent: View {
             Text(altitudeText)
                 .font(.body.monospacedDigit())
             if let acc = viewModel.savedSample?.verticalAccuracy {
-                Text(String(format: "± %.0f m", acc))
+                Text(String(format: "±%.0f m", acc))
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         }
     }
 
     /// Place data of a saved sample: status hints, the gazetteer line,
-    /// bearing/aspect/slope, MTB, the fieldtrip, and the actions that
+    /// bearing/aspect/slope, MTB, and the actions that
     /// stay here (accept/dismiss a suggestion, resend a failed push).
     /// Editing goes through „Bearbeiten“.
     private var placeSection: some View {
-        HStack(alignment: .top, spacing: AppSpacing.lg) {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
             Color.clear
                 .frame(width: iconColumnWidth)
                 .accessibilityHidden(true)
@@ -514,9 +500,6 @@ private struct SampleEditorContent: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                if fieldtripName != nil {
-                    fieldtripLine
-                }
                 if let error = viewModel.placeActionError {
                     Text(error)
                         .font(.footnote)
@@ -526,39 +509,6 @@ private struct SampleEditorContent: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, AppSpacing.sm)
-    }
-
-    /// Fieldtrip line for the create path (no place section yet).
-    private var fieldtripRow: some View {
-        HStack(alignment: .top, spacing: AppSpacing.lg) {
-            Color.clear
-                .frame(width: iconColumnWidth)
-                .accessibilityHidden(true)
-            fieldtripLine
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, AppSpacing.sm)
-    }
-
-    // The label "Sammeltag" is rendered exactly once here;
-    // `fieldtripName` returns nil when no human-readable title is
-    // loaded yet — no "Sammeltag Sammeltag" stutter.
-    @ViewBuilder
-    private var fieldtripLine: some View {
-        if let fieldtripName {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: AppSpacing.xs) {
-                    Text("Sammeltag").foregroundStyle(.secondary)
-                    Text(fieldtripName)
-                }
-                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                    Text("Sammeltag").foregroundStyle(.secondary)
-                    Text(fieldtripName)
-                }
-            }
-            .font(.footnote)
-            .accessibilityElement(children: .combine)
-        }
     }
 
     @ViewBuilder
@@ -671,8 +621,8 @@ private struct SampleEditorContent: View {
         }
     }
 
-    /// „Peilung 2 km WNW Ochsenfurt“; stacks label over value when the
-    /// pair doesn't fit on one line (AX sizes).
+    /// „Exposition SSW (203°)“; stacks label over value when the pair
+    /// doesn't fit on one line (AX sizes). The bearing has no label.
     @ViewBuilder
     private func placeDetailRow(_ line: PlaceDisplay.DetailLine) -> some View {
         if let label = line.label {
@@ -695,7 +645,7 @@ private struct SampleEditorContent: View {
     }
 
     private var timeRow: some View {
-        HStack(alignment: .top, spacing: AppSpacing.lg) {
+        HStack(alignment: .top, spacing: AppSpacing.sm) {
             Image(systemName: moonSymbol)
                 .font(.title3)
                 .foregroundStyle(.secondary)
@@ -786,18 +736,6 @@ private struct SampleEditorContent: View {
     private var altitudeText: String {
         if let alt = viewModel.altitudeM { return String(format: "%.0f m", alt) }
         return "—"
-    }
-
-    /// Human-readable fieldtrip title or nil. The previous code
-    /// returned the literal string "Sammeltag" as a fallback when
-    /// only the fieldtrip id was known — that produced the
-    /// "Sammeltag Sammeltag" stutter in the admin row, because the
-    /// label itself is already rendered there. Returning nil now
-    /// means the entire row is hidden until the SyncRunner hydrates
-    /// a real title.
-    private var fieldtripName: String? {
-        guard let ft = viewModel.savedFieldtrip, !ft.title.isEmpty else { return nil }
-        return ft.title
     }
 
     private var moonSymbol: String {
