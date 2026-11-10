@@ -1286,7 +1286,22 @@ private final class MockFeatures: SampleFeaturesSyncClient, @unchecked Sendable 
     }
 }
 
-private final class MockList: SampleListClient, @unchecked Sendable {
+final class MockList: SampleListClient, @unchecked Sendable {
     var items: [Sample] = []
-    func listRecent(limit _: Int) async throws -> [Sample] { items }
+    /// Page number (1-based) that throws instead of answering.
+    var failOnPage: Int?
+    private(set) var calls: [(updatedSince: Date?, page: Int, perPage: Int)] = []
+
+    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int) {
+        calls.append((updatedSince, page, perPage))
+        if page == failOnPage { throw SampleClientError.http(status: 500, body: "") }
+        let matching = items.filter { sample in
+            guard let updatedSince else { return true }
+            return (sample.updated ?? .distantPast) >= updatedSince
+        }
+        let totalPages = max(1, (matching.count + perPage - 1) / perPage)
+        let start = min((page - 1) * perPage, matching.count)
+        let end = min(start + perPage, matching.count)
+        return (Array(matching[start ..< end]), totalPages)
+    }
 }

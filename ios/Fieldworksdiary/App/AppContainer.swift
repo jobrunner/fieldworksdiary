@@ -79,7 +79,8 @@ final class AppContainer: ObservableObject {
             placemarks: placemarksStore,
             features: sampleFeatures,
             endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth }
+            authProvider: { [weak auth] in auth },
+            userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
         let remapPuller = RemapEventsPuller(
             localitiesStore: localitiesStore,
@@ -198,6 +199,7 @@ final class AppContainer: ObservableObject {
             try photos.reset()
             try mutations.reset()
             remapPuller.resetCursor()
+            samplesHydrator.resetCursor()
         } catch {
             // Wipe failures are non-fatal — der neue User sieht
             // maximal Stale-Rows, die der Rule-Filter ohnehin

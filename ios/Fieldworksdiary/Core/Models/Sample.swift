@@ -59,6 +59,9 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// existing local row instead of creating a duplicate.
     let clientUuid: String?
     let clientUpdatedAt: Date?
+    /// PocketBase system field `updated` (server write time). Drives the
+    /// incremental `SamplesHydrator` cursor; nil when absent.
+    let updated: Date?
     /// Ortus geo values (MTB, DEM, terrain, bearing). Nil when the
     /// server row carries no enrichment yet — PocketBase returns 0 /
     /// "" / false for unset columns, which must not be mistaken for
@@ -81,6 +84,7 @@ struct Sample: Decodable, Identifiable, Equatable {
         case locationSource = "location_source"
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
+        case updated
         case elevationSource = "elevation_source"
         case locationStatus = "location_status"
         case placemarkSuggestion = "placemark_suggestion"
@@ -120,6 +124,7 @@ struct Sample: Decodable, Identifiable, Equatable {
         version = (try? c.decode(Int.self, forKey: .version)) ?? 1
         clientUuid = decodeNonEmpty(c, .clientUuid)
         clientUpdatedAt = try? c.decode(Date.self, forKey: .clientUpdatedAt)
+        updated = try? c.decode(Date.self, forKey: .updated)
         let geo = try SampleGeoValues(from: decoder)
         self.geo = geo.isEmpty && locationStatus != .backendService ? nil : geo
     }
@@ -210,7 +215,18 @@ private func decodeNonZeroDouble<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _
 
 /// Wire response from PocketBase's `/api/collections/samples/records`
 /// listing endpoint. Items have the same shape as a single GET; the
-/// envelope only adds pagination metadata, which we ignore.
+/// envelope carries the pagination metadata the hydrator pages by.
 struct SampleListResponse: Decodable {
     let items: [Sample]
+    let totalPages: Int
+
+    enum CodingKeys: String, CodingKey {
+        case items, totalPages
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        items = try c.decode([Sample].self, forKey: .items)
+        totalPages = (try? c.decode(Int.self, forKey: .totalPages)) ?? 1
+    }
 }

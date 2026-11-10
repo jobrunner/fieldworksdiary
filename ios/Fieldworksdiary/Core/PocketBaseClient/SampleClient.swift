@@ -100,7 +100,10 @@ func parseConflictVersion(from body: String) -> Int {
 /// List endpoint the `SamplesHydrator` pulls from. `SampleClient`
 /// conforms; tests inject a mock.
 protocol SampleListClient {
-    func listRecent(limit: Int) async throws -> [Sample]
+    /// One page of the owner's samples ordered by `updated,id`. With
+    /// `updatedSince` only rows with `updated >= updatedSince` come back
+    /// (inclusive — duplicates are harmless thanks to the upsert).
+    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int)
 }
 
 extension SampleClient: SampleListClient {}
@@ -214,17 +217,21 @@ struct SampleClient {
         return try await send(request)
     }
 
-    /// Lists the most recent samples for the authenticated user. The
-    /// backend already filters by owner via the collection rule, so we
-    /// don't need a filter clause here.
-    func listRecent(limit: Int = 200) async throws -> [Sample] {
+    /// Lists one page of the authenticated user's samples sorted by
+    /// `updated,id`. The collection rule already filters by owner.
+    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int) {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
         var components = URLComponents(string: trimmed.appending("/api/collections/samples/records"))
-        components?.queryItems = [
-            URLQueryItem(name: "perPage", value: String(limit)),
-            URLQueryItem(name: "sort", value: "-begin_date")
+        var items = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "perPage", value: String(perPage)),
+            URLQueryItem(name: "sort", value: "updated,id")
         ]
+        if let updatedSince {
+            items.append(URLQueryItem(name: "filter", value: "(updated >= \"\(Self.pocketBaseDate(updatedSince))\")"))
+        }
+        components?.queryItems = items
         guard let url = components?.url else {
             throw SampleClientError.invalidEndpoint
         }
@@ -239,10 +246,20 @@ struct SampleClient {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
-            return try JSONDecoder.fieldworks.decode(SampleListResponse.self, from: data).items
+            let decoded = try JSONDecoder.fieldworks.decode(SampleListResponse.self, from: data)
+            return (decoded.items, decoded.totalPages)
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
+    }
+
+    /// PocketBase datetime literal (`yyyy-MM-dd HH:mm:ss.SSSZ`, UTC).
+    static func pocketBaseDate(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS'Z'"
+        return f.string(from: date)
     }
 
     private func send(_ request: URLRequest) async throws -> Sample {
