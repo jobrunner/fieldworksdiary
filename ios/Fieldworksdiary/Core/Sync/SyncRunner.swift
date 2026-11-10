@@ -466,6 +466,8 @@ final class SyncRunner: ObservableObject {
             await executeSampleDelete(mutation, via: client)
         case (.locality, .create):
             await executeLocalityCreate(mutation)
+        case (.locality, .delete):
+            await executeLocalityDelete(mutation)
         default:
             // Unsupported op — record once so the row isn't silently
             // stuck forever, but don't burn the queue on it.
@@ -1083,6 +1085,35 @@ final class SyncRunner: ObservableObject {
     /// server-side fusion hook (R6.1) may merge this locality into an
     /// existing one afterwards — that's reconciled later via the
     /// remap-event stream.
+    /// Server-side delete of a locality the offline fusion created for
+    /// a new sample that was deleted again (`entityId` = backend id).
+    /// Waits while a sample delete is queued: localities dispatch
+    /// before samples, and the server sample must go first so deleting
+    /// the locality doesn't rewrite a still-existing sample. 404 = done.
+    private func executeLocalityDelete(_ mutation: PendingMutation) async {
+        guard let backendID = mutation.entityId, !backendID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+        let sampleDeleteQueued = ((try? mutationsStore.fetch(entityType: .sample)) ?? [])
+            .contains { $0.op == .delete && !$0.isParked }
+        guard !sampleDeleteQueued else { return }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return }
+        let client = localityClientFactory(endpoint, authProvider())
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+            try await client.delete(id: backendID)
+            try? mutationsStore.dequeue(mutation.id)
+            Log.sync.info("locality deleted on server \(backendID, privacy: .public)")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("locality delete failed: \(message)")
+        }
+    }
+
     private func executeLocalityCreate(_ mutation: PendingMutation) async {
         guard let localitiesStore,
               let localId = mutation.entityId,
@@ -1114,6 +1145,21 @@ final class SyncRunner: ObservableObject {
                 clientUpdatedAt: local.clientUpdatedAt
             ))
 
+            // Deleted locally while the POST was in flight (its new
+            // sample was deleted): the server now has a locality nobody
+            // owns — delete it there too.
+            guard (try? localitiesStore.fetchById(local.id)) != nil else {
+                do {
+                    _ = try mutationsStore.enqueue(
+                        entityType: .locality, entityId: created.id, op: .delete, payload: Data()
+                    )
+                } catch {
+                    Log.sync.error("queueing delete for orphaned locality failed: \(error.localizedDescription)")
+                }
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+
             // Reconcile UUID → backend id: insert the backend row,
             // re-point samples, delete the UUID row. Samples that were
             // already pushed went out without this locality (a local
@@ -1122,6 +1168,7 @@ final class SyncRunner: ObservableObject {
                 .filter { !($0.backendId ?? "").isEmpty }
             try localitiesStore.upsertOne(created)
             try localitiesStore.applyRemap(oldID: local.id, newID: created.id)
+            try localitiesStore.moveOrigin(from: local.id, to: created.id)
             for sample in pushedSamples {
                 _ = try? mutationsStore.enqueue(
                     entityType: .sample, entityId: sample.id, op: .update, payload: Data()

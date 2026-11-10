@@ -305,6 +305,21 @@ final class SampleInstantCreationTests: XCTestCase {
         XCTAssertEqual(pendingFixes.pendingCount, 0, "deleted → no longer waiting for a fix")
     }
 
+    func testEmptyIDPrompt_DeleteSample_DropsLocalityFusedForIt() throws {
+        let fix = LocationProvider.Fix(latitude: 49.79, longitude: 9.94, horizontalAccuracy: 8,
+                                       verticalAccuracy: 4, altitude: 180)
+        let created = try XCTUnwrap(makeHome(fix: fix).createSample())
+        let localityID = try XCTUnwrap(samples.fetchById(created.id)?.locality)
+        let vm = makeVM(created)
+        vm.code = ""
+        _ = vm.finishEditing()
+
+        XCTAssertTrue(vm.deleteNewSample())
+
+        XCTAssertNil(try localities.fetchById(localityID), "no empty locality left behind")
+        XCTAssertEqual(try mutations.fetch(entityType: .locality).count, 0, "its queued create is gone too")
+    }
+
     func testEmptyIDPrompt_DeleteSample_AlreadyPushed_QueuesServerDelete() throws {
         let created = try XCTUnwrap(makeHome(fix: nil).createSample())
         var row = try XCTUnwrap(samples.fetchById(created.id))

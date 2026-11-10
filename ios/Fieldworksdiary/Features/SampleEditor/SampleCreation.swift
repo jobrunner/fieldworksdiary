@@ -40,7 +40,8 @@ enum SampleCreation {
             let newLocal = try localitiesStore.createLocal(
                 latitude: latitude,
                 longitude: longitude,
-                locationSource: locationSource
+                locationSource: locationSource,
+                createdForSample: sampleID
             )
             _ = try mutationsStore.enqueue(
                 entityType: .locality,

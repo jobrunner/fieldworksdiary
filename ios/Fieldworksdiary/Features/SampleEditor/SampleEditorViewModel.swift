@@ -469,12 +469,13 @@ final class SampleEditorViewModel: ObservableObject {
     }
 
     /// „Sample löschen“ in the `.emptyID` dialog: deletes the new sample
-    /// with its photos and features, and on the server if it was pushed.
+    /// with its photos and features, and on the server if it was pushed;
+    /// a locality the fusion created just for it goes too.
     func deleteNewSample() -> Bool {
         idPrompt = nil
         guard let id = savedSample?.id else { return true }
         do {
-            try store.deleteSample(id: id, mutationsStore: mutationsStore)
+            try store.deleteSample(id: id, mutationsStore: mutationsStore, dropCreatedLocality: true)
         } catch {
             Log.persistence.error("new sample delete failed: \(error.localizedDescription)")
             saveError = "Die Probe konnte nicht gelöscht werden."

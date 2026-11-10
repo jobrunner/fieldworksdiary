@@ -71,6 +71,7 @@ final class Database {
         migrator.registerMigration("v14_timezone_elevation", migrate: migrateV14)
         migrator.registerMigration("v15_drop_legacy_location", migrate: migrateV15)
         migrator.registerMigration("v16_sample_coordinate_optional", migrate: migrateV16)
+        migrator.registerMigration("v17_locality_origins", migrate: migrateV17)
         return migrator
     }
 
@@ -533,6 +534,18 @@ final class Database {
         try db.execute(sql: "ALTER TABLE local_samples_v16 RENAME TO local_samples")
         for index in indexes {
             try db.execute(sql: index)
+        }
+    }
+
+    /// Phase E: which locality the offline fusion created for which
+    /// sample. Deleting a new sample („Sample löschen“) drops the
+    /// locality created for it when no other sample uses it, so no
+    /// empty locality is pushed. `locality_id` follows the UUID →
+    /// backend id swap of `.locality/.create`.
+    private static func migrateV17(_ db: GRDB.Database) throws {
+        try db.create(table: "locality_origins") { t in
+            t.primaryKey("locality_id", .text)
+            t.column("sample_id", .text).notNull()
         }
     }
 }

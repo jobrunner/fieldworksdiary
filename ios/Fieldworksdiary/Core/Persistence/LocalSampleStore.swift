@@ -459,7 +459,16 @@ final class LocalSampleStore {
     /// - Pushed: all queued mutations are dropped and a
     ///   `.sample/.delete` carrying the *backend* id is queued; the
     ///   SyncRunner deletes it on the server (404 = done).
-    func deleteSample(id: String, mutationsStore _: PendingMutationsStore) throws {
+    ///
+    /// `dropCreatedLocality` („Sample löschen“ on a new sample): when
+    /// the offline fusion created the sample's locality for it
+    /// (`locality_origins`) and no other local sample uses it, that
+    /// locality goes too — never pushed: its queued `.locality/.create`
+    /// is dropped; pushed: a `.locality/.delete` with its backend id is
+    /// queued. All in the same transaction.
+    func deleteSample(id: String, mutationsStore _: PendingMutationsStore,
+                      dropCreatedLocality: Bool = false) throws
+    {
         // Local delete and the server-delete mutation share one
         // transaction (outbox and samples use the same writer): either
         // both happen or neither.
@@ -490,8 +499,42 @@ final class LocalSampleStore {
                 )
                 try mutation.insert(db)
             }
+            if dropCreatedLocality, let localityID = sample.locality, !localityID.isEmpty {
+                try Self.dropLocality(db, localityID: localityID, createdFor: id)
+            }
         }
         PhotoStorage.deleteSampleDir(sampleID: id)
+    }
+
+    /// Part of `deleteSample(dropCreatedLocality:)`: removes the locality
+    /// the fusion created for `sampleID` once no sample points at it.
+    private static func dropLocality(_ db: GRDB.Database, localityID: String, createdFor sampleID: String) throws {
+        let origin = try String.fetchOne(
+            db, sql: "SELECT sample_id FROM locality_origins WHERE locality_id = ?", arguments: [localityID]
+        )
+        guard origin == sampleID else { return }
+        let stillUsed = try Bool.fetchOne(
+            db, sql: "SELECT EXISTS(SELECT 1 FROM local_samples WHERE locality = ?)", arguments: [localityID]
+        ) ?? false
+        guard !stillUsed else { return }
+        try db.execute(
+            sql: "DELETE FROM pending_mutations WHERE entity_type = 'locality' AND op = 'create' AND entity_id = ?",
+            arguments: [localityID]
+        )
+        let wasQueued = db.changesCount > 0
+        try db.execute(
+            sql: "DELETE FROM pending_mutations WHERE entity_type = 'locality' AND entity_id = ?",
+            arguments: [localityID]
+        )
+        try db.execute(sql: "DELETE FROM locality_origins WHERE locality_id = ?", arguments: [localityID])
+        try db.execute(sql: "DELETE FROM local_localities WHERE id = ?", arguments: [localityID])
+        guard !wasQueued else { return }
+        // Already pushed: the id is the backend id.
+        var mutation = PendingMutation(
+            id: UUID().uuidString, entityType: .locality, entityId: localityID, op: .delete,
+            payloadJson: Data(), createdAt: Date(), attempts: 0, lastAttemptAt: nil, lastError: nil
+        )
+        try mutation.insert(db)
     }
 
     // MARK: - Phase O2 place edits (Task 17)

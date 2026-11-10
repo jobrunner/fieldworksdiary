@@ -53,6 +53,8 @@ struct LocalityInput {
 /// konformt `LocalityClient`.
 protocol LocalityPushClient {
     func create(_ input: LocalityInput) async throws -> Locality
+    /// Deletes a locality on the server; 404 counts as done.
+    func delete(id: String) async throws
 }
 
 struct LocalityClient: LocalityPushClient {
@@ -83,6 +85,23 @@ struct LocalityClient: LocalityPushClient {
             throw SampleClientError.invalidEndpoint
         }
         return try await sendOne(url: url, method: "POST", body: input.asDictionary)
+    }
+
+    func delete(id: String) async throws {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
+        guard let url = URL(string: trimmed.appending("/api/collections/localities/records/\(id)")) else {
+            throw SampleClientError.invalidEndpoint
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 8
+        request.authenticate(with: auth)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200 ..< 300).contains(status) || status == 404 else {
+            throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
+        }
     }
 
     func update(id: String, input: LocalityInput) async throws -> Locality {
