@@ -52,6 +52,10 @@ final class RetrospectiveCoordinateViewModel: ObservableObject {
         self.ortus = ortus
         self.creator = creator
         self.photo = photo
+        // The Ortus zone isn't known yet, so a photo's capture day is
+        // read in the device zone here. Near midnight that day can differ
+        // from the collecting day the sample gets once Ortus answers (its
+        // begin is then read in the Ortus zone); the id stays as suggested.
         let begin = photo?.capture?.instant(in: creator.deviceZone()) ?? creator.now()
         let suggestion = creator.suggestion(begin: begin, zone: creator.deviceZone())
         suggestedCode = suggestion.id
@@ -77,6 +81,13 @@ final class RetrospectiveCoordinateViewModel: ObservableObject {
         errorMessage = nil
 
         let input = CoordinateInput(system: system, first: first, second: second)
+        // Unparsable fields are caught locally, before (and without) a request.
+        do {
+            _ = try input.queryItems()
+        } catch {
+            errorMessage = Self.message(for: error)
+            return nil
+        }
         guard let ortus else {
             errorMessage = OrtusQueryError.offline.userMessage
             return nil

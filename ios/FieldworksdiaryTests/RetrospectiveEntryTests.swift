@@ -135,6 +135,21 @@ final class RetrospectiveEntryTests: XCTestCase {
         }
     }
 
+    func testDialog_EmptyInput_LocalValidationMessage() async throws {
+        let ortus = StubOrtus(.failure(OrtusQueryError.offline))
+        let vm = makeDialog(ortus)
+        vm.first = ""
+        vm.second = "10.03"
+
+        let id = await vm.submit()
+
+        XCTAssertNil(id)
+        XCTAssertEqual(vm.errorMessage, "Bitte eine gültige Koordinate eingeben.")
+        XCTAssertEqual(vm.second, "10.03")
+        XCTAssertEqual(ortus.inputQueries.count, 0, "caught before any request")
+        XCTAssertEqual(try samples.count(), 0)
+    }
+
     func testDialog_AnswerWithoutWGS84_IsAFailure() async throws {
         let vm = makeDialog(StubOrtus(.success(try Self.decode("{}"))))
         vm.first = "49.68"
@@ -200,14 +215,8 @@ final class RetrospectiveEntryTests: XCTestCase {
     // MARK: - photo import
 
     func testPhotoWithoutGPS_SampleWithoutCoordinateWithPhoto_NoBackgroundFix() async throws {
-        let fixSource = SilentSource()
-        let suite = "RetrospectiveEntryTests"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defaults.removePersistentDomain(forName: suite)
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let pendingFixes = PendingFixService(
-            store: samples, mutations: mutations, source: fixSource, defaults: defaults, timerInterval: nil
-        )
+        // No background fix is structural: `RetrospectiveSampleCreator`
+        // has no `PendingFixService` to register with.
         let ortus = StubOrtus(.failure(OrtusQueryError.offline))
         let data = try Self.makeImage(exif: ["DateTimeOriginal": "2019:06:01 14:30:00"])
 
@@ -225,8 +234,6 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertEqual(sample.sampleID, "190601/1", "id suggested for the capture day")
         XCTAssertEqual(try photos.fetchBySample(created.id).count, 1, "photo attached")
         XCTAssertEqual(ortus.inputQueries.count, 0)
-        XCTAssertEqual(pendingFixes.pendingCount, 0)
-        XCTAssertFalse(fixSource.running, "no background fix")
     }
 
     func testPhotoWithoutAnyMetadata_SampleNowWithPhoto() async throws {
@@ -252,10 +259,13 @@ final class RetrospectiveEntryTests: XCTestCase {
         let outcome = try await makeImporter(ortus).importPhoto(data)
 
         guard case let .created(created) = outcome else { return XCTFail("expected a sample") }
+        // EXIF stores GPS as DMS rationals: the query carries what the
+        // reader returns, which may differ from 28.68 in the 6th decimal.
+        let read = try XCTUnwrap(PhotoMetadataReader.read(data, fallbackZone: berlin).coordinate)
         XCTAssertEqual(ortus.inputQueries.count, 1)
         XCTAssertEqual(ortus.inputQueries.first?.system, .wgs84)
-        XCTAssertEqual(ortus.inputQueries.first?.first, "28.680000")
-        XCTAssertEqual(ortus.inputQueries.first?.second, "-17.760000")
+        XCTAssertEqual(ortus.inputQueries.first?.first, String(format: "%.6f", read.lat))
+        XCTAssertEqual(ortus.inputQueries.first?.second, String(format: "%.6f", read.lon))
         let sample = try XCTUnwrap(samples.fetchById(created.id))
         XCTAssertEqual(sample.latitude, 28.68)
         XCTAssertEqual(sample.longitude, -17.76)
@@ -276,7 +286,16 @@ final class RetrospectiveEntryTests: XCTestCase {
         let outcome = try await makeImporter(StubOrtus(.failure(OrtusQueryError.offline))).importPhoto(data)
 
         guard case let .needsDialog(seed) = outcome else { return XCTFail("expected the dialog") }
-        XCTAssertEqual(seed.input, CoordinateInput(system: .wgs84, first: "49.681230", second: "10.031340"))
+        // EXIF stores GPS as DMS rationals: expect what the reader returns.
+        let read = try XCTUnwrap(PhotoMetadataReader.read(data, fallbackZone: berlin).coordinate)
+        let expected = CoordinateInput(
+            system: .wgs84,
+            first: String(format: "%.6f", read.lat),
+            second: String(format: "%.6f", read.lon)
+        )
+        XCTAssertEqual(seed.input, expected)
+        XCTAssertEqual(read.lat, 49.68123, accuracy: 1e-5)
+        XCTAssertEqual(read.lon, 10.03134, accuracy: 1e-5)
         XCTAssertEqual(seed.errorMessage, "Keine Verbindung zu Ortus. Bitte später erneut versuchen.")
         XCTAssertEqual(try samples.count(), 0, "nothing created yet")
 
@@ -286,7 +305,7 @@ final class RetrospectiveEntryTests: XCTestCase {
             prefill: seed.input, initialError: seed.errorMessage, photo: seed.photo
         )
         XCTAssertEqual(vm.errorMessage, seed.errorMessage)
-        XCTAssertEqual(vm.first, "49.681230")
+        XCTAssertEqual(vm.first, expected.first)
         XCTAssertEqual(vm.code, "190601/1", "id suggested for the capture day")
 
         let submitted = await vm.submit()
@@ -307,8 +326,8 @@ final class RetrospectiveEntryTests: XCTestCase {
         let meta = PhotoMetadataReader.read(data, fallbackZone: berlin)
 
         let coordinate = try XCTUnwrap(meta.coordinate)
-        XCTAssertEqual(coordinate.lat, -33.45, accuracy: 1e-9)
-        XCTAssertEqual(coordinate.lon, -70.66, accuracy: 1e-9)
+        XCTAssertEqual(coordinate.lat, -33.45, accuracy: 1e-5)
+        XCTAssertEqual(coordinate.lon, -70.66, accuracy: 1e-5)
         XCTAssertTrue(meta.hadExplicitOffset)
         XCTAssertEqual(meta.capturedAt, Date(timeIntervalSince1970: 1_559_413_800), "2019-06-01 18:30 UTC")
     }
@@ -352,8 +371,8 @@ final class RetrospectiveEntryTests: XCTestCase {
         let meta = PhotoMetadataReader.read(data, fallbackZone: canary)
 
         let coordinate = try XCTUnwrap(meta.coordinate)
-        XCTAssertEqual(coordinate.lat, 49.68123, accuracy: 1e-6)
-        XCTAssertEqual(coordinate.lon, 10.03134, accuracy: 1e-6)
+        XCTAssertEqual(coordinate.lat, 49.68123, accuracy: 1e-5)
+        XCTAssertEqual(coordinate.lon, 10.03134, accuracy: 1e-5)
         XCTAssertEqual(meta.capturedAt, try Self.date("2019-06-01 14:30", berlin))
     }
 
@@ -367,9 +386,11 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     // MARK: - helpers
 
-    private func makeCreator() -> RetrospectiveSampleCreator {
+    /// `resolverOrtus` is handed to the resolver too, so a second
+    /// request made while applying the answer would be counted.
+    private func makeCreator(resolverOrtus: OrtusQuerying? = nil) -> RetrospectiveSampleCreator {
         let resolver = SampleLocationResolver(
-            ortus: nil, samples: samples, placemarks: placemarks, features: features, mutations: mutations
+            ortus: resolverOrtus, samples: samples, placemarks: placemarks, features: features, mutations: mutations
         )
         let berlin = self.berlin
         return RetrospectiveSampleCreator(
@@ -381,7 +402,9 @@ final class RetrospectiveEntryTests: XCTestCase {
     private func makeDialog(
         _ ortus: OrtusQuerying?, format: CoordinateDisplayFormat = .decimalSign
     ) -> RetrospectiveCoordinateViewModel {
-        RetrospectiveCoordinateViewModel(ortus: ortus, creator: makeCreator(), displayFormat: format)
+        RetrospectiveCoordinateViewModel(
+            ortus: ortus, creator: makeCreator(resolverOrtus: ortus), displayFormat: format
+        )
     }
 
     private func makeImporter(_ ortus: OrtusQuerying?) -> RetrospectivePhotoImporter {
@@ -487,12 +510,4 @@ private final class StubOrtus: OrtusQuerying, @unchecked Sendable {
         inputQueries.append(input)
         return try result.get()
     }
-}
-
-@MainActor
-private final class SilentSource: PendingFixSource {
-    var onFix: (@MainActor (LocationProvider.Fix) -> Void)?
-    private(set) var running = false
-    func start() { running = true }
-    func stop() { running = false }
 }

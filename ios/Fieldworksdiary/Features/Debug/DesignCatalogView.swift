@@ -124,6 +124,7 @@
                 .init(name: "surfaceSecondary", color: AppColor.surfaceSecondary),
                 .init(name: "surfaceTertiary", color: AppColor.surfaceTertiary),
                 .init(name: "surfaceGrouped", color: AppColor.surfaceGrouped),
+                .init(name: "scrim", color: AppColor.scrim),
                 .init(name: "separator", color: AppColor.separator),
                 .init(name: "outlineSubtle", color: AppColor.outlineSubtle)
             ]

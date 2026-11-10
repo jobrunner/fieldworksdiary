@@ -40,6 +40,8 @@ struct RetrospectiveEntryView: ViewModifier {
     @State private var showingPhotoPicker = false
     @State private var pickedItem: PhotosPickerItem?
     @State private var importTask: Task<Void, Never>?
+    /// Identity of the running import (`Task` itself isn't comparable).
+    @State private var importToken: UUID?
     @State private var importError: String?
 
     func body(content: Content) -> some View {
@@ -95,7 +97,7 @@ struct RetrospectiveEntryView: ViewModifier {
 
     private var importProgress: some View {
         ZStack {
-            AppColor.surfaceGrouped.opacity(0.6)
+            AppColor.scrim
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
             VStack(spacing: AppSpacing.md) {
@@ -105,6 +107,7 @@ struct RetrospectiveEntryView: ViewModifier {
                 Button("Abbrechen", role: .cancel) {
                     importTask?.cancel()
                     importTask = nil
+                    importToken = nil
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
@@ -136,8 +139,17 @@ struct RetrospectiveEntryView: ViewModifier {
     private func importPhoto(_ item: PhotosPickerItem) {
         importTask?.cancel()
         let importer = RetrospectivePhotoImporter(ortus: makeOrtus(), creator: makeCreator())
+        let token = UUID()
+        importToken = token
         importTask = Task {
-            defer { importTask = nil }
+            // Only the current import clears the reference; a cancelled
+            // older task must not drop a newer one.
+            defer {
+                if importToken == token {
+                    importTask = nil
+                    importToken = nil
+                }
+            }
             do {
                 // The original file keeps GPS and capture time.
                 guard let data = try await item.loadTransferable(type: Data.self) else {
