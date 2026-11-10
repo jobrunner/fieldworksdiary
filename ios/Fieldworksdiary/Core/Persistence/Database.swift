@@ -70,6 +70,7 @@ final class Database {
         migrator.registerMigration("v13_ortus_location", migrate: migrateV13)
         migrator.registerMigration("v14_timezone_elevation", migrate: migrateV14)
         migrator.registerMigration("v15_drop_legacy_location", migrate: migrateV15)
+        migrator.registerMigration("v16_sample_coordinate_optional", migrate: migrateV16)
         return migrator
     }
 
@@ -497,5 +498,41 @@ final class Database {
             }
         }
         try db.drop(table: "local_sequences")
+    }
+
+    /// Phase E: samples can be created before the first GPS fix, so
+    /// `latitude`/`longitude` become nullable. SQLite can't drop NOT NULL
+    /// with ALTER, so the table is rebuilt from its own DDL (all other
+    /// columns, defaults and data stay as they are) and the indexes are
+    /// recreated. GRDB runs migrations with foreign keys off, so child
+    /// rows are not cascaded away by the DROP.
+    private static func migrateV16(_ db: GRDB.Database) throws {
+        guard let ddl = try String.fetchOne(
+            db, sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'local_samples'"
+        ) else { return }
+        let indexes = try String.fetchAll(
+            db,
+            sql: "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'local_samples' AND sql IS NOT NULL"
+        )
+        var newDDL = ddl
+        for column in ["latitude", "longitude"] {
+            newDDL = newDDL.replacingOccurrences(
+                of: "(\"?\(column)\"?\\s+\\w+)\\s+NOT NULL",
+                with: "$1",
+                options: .regularExpression
+            )
+        }
+        newDDL = newDDL.replacingOccurrences(
+            of: "^CREATE TABLE \"?local_samples\"?",
+            with: "CREATE TABLE \"local_samples_v16\"",
+            options: .regularExpression
+        )
+        try db.execute(sql: newDDL)
+        try db.execute(sql: "INSERT INTO local_samples_v16 SELECT * FROM local_samples")
+        try db.execute(sql: "DROP TABLE local_samples")
+        try db.execute(sql: "ALTER TABLE local_samples_v16 RENAME TO local_samples")
+        for index in indexes {
+            try db.execute(sql: index)
+        }
     }
 }
