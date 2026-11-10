@@ -131,8 +131,9 @@ struct SampleDetailView: View {
                 }
                 .accessibilityElement(children: .combine)
                 let placemark = sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }
-                ForEach(placemark.map { PlaceDisplay.fields($0.place) } ?? []) { item in
-                    PlaceFieldRow(item)
+                if let line = PlaceDisplay.gazetteerLine(placemark?.place) {
+                    Text(line)
+                        .font(.footnote)
                 }
                 if let mtb = PlaceDisplay.mtbText(number: sample.mtbSheetNumber, name: sample.mtbSheetName,
                                                   quadrant: sample.mtbQuadrant, countryISO: placemark?.countryISO)

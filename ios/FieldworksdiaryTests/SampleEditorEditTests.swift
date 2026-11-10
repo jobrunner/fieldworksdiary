@@ -140,29 +140,29 @@ final class SampleEditorEditTests: XCTestCase {
 
     // MARK: - helpers
 
-    // MARK: - Task 17: coordinate correction, suggestion, resend
+    // MARK: - Task 17: coordinate correction (`CoordinateCorrection`), suggestion, resend
 
     func testCoordinateCorrection_ManualSample_AsksBeforeWriting() throws {
         var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
         seeded.locationStatus = .manual
         seeded.placemark = "pmmanual000001"
         try samples.update(seeded)
-        let vm = makeVM(sampleID: seeded.id)
+        let correction = makeCorrection()
 
-        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
+        let ask = correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0))
 
-        XCTAssertTrue(vm.askRetakePlace, "manual place ⇒ „Ortsangaben neu übernehmen?“")
+        XCTAssertTrue(ask, "manual place ⇒ „Ortsangaben neu übernehmen?“")
         XCTAssertEqual(try samples.fetchById(seeded.id)?.latitude, 49.79, "nothing written before the answer")
         XCTAssertEqual(try mutations.count(), 0)
 
-        vm.applyCoordinateCorrection(keepManualPlace: false)
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: false) {})
 
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.latitude, 47.0)
         XCTAssertEqual(stored.locationStatus, .pending, "„Übernehmen“ drops the manual place")
         XCTAssertNil(stored.placemark)
         XCTAssertEqual(stored.locationSource, LocationSource.user.rawValue)
-        XCTAssertFalse(vm.askRetakePlace)
+        XCTAssertNil(correction.pending)
     }
 
     func testCoordinateCorrection_ManualSample_KeepMyPlace() throws {
@@ -170,10 +170,10 @@ final class SampleEditorEditTests: XCTestCase {
         seeded.locationStatus = .manual
         seeded.placemark = "pmmanual000001"
         try samples.update(seeded)
-        let vm = makeVM(sampleID: seeded.id)
+        let correction = makeCorrection()
 
-        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
-        vm.applyCoordinateCorrection(keepManualPlace: true)
+        XCTAssertTrue(correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0)))
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: true) {})
 
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.latitude, 47.0)
@@ -186,11 +186,11 @@ final class SampleEditorEditTests: XCTestCase {
         seeded.locationStatus = .backendService
         seeded.placemark = "pmbackend00001"
         try samples.update(seeded)
-        let vm = makeVM(sampleID: seeded.id)
+        let correction = makeCorrection()
 
-        vm.requestCoordinateCorrection(latitude: 47.0, longitude: 11.0)
+        XCTAssertFalse(correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0)))
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: true) {})
 
-        XCTAssertFalse(vm.askRetakePlace)
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
         XCTAssertEqual(stored.latitude, 47.0)
         XCTAssertEqual(stored.locationStatus, .pending)
@@ -238,25 +238,68 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(try mutations.count(), 0, "leaving without edits pushes nothing")
     }
 
-    func testChooseZone_SetsManual_KeepsInstants_AndPersists() throws {
+    /// The editor no longer edits times (Phase N: `SampleFormView`); the
+    /// zone rule lives in `SampleTimeWindow`.
+    func testChooseZone_SetsManual_KeepsInstants_AndWrites() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let base = SampleTimeWindow(seeded)
+        var time = base
+
+        time.setTimezone("Atlantic/Canary")
+
+        XCTAssertEqual(time.timezoneSource, .manual)
+        XCTAssertEqual(time.begin, base.begin)
+        XCTAssertEqual(time.end, base.end)
+        XCTAssertNotEqual(time, base)
+
+        var row = seeded
+        time.write(into: &row, base: base)
+        XCTAssertEqual(row.timezone, "Atlantic/Canary")
+        XCTAssertEqual(row.timezoneSource, .manual)
+        XCTAssertEqual(row.beginDate, seeded.beginDate)
+    }
+
+    func testEditorShowsTimesWrittenByTheForm() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
         let vm = makeVM(sampleID: seeded.id)
-        let begin = vm.beginDate
-        let end = vm.endDate
+        var row = try XCTUnwrap(samples.fetchById(seeded.id))
+        row.timezone = "Atlantic/Canary"
+        row.beginDate = seeded.beginDate.addingTimeInterval(3600)
+        try samples.update(row)
 
-        vm.setTimezone("Atlantic/Canary")
+        vm.refreshDerivedFields()
 
-        XCTAssertEqual(vm.timezoneSource, .manual)
-        XCTAssertEqual(vm.beginDate, begin)
-        XCTAssertEqual(vm.endDate, end)
-        XCTAssertTrue(vm.hasUnsavedEdits)
-
+        XCTAssertEqual(vm.timeZone.identifier, "Atlantic/Canary")
+        XCTAssertEqual(vm.beginDate, row.beginDate)
+        vm.notes = "edited"
         XCTAssertTrue(vm.finishEditing())
-
         let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.notes, "edited")
+        XCTAssertEqual(stored.beginDate, row.beginDate, "the editor never writes stale times back")
         XCTAssertEqual(stored.timezone, "Atlantic/Canary")
-        XCTAssertEqual(stored.timezoneSource, .manual)
-        XCTAssertEqual(stored.beginDate, seeded.beginDate)
+    }
+
+    func testTimeWindowText_SameDayNextDayAndAllDay() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "Atlantic/Canary"))
+        let begin = Date(timeIntervalSince1970: 1_779_183_000) // 2026-05-19 09:30 UTC = 10:30 WEST
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: begin.addingTimeInterval(900),
+                                                 isAllDay: false, zone: zone),
+            "10:30 – 10:45"
+        )
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: nil, isAllDay: false, zone: zone),
+            "10:30"
+        )
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: begin.addingTimeInterval(86400),
+                                                 isAllDay: false, zone: zone),
+            "10:30 – 20.05.2026 10:30"
+        )
+        XCTAssertNil(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: nil, isAllDay: true, zone: zone),
+            "all-day shows only the date"
+        )
     }
 
     func testNotesOnlySave_KeepsZoneSetInBackground() throws {
@@ -276,24 +319,17 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertEqual(stored.timezoneSource, .locationService)
     }
 
-    func testEditTimes_EndNeverBeforeBegin_AndPersists() throws {
+    func testEditTimes_EndNeverBeforeBegin() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
-        let vm = makeVM(sampleID: seeded.id)
-        let newBegin = vm.beginDate.addingTimeInterval(3600)
+        var time = SampleTimeWindow(seeded)
+        let newBegin = time.begin.addingTimeInterval(3600)
 
-        vm.setBeginDate(newBegin)
-        XCTAssertEqual(vm.endDate, newBegin, "end follows a begin moved past it")
-        vm.setEndDate(newBegin.addingTimeInterval(-60))
-        XCTAssertEqual(vm.endDate, newBegin, "end is clamped to begin")
-        vm.setEndDate(newBegin.addingTimeInterval(1800))
-
-        XCTAssertTrue(vm.finishEditing())
-
-        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
-        XCTAssertEqual(stored.beginDate, newBegin)
-        XCTAssertEqual(stored.endDate, newBegin.addingTimeInterval(1800))
-        let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
-        XCTAssertEqual(updates.count, 1)
+        time.setBegin(newBegin)
+        XCTAssertEqual(time.end, newBegin, "end follows a begin moved past it")
+        time.setEnd(newBegin.addingTimeInterval(-60))
+        XCTAssertEqual(time.end, newBegin, "end is clamped to begin")
+        time.setEnd(newBegin.addingTimeInterval(1800))
+        XCTAssertEqual(time.end, newBegin.addingTimeInterval(1800))
     }
 
     func testUpdateBody_CarriesTimeWindow() {
@@ -326,9 +362,14 @@ final class SampleEditorEditTests: XCTestCase {
             store: samples,
             photoStore: photos,
             fieldtripStore: fieldtrips,
-            localitiesStore: localities,
             mutationsStore: mutations,
             sync: sync
+        )
+    }
+
+    private func makeCorrection() -> CoordinateCorrection {
+        CoordinateCorrection(
+            store: samples, localitiesStore: localities, mutationsStore: mutations, resolver: nil, sync: sync
         )
     }
 

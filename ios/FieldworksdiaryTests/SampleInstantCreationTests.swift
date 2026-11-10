@@ -171,13 +171,14 @@ final class SampleInstantCreationTests: XCTestCase {
             ortus: nil, samples: samples, placemarks: LocalPlacemarkStore(database: database),
             features: LocalSampleFeatureStore(database: database), mutations: mutations
         )
-        let vm = SampleEditorViewModel(
-            sampleID: created.id, isNew: true, suggestedRunning: created.suggestedRunning,
-            store: samples, photoStore: photos, fieldtripStore: fieldtrips, localitiesStore: localities,
-            mutationsStore: mutations, sync: sync, locationResolver: resolver
+        // Phase N: the map pick lives in the edit form, through the
+        // shared `CoordinateCorrection`.
+        let correction = CoordinateCorrection(
+            store: samples, localitiesStore: localities, mutationsStore: mutations, resolver: resolver, sync: sync
         )
 
-        vm.requestCoordinateCorrection(latitude: 49.79, longitude: 9.94)
+        XCTAssertFalse(correction.request(sampleID: created.id, .init(latitude: 49.79, longitude: 9.94)))
+        XCTAssertTrue(correction.apply(sampleID: created.id, keepManualPlace: true) {})
 
         var stored = try XCTUnwrap(samples.fetchById(created.id))
         XCTAssertEqual(stored.latitude, 49.79)
@@ -205,7 +206,7 @@ final class SampleInstantCreationTests: XCTestCase {
 
         let late = SampleEditorViewModel(
             sampleID: created.id, isNew: true, store: samples, photoStore: photos,
-            fieldtripStore: fieldtrips, localitiesStore: localities, mutationsStore: mutations,
+            fieldtripStore: fieldtrips, mutationsStore: mutations,
             sync: sync, now: { Date().addingTimeInterval(PendingFixService.timeLimit + 1) }
         )
         XCTAssertEqual(late.locationStatus, .idle, "past the 5 minutes nobody is locating")
@@ -468,7 +469,6 @@ final class SampleInstantCreationTests: XCTestCase {
             store: samples,
             photoStore: photos,
             fieldtripStore: fieldtrips,
-            localitiesStore: localities,
             mutationsStore: mutations,
             sync: sync,
             pendingFixes: pendingFixes

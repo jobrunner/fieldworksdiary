@@ -64,6 +64,85 @@ enum PlaceDisplay {
         return admin + extra
     }
 
+    /// Gazetteer line of the sample view (Phase N): the German country
+    /// name first, then the admin levels from broad to narrow, values
+    /// only, comma-separated; empty levels are skipped. Landscape fields
+    /// (island, mountain) are not part of it. nil when nothing is set.
+    static func gazetteerLine(_ place: Place?, table: AdminLabelTable = .shared) -> String? {
+        guard let place else { return nil }
+        var parts: [String] = []
+        if !place.countryISO.isEmpty {
+            parts.append(countryName(place.countryISO, table: table))
+        } else if let country = place.admin[.country] {
+            let text = displayValue(country)
+            if !text.isEmpty { parts.append(text) }
+        }
+        var levels = place
+        levels.admin[.country] = nil
+        levels.island = ""
+        levels.mountainRange = ""
+        levels.mountain = ""
+        parts += fields(levels, table: table).map(\.value)
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
+    /// One terrain line below the gazetteer line: „Peilung“,
+    /// „Exposition“, „Hangneigung“, or a label-less „eben“.
+    struct DetailLine: Identifiable, Equatable {
+        let label: String?
+        let value: String
+        var id: String {
+            label ?? value
+        }
+    }
+
+    /// Bearing, aspect and slope of a sample, only the present ones.
+    /// Flat terrain shows „eben“ instead of aspect and slope.
+    static func detailLines(_ sample: LocalSample) -> [DetailLine] {
+        detailLines(bearingLabel: sample.bearingLabel, aspectCompass: sample.aspectCompass,
+                    aspectDeg: sample.aspectDeg, slopeDeg: sample.slopeDeg, terrainFlat: sample.terrainFlat)
+    }
+
+    static func detailLines(bearingLabel: String?, aspectCompass: String?, aspectDeg: Double?,
+                            slopeDeg: Double?, terrainFlat: Bool) -> [DetailLine]
+    {
+        var lines: [DetailLine] = []
+        if let bearing = bearingLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !bearing.isEmpty {
+            lines.append(DetailLine(label: "Peilung", value: bearing))
+        }
+        if terrainFlat {
+            lines.append(DetailLine(label: nil, value: "eben"))
+            return lines
+        }
+        let compass = aspectCompass?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let degrees = aspectDeg.map { "\(Int($0.rounded()))°" }
+        switch (compass.isEmpty ? nil : compass, degrees) {
+        case let (compass?, degrees?): lines.append(DetailLine(label: "Exposition", value: "\(compass) (\(degrees))"))
+        case let (compass?, nil): lines.append(DetailLine(label: "Exposition", value: compass))
+        case let (nil, degrees?): lines.append(DetailLine(label: "Exposition", value: degrees))
+        case (nil, nil): break
+        }
+        if let slope = slopeDeg {
+            lines.append(DetailLine(label: "Hangneigung", value: "\(Int(slope.rounded()))°"))
+        }
+        return lines
+    }
+
+    /// Coordinate in the chosen display format plus the format's name
+    /// for the caption below. Falls back to signed decimal degrees when
+    /// the format can't express the point (e.g. UTM near the poles).
+    static func coordinate(latitude: Double, longitude: Double,
+                           format: CoordinateDisplayFormat) -> (text: String, caption: String)
+    {
+        if let text = CoordinateConverter.format(lat: latitude, lon: longitude, as: format) {
+            return (text, format.title)
+        }
+        let fallback = CoordinateDisplayFormat.decimalSign
+        let text = CoordinateConverter.format(lat: latitude, lon: longitude, as: fallback)
+            ?? String(format: "%.6f, %.6f", latitude, longitude)
+        return (text, fallback.title)
+    }
+
     /// Name for list rows: the municipality, else the next higher
     /// filled level (district, county, … up to the country).
     static func shortName(_ place: Place?) -> String? {

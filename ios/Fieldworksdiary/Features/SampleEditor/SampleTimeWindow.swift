@@ -2,8 +2,8 @@ import FieldworksGeo
 import Foundation
 
 /// Editable time fields of a saved sample — begin, end, zone and
-/// „Ganztägig“ — with the editing rules shared by the sample editor and
-/// the edit form (`SampleFormViewModel`). The instants are UTC; the zone
+/// „Ganztägig“ — with the editing rules of the edit form
+/// (`SampleFormViewModel`). The instants are UTC; the zone
 /// only changes how they are read.
 ///
 /// - The end never lies before the begin (it follows a begin moved past it).

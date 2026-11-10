@@ -91,6 +91,83 @@ final class PlaceDisplayTests: XCTestCase {
         XCTAssertTrue(PlaceDisplay.matches(ochsenfurt, query: "  "), "blank query matches")
     }
 
+    // MARK: - sample view (Phase N)
+
+    /// Admin data of `shared/testdata/ortus/expected_de_ochsenfurt.json`.
+    private let ochsenfurtFixture = Place(
+        countryISO: "DE",
+        admin: [
+            .country: AdminValue(name: "Deutschland", level: 2),
+            .state: AdminValue(name: "Bayern", level: 4),
+            .region: AdminValue(name: "Unterfranken", level: 5),
+            .county: AdminValue(name: "Landkreis Würzburg", level: 6),
+            .municipality: AdminValue(name: "Ochsenfurt", level: 8)
+        ]
+    )
+
+    func testGazetteerLine_DEFixture_CountryThenBroadToNarrow() {
+        XCTAssertEqual(PlaceDisplay.gazetteerLine(ochsenfurtFixture),
+                       "Deutschland, Bayern, Unterfranken, Landkreis Würzburg, Ochsenfurt")
+    }
+
+    func testGazetteerLine_SkipsMissingAndEmptyLevels() {
+        var place = ochsenfurtFixture
+        place.admin[.region] = nil
+        place.admin[.municipality] = AdminValue(name: "  ", level: 8)
+        XCTAssertEqual(PlaceDisplay.gazetteerLine(place), "Deutschland, Bayern, Landkreis Würzburg")
+        // `ochsenfurt` has an empty region.
+        XCTAssertEqual(PlaceDisplay.gazetteerLine(ochsenfurt), "Deutschland, Bayern, Landkreis Würzburg, Ochsenfurt")
+    }
+
+    func testGazetteerLine_CountryFromISOWithoutAdminCountry_NoLandscape() {
+        var place = Place(countryISO: "ES", admin: [.municipality: AdminValue(name: "Garafía", level: 8)])
+        place.island = "La Palma"
+        XCTAssertEqual(PlaceDisplay.gazetteerLine(place), "Spanien, Garafía")
+    }
+
+    func testGazetteerLine_NilWithoutData() {
+        XCTAssertNil(PlaceDisplay.gazetteerLine(nil))
+        XCTAssertNil(PlaceDisplay.gazetteerLine(Place(countryISO: "")))
+    }
+
+    func testDetailLines_BearingAspectSlope_OnlyPresent() {
+        let lines = PlaceDisplay.detailLines(
+            bearingLabel: "2 km WNW Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5,
+            slopeDeg: 8.4, terrainFlat: false
+        )
+        XCTAssertEqual(lines.map(\.label), ["Peilung", "Exposition", "Hangneigung"])
+        XCTAssertEqual(lines.map(\.value), ["2 km WNW Ochsenfurt", "SSW (203°)", "8°"])
+
+        let onlyCompass = PlaceDisplay.detailLines(
+            bearingLabel: nil, aspectCompass: "N", aspectDeg: nil, slopeDeg: nil, terrainFlat: false
+        )
+        XCTAssertEqual(onlyCompass, [PlaceDisplay.DetailLine(label: "Exposition", value: "N")])
+
+        XCTAssertTrue(PlaceDisplay.detailLines(
+            bearingLabel: " ", aspectCompass: nil, aspectDeg: nil, slopeDeg: nil, terrainFlat: false
+        ).isEmpty)
+    }
+
+    func testDetailLines_FlatTerrainShowsEbenInsteadOfAspectAndSlope() {
+        let lines = PlaceDisplay.detailLines(
+            bearingLabel: "Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5, slopeDeg: 0.4, terrainFlat: true
+        )
+        XCTAssertEqual(lines, [
+            PlaceDisplay.DetailLine(label: "Peilung", value: "Ochsenfurt"),
+            PlaceDisplay.DetailLine(label: nil, value: "eben")
+        ])
+    }
+
+    func testCoordinate_FollowsDisplayFormat() {
+        let decimal = PlaceDisplay.coordinate(latitude: 49.681230, longitude: 10.031340, format: .decimalSign)
+        XCTAssertEqual(decimal.text, "+49.681230 +10.031340")
+        XCTAssertEqual(decimal.caption, CoordinateDisplayFormat.decimalSign.title)
+
+        let mgrs = PlaceDisplay.coordinate(latitude: 49.681230, longitude: 10.031340, format: .mgrs)
+        XCTAssertTrue(mgrs.text.hasPrefix("32U NA 744"), mgrs.text)
+        XCTAssertEqual(mgrs.caption, "MGRS")
+    }
+
     func testCountryName_German() {
         XCTAssertEqual(PlaceDisplay.countryName("DE"), "Deutschland")
         XCTAssertEqual(PlaceDisplay.countryName("ES"), "Spanien")

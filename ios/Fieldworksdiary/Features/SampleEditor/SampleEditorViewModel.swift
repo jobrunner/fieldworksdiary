@@ -13,7 +13,10 @@ import UIKit
 /// view disappears). The row is observed, so a coordinate written by
 /// `PendingFixService` or enrichment from the sync shows up while
 /// code and notes stay user-owned. Every editor is opened for a
-/// persisted row (Phase N removed the unsaved create path).
+/// persisted row (Phase N removed the unsaved create path). Coordinate,
+/// time and place data are shown read-only; they are edited in the
+/// form (`SampleFormView`), whose saves reach the editor through the
+/// row observation.
 @MainActor
 final class SampleEditorViewModel: ObservableObject {
     /// Photo not yet persisted to disk. We keep it in memory until the
@@ -30,9 +33,6 @@ final class SampleEditorViewModel: ObservableObject {
     @Published var code: String = ""
     @Published var notes: String = ""
     @Published var pendingPhotos: [PendingPhoto] = []
-    /// Editable time window (UTC instants) and zone of an existing
-    /// sample (`SampleTimeWindow` rules). nil only without a row.
-    @Published private(set) var time: SampleTimeWindow?
     @Published private(set) var locationStatus: LocationProvider.Status = .idle
     /// The persisted sample's coordinate for the bottom card.
     @Published private(set) var coordinate: CLLocationCoordinate2D?
@@ -85,14 +85,8 @@ final class SampleEditorViewModel: ObservableObject {
     /// Backend suggestion for a manual sample („Neue Ortsangaben
     /// verfügbar“).
     @Published private(set) var suggestedPlacemark: LocalPlacemark?
-    /// Set while the „Ortsangaben neu übernehmen?“ dialog is open (a
-    /// coordinate correction on a sample with a manual place).
-    @Published var askRetakePlace = false
-    /// Error of a place action (correction, suggestion, resend).
+    /// Error of a place action (suggestion, resend).
     @Published private(set) var placeActionError: String?
-    /// Correction path shared with the edit form; holds the corrected
-    /// coordinate waiting for the dialog's answer.
-    private let correction: CoordinateCorrection
 
     /// Snapshot of the persisted values at the moment we adopted an
     /// existing row. Drives dirty-detection so the save button only
@@ -103,12 +97,8 @@ final class SampleEditorViewModel: ObservableObject {
     private let store: LocalSampleStore
     private let photoStore: LocalPhotoStore
     private let fieldtripStore: LocalFieldtripStore
-    private let localitiesStore: LocalLocalityStore
     private let mutationsStore: PendingMutationsStore
     private let sync: SyncRunner
-    /// On-device place resolution after save (Phase O2). nil skips it
-    /// (tests that don't care about place data).
-    private let locationResolver: SampleLocationResolver?
     /// Local placemark cache for the place section. nil hides it.
     private let placemarkStore: LocalPlacemarkStore?
     /// Background fix of a new sample; told when the sample is deleted.
@@ -128,10 +118,8 @@ final class SampleEditorViewModel: ObservableObject {
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
-        localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
-        locationResolver: SampleLocationResolver? = nil,
         placemarkStore: LocalPlacemarkStore? = nil,
         pendingFixes: PendingFixService? = nil,
         now: @escaping () -> Date = Date.init
@@ -139,17 +127,11 @@ final class SampleEditorViewModel: ObservableObject {
         self.store = store
         self.photoStore = photoStore
         self.fieldtripStore = fieldtripStore
-        self.localitiesStore = localitiesStore
         self.mutationsStore = mutationsStore
         self.sync = sync
-        self.locationResolver = locationResolver
         self.placemarkStore = placemarkStore
         self.pendingFixes = pendingFixes
         self.now = now
-        correction = CoordinateCorrection(
-            store: store, localitiesStore: localitiesStore, mutationsStore: mutationsStore,
-            resolver: locationResolver, sync: sync
-        )
         self.isNew = isNew
         self.suggestedRunning = suggestedRunning
 
@@ -202,39 +184,42 @@ final class SampleEditorViewModel: ObservableObject {
         if trimmedCode != originalCode { return true }
         if trimmedNotes != originalNotes { return true }
         if !pendingPhotos.isEmpty { return true }
-        if timeFieldsEdited { return true }
         return false
     }
 
-    var beginDate: Date { time?.begin ?? Date() }
-    var endDate: Date { time?.end ?? beginDate }
-    var timezoneID: String { time?.timezoneID ?? "Europe/Berlin" }
-    var timezoneSource: TimezoneSource? { time?.timezoneSource }
+    // MARK: - time (read-only; edited in `SampleFormView`)
 
-    /// Zone of the sample for display and input.
+    var beginDate: Date { savedSample?.beginDate ?? Date() }
+    var endDate: Date? { savedSample?.endDate }
+    var isAllDay: Bool { savedSample?.isAllDay ?? false }
+
+    /// Zone of the sample for display.
     var timeZone: TimeZone {
-        time?.timeZone ?? TimeZone(identifier: "Europe/Berlin") ?? .current
+        savedSample.flatMap { TimeZone(identifier: $0.timezone) }
+            ?? TimeZone(identifier: "Europe/Berlin") ?? .current
     }
 
-    private var timeFieldsEdited: Bool {
-        guard let sample = savedSample, let time else { return false }
-        return time != SampleTimeWindow(sample)
-    }
-
-    /// Sets the begin; the end follows when it would fall before it.
-    func setBeginDate(_ date: Date) {
-        time?.setBegin(date)
-    }
-
-    /// Sets the end, never before the begin.
-    func setEndDate(_ date: Date) {
-        time?.setEnd(date)
-    }
-
-    /// Manual zone choice: the UTC instants stay, only their reading
-    /// changes. Ortus no longer overrides it (`.manual`).
-    func setTimezone(_ identifier: String) {
-        time?.setTimezone(identifier)
+    /// „10:07 – 10:22“ in the sample's zone; the end carries its date
+    /// when it falls on another local day. nil for an all-day sample
+    /// (the view shows only the date then).
+    static func timeWindowText(begin: Date, end: Date?, isAllDay: Bool, zone: TimeZone) -> String? {
+        guard !isAllDay else { return nil }
+        let time = DateFormatter()
+        time.locale = Locale(identifier: "de_DE")
+        time.timeZone = zone
+        time.dateFormat = "HH:mm"
+        let beginText = time.string(from: begin)
+        guard let end, end != begin else { return beginText }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        if calendar.isDate(end, inSameDayAs: begin) {
+            return "\(beginText) – \(time.string(from: end))"
+        }
+        let full = DateFormatter()
+        full.locale = Locale(identifier: "de_DE")
+        full.timeZone = zone
+        full.dateFormat = "dd.MM.yyyy HH:mm"
+        return "\(beginText) – \(full.string(from: end))"
     }
 
     var canSave: Bool {
@@ -457,18 +442,10 @@ final class SampleEditorViewModel: ObservableObject {
         if typedNotes != originalNotes {
             working.notes = typedNotes
         }
-        // Time fields only when the user changed them; otherwise the
-        // row's current values (e.g. an Ortus zone set in the background)
-        // must survive a notes-only save.
-        time?.write(into: &working, base: SampleTimeWindow(shown))
-
+        // Time, zone and place stay as read: they are edited in the
+        // form (`SampleFormView`) or set in the background.
         let changed = working.sampleID != stored.sampleID
             || working.notes != stored.notes
-            || working.beginDate != stored.beginDate
-            || working.endDate != stored.endDate
-            || working.timezone != stored.timezone
-            || working.timezoneSource != stored.timezoneSource
-            || working.isAllDay != stored.isAllDay
             || !pendingPhotos.isEmpty
         guard changed else { return true }
 
@@ -486,7 +463,6 @@ final class SampleEditorViewModel: ObservableObject {
         pendingPhotos = []
         if let fresh = try? store.fetchById(working.id) {
             savedSample = fresh
-            adoptTimeFields(fresh)
         }
         savedPhotos = (try? photoStore.fetchBySample(working.id)) ?? []
         sync.kick()
@@ -516,9 +492,14 @@ final class SampleEditorViewModel: ObservableObject {
 
     // MARK: - place data (Phase O2, Task 17)
 
-    /// Visible place fields of the current placemark, in level order.
-    var placeItems: [PlaceFieldItem] {
-        currentPlacemark.map { PlaceDisplay.fields($0.place) } ?? []
+    /// „Deutschland, Bayern, Unterfranken, …“ of the current placemark.
+    var gazetteerLine: String? {
+        PlaceDisplay.gazetteerLine(currentPlacemark?.place)
+    }
+
+    /// Bearing, aspect and slope of the saved sample.
+    var placeDetailLines: [PlaceDisplay.DetailLine] {
+        savedSample.map(PlaceDisplay.detailLines) ?? []
     }
 
     /// „MTB 6326/1 Ochsenfurt“ (DE only), nil otherwise.
@@ -541,59 +522,6 @@ final class SampleEditorViewModel: ObservableObject {
     /// The sample's push failed and isn't retried on its own.
     var canResend: Bool {
         savedSample?.syncStatus == .failed
-    }
-
-    /// Place editor for the saved sample; nil without a placemark
-    /// store or sample.
-    func makePlaceEditor() -> PlaceEditorViewModel? {
-        guard let placemarkStore, let id = savedSample?.id else { return nil }
-        return PlaceEditorViewModel(sampleID: id, store: store, placemarks: placemarkStore,
-                                    mutationsStore: mutationsStore)
-    }
-
-    /// After the place editor saved: show the new values and push.
-    func placeEdited() {
-        refreshDerivedFields()
-        sync.kick()
-        observeRow()
-    }
-
-    /// The user picked a corrected coordinate (or the first one for a
-    /// sample without coordinate) on the map. A manual place asks
-    /// first („Ortsangaben neu übernehmen?“); otherwise the place is
-    /// fetched again right away (`CoordinateCorrection`).
-    func requestCoordinateCorrection(latitude: Double, longitude: Double) {
-        guard let id = savedSample?.id else { return }
-        let pending = CoordinateCorrection.Pending(latitude: latitude, longitude: longitude)
-        if correction.request(sampleID: id, pending) {
-            askRetakePlace = true
-        } else {
-            applyCoordinateCorrection(keepManualPlace: true)
-        }
-    }
-
-    /// Writes the pending corrected coordinate through
-    /// `CoordinateCorrection` and refreshes once the place data landed.
-    func applyCoordinateCorrection(keepManualPlace: Bool) {
-        askRetakePlace = false
-        guard let id = savedSample?.id, correction.pending != nil else { return }
-        placeActionError = nil
-        let applied = correction.apply(sampleID: id, keepManualPlace: keepManualPlace, isNew: isNew) { [weak self] in
-            self?.refreshDerivedFields()
-        }
-        guard applied else {
-            placeActionError = CoordinateCorrection.saveFailedMessage
-            return
-        }
-        endPendingFix()
-        refreshDerivedFields()
-        observeRow()
-    }
-
-    /// „Abbrechen“ in the dialog: nothing is written.
-    func cancelCoordinateCorrection() {
-        askRetakePlace = false
-        correction.cancel()
     }
 
     func acceptSuggestion() {
@@ -684,7 +612,6 @@ final class SampleEditorViewModel: ObservableObject {
     /// a `PendingFixService` fix) — everything but code and notes.
     private func applyBackgroundRow(_ fresh: LocalSample) {
         let id = fresh.id
-        adoptTimeFieldsUnlessEdited(fresh)
         savedSample = fresh
         savedPhotos = (try? photoStore.fetchBySample(id)) ?? []
         if let ftID = fresh.fieldtrip, !ftID.isEmpty {
@@ -695,20 +622,12 @@ final class SampleEditorViewModel: ObservableObject {
         if let lat = fresh.latitude, let lon = fresh.longitude {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
             if isNew { endPendingFix() }
+        } else {
+            coordinate = nil
         }
         accuracyM = fresh.horizontalAccuracy
         altitudeM = fresh.elevation
         loadPlacemarks(for: fresh)
-    }
-
-    private func adoptTimeFields(_ sample: LocalSample) {
-        time = SampleTimeWindow(sample)
-    }
-
-    /// Takes over background changes (Ortus zone, pulled times) unless
-    /// the user is editing the time fields.
-    private func adoptTimeFieldsUnlessEdited(_ fresh: LocalSample) {
-        if !timeFieldsEdited { adoptTimeFields(fresh) }
     }
 
     private func adoptExisting(_ sample: LocalSample) {
@@ -723,7 +642,6 @@ final class SampleEditorViewModel: ObservableObject {
         notes = trimmedNotes
         originalCode = trimmedCode
         originalNotes = trimmedNotes
-        adoptTimeFields(sample)
         if let lat = sample.latitude, let lon = sample.longitude {
             coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
         } else {

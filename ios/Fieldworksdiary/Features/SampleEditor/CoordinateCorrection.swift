@@ -2,9 +2,8 @@ import FieldworksGeo
 import Foundation
 import SwiftUI
 
-/// Moves a saved sample to a new coordinate — the correction path shared
-/// by the sample editor (map pick) and the edit form („Auf Karte
-/// zeigen“, „Ortsdaten neu abfragen“).
+/// Moves a saved sample to a new coordinate — the correction path of the
+/// edit form („Auf Karte zeigen“, „Ortsdaten neu abfragen“).
 ///
 /// A sample with a manual place asks first („Ortsangaben neu
 /// übernehmen?“, `retakePlaceDialog`): `request` holds the coordinate and
@@ -74,8 +73,6 @@ final class CoordinateCorrection {
     }
 
     /// Writes the pending coordinate and starts the place resolution.
-    /// `isNew`: the sample was created instantly on the home screen (its
-    /// first coordinate gets the late-fix pipeline even if it had one).
     /// `completion` runs once the place data was written (or given up).
     /// Returns false when nothing was pending or the write failed
     /// (logged; show `saveFailedMessage`).
@@ -83,14 +80,13 @@ final class CoordinateCorrection {
     func apply(
         sampleID: String,
         keepManualPlace: Bool,
-        isNew: Bool = false,
         completion: @escaping @MainActor () -> Void
     ) -> Bool {
         guard let pending else { return false }
         self.pending = nil
         let before = try? store.fetchById(sampleID)
         let needsLocality = before.map { sample in
-            (sample.locality ?? "").isEmpty && (!sample.hasCoordinate || isNew)
+            (sample.locality ?? "").isEmpty && !sample.hasCoordinate
         } ?? false
         do {
             try store.updateCoordinate(

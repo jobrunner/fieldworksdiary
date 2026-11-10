@@ -135,7 +135,7 @@ private struct SampleFormContent: View {
     }
 }
 
-/// Group „Ortsdaten“: the manual place fields of `PlaceEditorView`
+/// Group „Ortsdaten“: the manual place fields (`PlaceFormSections`)
 /// (country first, then its levels), saved with the form.
 private struct PlaceGroupView: View {
     @ObservedObject var place: PlaceEditorViewModel

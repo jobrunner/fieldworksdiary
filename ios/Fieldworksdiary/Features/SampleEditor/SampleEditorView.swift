@@ -12,16 +12,18 @@ import UIKit
 ///   │  Foto-Strip                                 │
 ///   ├─────────────────────────────────────────────┤
 ///   │  STANDORT UND ZEIT                          │
-///   │   GPS icon + coords + accuracy + altitude   │
-///   │   Ortsangaben (Landesbegriffe, MTB)         │
+///   │   GPS icon + coords + format + altitude     │
+///   │   Gazetteer-Zeile, Peilung, Exposition, MTB │
 ///   │   Sammeltag / Exkursion                     │
-///   │   Sonne / Mond                              │
+///   │   Datum, Uhrzeit, Sonne / Mond              │
 ///   ├─────────────────────────────────────────────┤
 ///   │  [ static map snippet with pin ]            │
 ///   └─────────────────────────────────────────────┘
 ///
-/// The top stays editable; the bottom follows the row as a background
-/// fix lands and the sync round-trip enriches it.
+/// The top stays editable; the bottom is read-only and follows the row
+/// as a background fix lands, the sync round-trip enriches it or the
+/// edit form („Bearbeiten“ → `SampleFormView`, Phase N) saves it.
+/// Coordinate, time and place data are edited only in that form.
 ///
 /// Saving (Phase E): no save button for a saved sample. The custom
 /// back button saves and validates the id; going to the background
@@ -48,10 +50,8 @@ struct SampleEditorView: View {
             store: container.store,
             photoStore: container.photos,
             fieldtripStore: container.fieldtrips,
-            localitiesStore: container.localitiesStore,
             mutationsStore: container.mutations,
             sync: container.sync,
-            locationResolver: container.makeLocationResolver(),
             placemarkStore: container.placemarksStore,
             pendingFixes: container.pendingFixes
         )
@@ -61,6 +61,8 @@ struct SampleEditorView: View {
 private struct SampleEditorContent: View {
     @StateObject private var viewModel: SampleEditorViewModel
     @EnvironmentObject private var container: AppContainer
+    /// Coordinate display format; the view follows a settings change.
+    @EnvironmentObject private var config: AppConfig
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
 
@@ -68,14 +70,8 @@ private struct SampleEditorContent: View {
     @FocusState private var notesFocused: Bool
     @FocusState private var codeFocused: Bool
 
-    @State private var showingTimeZonePicker = false
-    @State private var showingCorrectionPicker = false
-    /// Coordinate picked on the correction map. Handed to the view
-    /// model only after the sheet is gone (`onDismiss`), so the
-    /// „Ortsangaben neu übernehmen?“ dialog isn't requested while the
-    /// sheet is still presented (SwiftUI drops it then).
-    @State private var pickedCorrection: CLLocationCoordinate2D?
-    @State private var placeEditor: PlaceEditorViewModel?
+    /// The edit form („Bearbeiten“) is pushed.
+    @State private var showingForm = false
 
     /// Width of the leading icon column in the location rows; grows
     /// with Dynamic Type so the icons keep their proportion.
@@ -90,10 +86,8 @@ private struct SampleEditorContent: View {
         store: LocalSampleStore,
         photoStore: LocalPhotoStore,
         fieldtripStore: LocalFieldtripStore,
-        localitiesStore: LocalLocalityStore,
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
-        locationResolver: SampleLocationResolver,
         placemarkStore: LocalPlacemarkStore,
         pendingFixes: PendingFixService
     ) {
@@ -104,10 +98,8 @@ private struct SampleEditorContent: View {
             store: store,
             photoStore: photoStore,
             fieldtripStore: fieldtripStore,
-            localitiesStore: localitiesStore,
             mutationsStore: mutationsStore,
             sync: sync,
-            locationResolver: locationResolver,
             placemarkStore: placemarkStore,
             pendingFixes: pendingFixes
         ))
@@ -187,6 +179,12 @@ private struct SampleEditorContent: View {
                 }
                 .accessibilityLabel("Zurück")
             }
+            if viewModel.isExistingSample {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Bearbeiten", action: openForm)
+                        .accessibilityHint("Öffnet Koordinate, Zeit und Ortsdaten zum Bearbeiten.")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingCamera = true
@@ -265,29 +263,23 @@ private struct SampleEditorContent: View {
                 if viewModel.keepPreviousID() { dismiss() }
             }
         }
-        .retakePlaceDialog(
-            isPresented: $viewModel.askRetakePlace,
-            onAnswer: { viewModel.applyCoordinateCorrection(keepManualPlace: $0) },
-            onCancel: { viewModel.cancelCoordinateCorrection() }
-        )
-        .sheet(isPresented: $showingCorrectionPicker, onDismiss: {
-            guard let c = pickedCorrection else { return }
-            pickedCorrection = nil
-            viewModel.requestCoordinateCorrection(latitude: c.latitude, longitude: c.longitude)
-        }) {
-            CoordinatePickerView(selected: Binding(
-                get: { pickedCorrection ?? viewModel.coordinate },
-                set: { pickedCorrection = $0 }
-            ))
-        }
-        .sheet(item: $placeEditor) { editor in
-            PlaceEditorView(viewModel: editor) {
-                viewModel.placeEdited()
+        .navigationDestination(isPresented: $showingForm) {
+            if let id = viewModel.savedSample?.id {
+                SampleFormView(sampleID: id)
             }
         }
     }
 
     // MARK: - leaving
+
+    /// „Bearbeiten“: saves code and notes first (the form works on the
+    /// row), then pushes the form.
+    private func openForm() {
+        notesFocused = false
+        codeFocused = false
+        viewModel.saveEdits()
+        showingForm = true
+    }
 
     private func goBack() {
         notesFocused = false
@@ -469,6 +461,11 @@ private struct SampleEditorContent: View {
             // blocks when the coordinate doesn't fit on one line.
             Text(coordinateText)
                 .font(.body.monospacedDigit())
+            if let caption = coordinateDisplay?.caption {
+                Text(caption)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             if let acc = viewModel.accuracyM {
                 HStack(spacing: AppSpacing.xs) {
                     Text("Genauigkeit").foregroundStyle(.secondary)
@@ -494,10 +491,10 @@ private struct SampleEditorContent: View {
         }
     }
 
-    /// Place data of a saved sample: status hints, the place fields
-    /// with country-specific terms, MTB, the fieldtrip, and actions
-    /// (edit place, correct coordinate, accept/dismiss a suggestion,
-    /// resend a failed push).
+    /// Place data of a saved sample: status hints, the gazetteer line,
+    /// bearing/aspect/slope, MTB, the fieldtrip, and the actions that
+    /// stay here (accept/dismiss a suggestion, resend a failed push).
+    /// Editing goes through „Bearbeiten“.
     private var placeSection: some View {
         HStack(alignment: .top, spacing: AppSpacing.lg) {
             Color.clear
@@ -511,9 +508,7 @@ private struct SampleEditorContent: View {
                     suggestionBanner
                 }
                 placeStatusLine
-                ForEach(viewModel.placeItems) { item in
-                    PlaceFieldRow(item)
-                }
+                placeSummary
                 if let mtb = viewModel.mtbText {
                     Text(mtb)
                         .font(.footnote)
@@ -522,7 +517,6 @@ private struct SampleEditorContent: View {
                 if fieldtripName != nil {
                     fieldtripLine
                 }
-                placeActions
                 if let error = viewModel.placeActionError {
                     Text(error)
                         .font(.footnote)
@@ -571,11 +565,11 @@ private struct SampleEditorContent: View {
     private var placeStatusLine: some View {
         if let sample = viewModel.savedSample {
             if sample.latitude == nil || sample.longitude == nil {
-                Label("Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden.",
+                Label("Ohne Koordinate – unter „Bearbeiten“ eine Koordinate setzen, damit Ortsangaben ermittelt werden.",
                       systemImage: "mappin.slash")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            } else if viewModel.placeItems.isEmpty {
+            } else if viewModel.gazetteerLine == nil {
                 switch sample.locationStatus {
                 case .pending:
                     Label("Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync.",
@@ -665,25 +659,38 @@ private struct SampleEditorContent: View {
         .background(AppColor.surface, in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
-    private var placeActions: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            if viewModel.coordinate != nil {
-                Button {
-                    placeEditor = viewModel.makePlaceEditor()
-                } label: {
-                    Label("Ortsangaben bearbeiten", systemImage: "pencil")
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    /// Gazetteer line, then one line each for bearing, aspect and slope.
+    @ViewBuilder
+    private var placeSummary: some View {
+        if let line = viewModel.gazetteerLine {
+            Text(line)
+                .font(.body)
+        }
+        ForEach(viewModel.placeDetailLines) { line in
+            placeDetailRow(line)
+        }
+    }
+
+    /// „Peilung 2 km WNW Ochsenfurt“; stacks label over value when the
+    /// pair doesn't fit on one line (AX sizes).
+    @ViewBuilder
+    private func placeDetailRow(_ line: PlaceDisplay.DetailLine) -> some View {
+        if let label = line.label {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xs) {
+                    Text(label).foregroundStyle(.secondary)
+                    Text(line.value)
                 }
-                .accessibilityHint("Ortsangaben und Höhe dieser Probe von Hand korrigieren.")
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    Text(label).foregroundStyle(.secondary)
+                    Text(line.value)
+                }
             }
-            Button {
-                showingCorrectionPicker = true
-            } label: {
-                Label(viewModel.coordinate == nil ? "Kartenpunkt setzen" : "Koordinate korrigieren",
-                      systemImage: "mappin.and.ellipse")
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            }
-            .accessibilityHint("Öffnet eine Karte; danach werden die Ortsangaben neu ermittelt.")
+            .font(.footnote)
+            .accessibilityElement(children: .combine)
+        } else {
+            Text(line.value)
+                .font(.footnote)
         }
     }
 
@@ -700,13 +707,14 @@ private struct SampleEditorContent: View {
                     .font(.body)
                     .lineLimit(2)
                     .minimumScaleFactor(0.9)
+                if let window = timeWindowText {
+                    Text(window)
+                        .font(.body.monospacedDigit())
+                }
                 if let zoneLabel = timezoneLabelText {
                     Text(zoneLabel)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-                if viewModel.isExistingSample {
-                    timeWindowEditor
                 }
                 if let sunrise = sunriseText, let sunset = sunsetText {
                     // Wrap sunrise/sunset into a second row when the
@@ -729,57 +737,8 @@ private struct SampleEditorContent: View {
             Spacer(minLength: AppSpacing.sm)
         }
         .padding(.vertical, AppSpacing.md)
-        .modifier(TimeRowAccessibility(isEditable: viewModel.isExistingSample, label: timeA11yLabel))
-        .sheet(isPresented: $showingTimeZonePicker) {
-            TimeZonePickerView(selected: viewModel.timezoneID, date: viewModel.beginDate) { id in
-                viewModel.setTimezone(id)
-            }
-        }
-    }
-
-    /// Beginn, Ende und Zeitzone eines bestehenden Samples. Die
-    /// DatePicker lesen und schreiben in der Zone des Samples; ein
-    /// Zonenwechsel lässt die UTC-Zeitpunkte unverändert.
-    private var timeWindowEditor: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            DatePicker(
-                "Beginn",
-                selection: Binding(get: { viewModel.beginDate }, set: { viewModel.setBeginDate($0) }),
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            .frame(minHeight: 44)
-            DatePicker(
-                "Ende",
-                selection: Binding(get: { viewModel.endDate }, set: { viewModel.setEndDate($0) }),
-                in: viewModel.beginDate...,
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            .frame(minHeight: 44)
-            Button {
-                showingTimeZonePicker = true
-            } label: {
-                HStack {
-                    Text("Zeitzone")
-                    Spacer(minLength: AppSpacing.sm)
-                    Text(viewModel.timezoneID)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.trailing)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Zeitzone")
-            .accessibilityValue(viewModel.timezoneID)
-            .accessibilityHint("Öffnet die Auswahl der Zeitzone. Die Zeitpunkte bleiben gleich.")
-            .accessibilityAddTraits(.isButton)
-        }
-        .environment(\.timeZone, viewModel.timeZone)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(timeA11yLabel)
     }
 
     // MARK: - derived view state
@@ -813,7 +772,15 @@ private struct SampleEditorContent: View {
             default: return "Suche Position …"
             }
         }
-        return String(format: "%.6f, %.6f", c.latitude, c.longitude)
+        return coordinateDisplay?.text ?? String(format: "%.6f, %.6f", c.latitude, c.longitude)
+    }
+
+    /// The coordinate in the format chosen in the settings, with the
+    /// format's name for the caption; nil without coordinate.
+    private var coordinateDisplay: (text: String, caption: String)? {
+        guard let c = viewModel.coordinate else { return nil }
+        return PlaceDisplay.coordinate(latitude: c.latitude, longitude: c.longitude,
+                                       format: config.coordinateDisplayFormat)
     }
 
     private var altitudeText: String {
@@ -873,6 +840,15 @@ private struct SampleEditorContent: View {
         return dayFormatter(in: .current).string(from: Date())
     }
 
+    /// „10:07 – 10:22“; nil for an all-day or a not yet saved sample.
+    private var timeWindowText: String? {
+        guard viewModel.isExistingSample else { return nil }
+        return SampleEditorViewModel.timeWindowText(
+            begin: viewModel.beginDate, end: viewModel.endDate,
+            isAllDay: viewModel.isAllDay, zone: viewModel.timeZone
+        )
+    }
+
     /// „Atlantic/Canary (WET)“ — Kürzel gilt zum Beginn-Zeitpunkt.
     private var timezoneLabelText: String? {
         guard viewModel.isExistingSample else { return nil }
@@ -893,8 +869,8 @@ private struct SampleEditorContent: View {
 
     private var locationA11yLabel: String {
         var parts: [String] = []
-        if let c = viewModel.coordinate {
-            parts.append(String(format: "Koordinate %.4f Komma %.4f", c.latitude, c.longitude))
+        if let display = coordinateDisplay {
+            parts.append("Koordinate \(display.text), \(display.caption)")
         } else if hasNoCoordinate {
             parts.append("Ohne Koordinate")
         } else {
@@ -914,6 +890,7 @@ private struct SampleEditorContent: View {
 
     private var timeA11yLabel: String {
         var parts = [longDateText]
+        if let window = timeWindowText { parts.append(window) }
         if let zone = timezoneLabelText { parts.append(zone) }
         if let sunrise = sunriseText { parts.append("Sonnenaufgang " + sunrise) }
         if let sunset = sunsetText { parts.append("Sonnenuntergang " + sunset) }
@@ -955,24 +932,10 @@ private struct SavedPhotoThumbnail: View {
 }
 
 #Preview {
-    SampleEditorView(sampleID: "preview")
-        .environmentObject(AppContainer())
-}
-
-/// Der Zeitbereich eines bestehenden Samples enthält bedienbare Felder
-/// (DatePicker, Zeitzonen-Zeile) und darf deshalb nicht zu einem einzigen
-/// Element zusammengezogen werden; bei neuen Samples ist er reiner Text.
-private struct TimeRowAccessibility: ViewModifier {
-    let isEditable: Bool
-    let label: String
-
-    func body(content: Content) -> some View {
-        if isEditable {
-            content.accessibilityElement(children: .contain)
-        } else {
-            content
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(label)
-        }
+    let container = AppContainer()
+    return NavigationStack {
+        SampleEditorView(sampleID: "preview")
     }
+    .environmentObject(container)
+    .environmentObject(container.config)
 }
