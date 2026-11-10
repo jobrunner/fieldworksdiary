@@ -232,12 +232,18 @@ final class SampleLocationResolver {
     /// unknown id leaves the sample untouched. Never touches
     /// `collectingDay`, `fieldtrip` or `sampleID`: those were fixed when
     /// the sample was saved. The queued update already carries
-    /// `timezone`/`timezone_source`.
+    /// `timezone`/`timezone_source`. An all-day sample keeps its calendar
+    /// day: its begin moves to 00:00 of that day in the new zone (so its
+    /// collecting day stays as well).
     private static func applyTimezone(_ g: SampleGeo, to s: inout LocalSample) {
         guard s.timezoneSource != .manual,
               let tz = g.timezone, !tz.isEmpty,
-              TimeZone(identifier: tz) != nil
+              let newZone = TimeZone(identifier: tz)
         else { return }
+        if s.isAllDay, tz != s.timezone, let oldZone = TimeZone(identifier: s.timezone) {
+            s.beginDate = SampleTime.startOfSameDay(s.beginDate, from: oldZone, to: newZone)
+            s.endDate = nil
+        }
         s.timezone = tz
         s.timezoneSource = .locationService
     }

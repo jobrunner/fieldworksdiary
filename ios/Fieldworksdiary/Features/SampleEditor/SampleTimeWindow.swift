@@ -41,7 +41,7 @@ struct SampleTimeWindow: Equatable {
     /// all-day sample takes 00:00 of the chosen day.
     mutating func setBegin(_ date: Date) {
         if isAllDay {
-            begin = Self.startOfDay(date, in: timeZone)
+            begin = SampleTime.startOfDay(date, in: timeZone)
             end = begin
             return
         }
@@ -60,7 +60,7 @@ struct SampleTimeWindow: Equatable {
         guard let newZone = TimeZone(identifier: identifier) else { return }
         guard identifier != timezoneID || timezoneSource != .manual else { return }
         if isAllDay, identifier != timezoneID {
-            begin = Self.sameDay(begin, from: timeZone, to: newZone)
+            begin = SampleTime.startOfSameDay(begin, from: timeZone, to: newZone)
             end = begin
         }
         timezoneID = identifier
@@ -74,7 +74,7 @@ struct SampleTimeWindow: Equatable {
         guard allDay != isAllDay else { return }
         isAllDay = allDay
         if allDay {
-            begin = Self.startOfDay(begin, in: timeZone)
+            begin = SampleTime.startOfDay(begin, in: timeZone)
             end = begin
         } else {
             let window = SampleTime.defaultWindow(createdAt: begin, in: timeZone)
@@ -106,23 +106,5 @@ struct SampleTimeWindow: Equatable {
             row.timezone = timezoneID
             row.timezoneSource = timezoneSource
         }
-    }
-
-    // MARK: - private
-
-    private static func calendar(_ zone: TimeZone) -> Calendar {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = zone
-        return calendar
-    }
-
-    private static func startOfDay(_ date: Date, in zone: TimeZone) -> Date {
-        calendar(zone).startOfDay(for: date)
-    }
-
-    /// 00:00 of `date`'s calendar day (read in `from`) in zone `to`.
-    private static func sameDay(_ date: Date, from: TimeZone, to: TimeZone) -> Date {
-        let day = calendar(from).dateComponents([.year, .month, .day], from: date)
-        return calendar(to).date(from: day).map { startOfDay($0, in: to) } ?? date
     }
 }

@@ -34,6 +34,18 @@ public enum SampleTime {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
+    /// 00:00 of `date`'s local calendar day in `tz`.
+    public static func startOfDay(_ date: Date, in tz: TimeZone) -> Date {
+        calendar(tz).startOfDay(for: date)
+    }
+
+    /// 00:00 in zone `to` of the calendar day `date` falls on in zone
+    /// `from` — an all-day sample keeps its day when its zone changes.
+    public static func startOfSameDay(_ date: Date, from: TimeZone, to: TimeZone) -> Date {
+        let day = calendar(from).dateComponents([.year, .month, .day], from: date)
+        return calendar(to).date(from: day).map { startOfDay($0, in: to) } ?? date
+    }
+
     /// `"Atlantic/Canary (WET)"`; identifier only if no abbreviation exists.
     public static func timezoneLabel(_ tz: TimeZone, at date: Date) -> String {
         // `abbreviation(for:)` follows the system locale ("WEZ" on de); use the

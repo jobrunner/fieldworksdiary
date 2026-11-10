@@ -45,6 +45,10 @@ struct SampleLocationFields: Codable, Equatable {
     /// `vertical_accuracy` is sent as an explicit 0 (= cleared), so a
     /// measured accuracy of the old height does not stay on the server.
     var clearsVerticalAccuracy = false
+    /// Set for a push after the user cleared the horizontal error (edit
+    /// form) or moved the coordinate without one: a nil
+    /// `horizontal_accuracy` is sent as an explicit 0 (= cleared).
+    var clearsHorizontalAccuracy = false
 
     /// Wire keys of the PocketBase `samples` record (migration
     /// 1700000024). `elevation_source` always accompanies an
@@ -92,6 +96,9 @@ struct SampleLocationFields: Codable, Equatable {
         }
         if clearsVerticalAccuracy, body["vertical_accuracy"] == nil {
             body["vertical_accuracy"] = 0
+        }
+        if clearsHorizontalAccuracy, body["horizontal_accuracy"] == nil {
+            body["horizontal_accuracy"] = 0
         }
         if clearsSuggestion, body["placemark_suggestion"] == nil {
             body["placemark_suggestion"] = ""
@@ -214,17 +221,23 @@ struct SampleUpdatePayload: Codable, Equatable {
     /// `vertical_accuracy` is sent as a clear (see
     /// `SampleLocationFields.clearsVerticalAccuracy`).
     var elevationEdited = false
+    /// Queued by `LocalSampleStore.setHorizontalAccuracy` and by a
+    /// coordinate move without accuracy: a nil `horizontal_accuracy` is
+    /// sent as a clear (see `SampleLocationFields.clearsHorizontalAccuracy`).
+    var horizontalAccuracyEdited = false
 
     init(
         pushFeatures: Bool = false,
         coordinateChanged: Bool = false,
         clearsSuggestion: Bool = false,
-        elevationEdited: Bool = false
+        elevationEdited: Bool = false,
+        horizontalAccuracyEdited: Bool = false
     ) {
         self.pushFeatures = pushFeatures
         self.coordinateChanged = coordinateChanged
         self.clearsSuggestion = clearsSuggestion
         self.elevationEdited = elevationEdited
+        self.horizontalAccuracyEdited = horizontalAccuracyEdited
     }
 
     init(from decoder: Decoder) throws {
@@ -233,6 +246,7 @@ struct SampleUpdatePayload: Codable, Equatable {
         coordinateChanged = (try? c.decode(Bool.self, forKey: .coordinateChanged)) ?? false
         clearsSuggestion = (try? c.decode(Bool.self, forKey: .clearsSuggestion)) ?? false
         elevationEdited = (try? c.decode(Bool.self, forKey: .elevationEdited)) ?? false
+        horizontalAccuracyEdited = (try? c.decode(Bool.self, forKey: .horizontalAccuracyEdited)) ?? false
     }
 
     /// Union of the flags (a parked mutation's flags ride along with
@@ -242,7 +256,8 @@ struct SampleUpdatePayload: Codable, Equatable {
             pushFeatures: pushFeatures || other.pushFeatures,
             coordinateChanged: coordinateChanged || other.coordinateChanged,
             clearsSuggestion: clearsSuggestion || other.clearsSuggestion,
-            elevationEdited: elevationEdited || other.elevationEdited
+            elevationEdited: elevationEdited || other.elevationEdited,
+            horizontalAccuracyEdited: horizontalAccuracyEdited || other.horizontalAccuracyEdited
         )
     }
 
@@ -814,6 +829,7 @@ final class SyncRunner: ObservableObject {
         location.clearsDerived = payload.coordinateChanged
         location.clearsSuggestion = payload.clearsSuggestion
         location.clearsVerticalAccuracy = payload.elevationEdited
+        location.clearsHorizontalAccuracy = payload.horizontalAccuracyEdited
         let input = SampleUpdateInput(
             code: current.sampleID,
             originalCode: current.originalCode ?? "",

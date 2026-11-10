@@ -24,7 +24,8 @@ struct SampleFormView: View {
             mutationsStore: container.mutations,
             sync: container.sync,
             ortus: OrtusClient.make(endpoint: container.config.ortusEndpointURL),
-            resolver: container.makeLocationResolver()
+            resolver: container.makeLocationResolver(),
+            displayFormat: container.config.coordinateDisplayFormat
         ))
     }
 }
@@ -76,14 +77,19 @@ private struct SampleFormContent: View {
             onAnswer: { viewModel.applyCorrection(keepManualPlace: $0) },
             onCancel: { viewModel.cancelCorrection() }
         )
-        .alert("Koordinate verwerfen?", isPresented: $viewModel.askDiscardCoordinate) {
+        .alert(discardTitle, isPresented: $viewModel.askDiscardCoordinate) {
             Button("Verwerfen", role: .destructive) {
                 viewModel.discardCoordinateAndFinish()
                 dismiss()
             }
             Button("Weiter bearbeiten", role: .cancel) { viewModel.keepEditing() }
         } message: {
-            Text("Die eingegebene Koordinate wurde nicht übernommen. Übernehmen kannst du sie mit „Ortsdaten neu abfragen“ oder über die Karte. Zeit und Ortsdaten sind gespeichert.")
+            switch viewModel.discardReason {
+            case .coordinate:
+                Text("Die eingegebene Koordinate wurde nicht übernommen. Übernehmen kannst du sie mit „Ortsdaten neu abfragen“ oder über die Karte. Zeit und Ortsdaten sind gespeichert.")
+            case .invalidValues:
+                Text("Höhe oder Genauigkeit enthält einen ungültigen Wert.")
+            }
         }
     }
 
@@ -114,6 +120,13 @@ private struct SampleFormContent: View {
                         .foregroundStyle(AppColor.danger)
                 }
             }
+        }
+    }
+
+    private var discardTitle: Text {
+        switch viewModel.discardReason {
+        case .coordinate: Text("Koordinate verwerfen?")
+        case .invalidValues: Text("Ungültige Eingaben verwerfen?")
         }
     }
 

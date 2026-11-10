@@ -265,7 +265,9 @@ final class SampleFormViewModelTests: XCTestCase {
     }
 
     func testNoChanges_WritesNothing() throws {
-        let sample = try seed(lat: 49.0, lon: 10.0)
+        let seeded = try seed(lat: 49.0, lon: 10.0)
+        // Baseline as stored (the returned struct has sub-ms timestamps).
+        let sample = try XCTUnwrap(samples.fetchById(seeded.id))
         let before = try mutations.count()
         let vm = makeVM(sample.id, ortus: nil)
 
@@ -273,6 +275,118 @@ final class SampleFormViewModelTests: XCTestCase {
 
         XCTAssertEqual(try mutations.count(), before)
         XCTAssertEqual(try XCTUnwrap(samples.fetchById(sample.id)), sample)
+    }
+
+    func testAllDay_OrtusZoneChange_KeepsCalendarDay() async throws {
+        let sample = try seed(lat: 49.0, lon: 10.0, begin: Self.date("2026-11-10 10:07", berlin))
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+            OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary")
+        )))
+        let vm = makeVM(sample.id, ortus: ortus)
+        vm.setAllDay(true)
+        vm.first = "28.68"
+        vm.second = "-17.76"
+
+        await vm.queryOrtus()
+        XCTAssertNil(vm.coordinateError)
+        XCTAssertTrue(vm.finishEditing())
+
+        let stored = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertTrue(stored.isAllDay)
+        XCTAssertEqual(stored.timezone, "Atlantic/Canary")
+        XCTAssertEqual(stored.beginDate, try Self.date("2026-11-10 00:00", canary), "same calendar day, new zone")
+        XCTAssertNil(stored.endDate)
+        XCTAssertEqual(stored.collectingDay, "2026-11-10")
+    }
+
+    // MARK: - discard reasons, prefill
+
+    func testInvalidHeight_AsksInvalidValuesDiscard() throws {
+        let sample = try seed(lat: 49.0, lon: 10.0)
+        let vm = makeVM(sample.id, ortus: nil)
+        try XCTUnwrap(vm.place).elevationText = "abc"
+
+        XCTAssertFalse(vm.finishEditing())
+        XCTAssertTrue(vm.askDiscardCoordinate)
+        XCTAssertEqual(vm.discardReason, .invalidValues)
+
+        vm.discardCoordinateAndFinish()
+        XCTAssertTrue(vm.finished)
+        XCTAssertNil(try XCTUnwrap(samples.fetchById(sample.id)).elevation)
+    }
+
+    func testUnappliedCoordinate_AsksCoordinateDiscard() throws {
+        let sample = try seed(lat: 49.0, lon: 10.0)
+        let vm = makeVM(sample.id, ortus: nil)
+        vm.first = "48.5"
+        try XCTUnwrap(vm.place).elevationText = "abc"
+
+        XCTAssertFalse(vm.finishEditing())
+        XCTAssertEqual(vm.discardReason, .coordinate, "the coordinate question wins")
+    }
+
+    func testMGRSDisplayFormat_PrefillsMGRS_NoDiscardPrompt() throws {
+        let sample = try seed(lat: 49.68123, lon: 10.03134)
+        let vm = makeVM(sample.id, ortus: nil, format: .mgrs)
+
+        XCTAssertEqual(vm.system, .mgrs)
+        XCTAssertEqual(vm.first, CoordinateConverter.toMGRS(lat: 49.68123, lon: 10.03134, precision: 5))
+        XCTAssertFalse(vm.first.isEmpty)
+        XCTAssertFalse(vm.hasUnappliedCoordinate)
+        XCTAssertEqual(vm.mapCenter?.latitude, 49.68123, "map falls back to the stored position")
+        XCTAssertTrue(vm.finishEditing())
+    }
+
+    func testRequery_UnchangedMGRSPrefill_QueriesStoredWGS84() async throws {
+        let sample = try seed(lat: 49.68123, lon: 10.03134)
+        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+            OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134)
+        )))
+        let vm = makeVM(sample.id, ortus: ortus, format: .mgrs)
+
+        await vm.queryOrtus()
+
+        XCTAssertEqual(ortus.inputQueries, [CoordinateInput(system: .wgs84, first: "49.681230", second: "10.031340")])
+        let stored = try XCTUnwrap(samples.fetchById(sample.id))
+        XCTAssertEqual(stored.latitude, 49.68123)
+        XCTAssertEqual(stored.longitude, 10.03134)
+    }
+
+    // MARK: - horizontal accuracy clear
+
+    func testClearHorizontalAccuracy_QueuesClearFlag() throws {
+        let seeded = try seed(lat: 49.0, lon: 10.0)
+        var row = try XCTUnwrap(samples.fetchById(seeded.id))
+        row.backendId = "b1"
+        row.horizontalAccuracy = 12
+        try samples.update(row)
+        let vm = makeVM(seeded.id, ortus: nil)
+        XCTAssertEqual(vm.horizontalAccuracyText, "12")
+
+        vm.horizontalAccuracyText = ""
+        XCTAssertTrue(vm.finishEditing())
+
+        XCTAssertNil(try XCTUnwrap(samples.fetchById(seeded.id)).horizontalAccuracy)
+        let update = try XCTUnwrap(mutations.fetch(entityType: .sample).last { $0.op == .update })
+        XCTAssertTrue(SampleUpdatePayload.decode(update.payloadJson).horizontalAccuracyEdited)
+    }
+
+    func testUpdateBody_ClearsHorizontalAccuracy() {
+        var fields = SampleLocationFields(locationSource: .user, locationStatus: .pending)
+        fields.clearsHorizontalAccuracy = true
+        XCTAssertEqual(fields.wireBody["horizontal_accuracy"] as? Int, 0)
+
+        fields.horizontalAccuracy = 7.5
+        XCTAssertEqual(fields.wireBody["horizontal_accuracy"] as? Double, 7.5, "a value is sent as is")
+
+        let plain = SampleLocationFields(locationSource: .user, locationStatus: .pending)
+        XCTAssertNil(plain.wireBody["horizontal_accuracy"], "nil without the flag is not sent")
+    }
+
+    func testPayloadFlag_RoundTripsAndMerges() {
+        let flag = SampleUpdatePayload(horizontalAccuracyEdited: true)
+        XCTAssertTrue(SampleUpdatePayload.decode(flag.encoded).horizontalAccuracyEdited)
+        XCTAssertTrue(SampleUpdatePayload().merged(with: flag).horizontalAccuracyEdited)
     }
 
     // MARK: - helpers
@@ -287,7 +401,9 @@ final class SampleFormViewModelTests: XCTestCase {
         )
     }
 
-    private func makeVM(_ id: String, ortus: OrtusQuerying?) -> SampleFormViewModel {
+    private func makeVM(
+        _ id: String, ortus: OrtusQuerying?, format: CoordinateDisplayFormat = .decimalSign
+    ) -> SampleFormViewModel {
         // The resolver shares the stub, so a second request would show
         // up in its `pointQueries`.
         let resolver = SampleLocationResolver(
@@ -295,7 +411,7 @@ final class SampleFormViewModelTests: XCTestCase {
         )
         return SampleFormViewModel(
             sampleID: id, store: samples, localitiesStore: localities, placemarkStore: placemarks,
-            mutationsStore: mutations, sync: sync, ortus: ortus, resolver: resolver
+            mutationsStore: mutations, sync: sync, ortus: ortus, resolver: resolver, displayFormat: format
         )
     }
 

@@ -467,7 +467,10 @@ final class LocalSampleStore {
             entityType: .sample,
             entityId: id,
             op: .update,
-            payload: SampleUpdatePayload(coordinateChanged: true).encoded
+            // The old point's accuracy must not stay on the server.
+            payload: SampleUpdatePayload(
+                coordinateChanged: true, horizontalAccuracyEdited: horizontalAccuracy == nil
+            ).encoded
         )
     }
 
@@ -670,14 +673,15 @@ final class LocalSampleStore {
     }
 
     /// Horizontal accuracy typed in the edit form (metres; nil = none).
-    /// The coordinate and its source stay. A nil is not sent as a clear:
-    /// the server keeps a value it has (see `SampleLocationFields`).
+    /// The coordinate and its source stay. A nil is pushed as an
+    /// explicit clear (`horizontalAccuracyEdited`).
     func setHorizontalAccuracy(
         id: String,
         horizontalAccuracy: Double?,
         mutationsStore: PendingMutationsStore
     ) throws {
-        try writePlaceEdit(id: id, mutationsStore: mutationsStore, payload: SampleUpdatePayload()) { sample in
+        try writePlaceEdit(id: id, mutationsStore: mutationsStore,
+                           payload: SampleUpdatePayload(horizontalAccuracyEdited: true)) { sample in
             guard sample.horizontalAccuracy != horizontalAccuracy else { return false }
             sample.horizontalAccuracy = horizontalAccuracy
             return true

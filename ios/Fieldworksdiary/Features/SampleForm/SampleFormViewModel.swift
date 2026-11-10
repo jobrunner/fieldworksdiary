@@ -10,8 +10,8 @@ import Foundation
 /// background calls `saveEdits()`.
 ///
 /// - **Koordinate**: the fields start with the stored position as WGS 84
-///   decimal (6 decimals). Switching the system clears them (no local
-///   reprojection). A typed position is taken over only through
+///   decimal (6 decimals), or as MGRS (5 digits) when that is the display
+///   format. Switching the system clears them (no local reprojection). A typed position is taken over only through
 ///   „Ortsdaten neu abfragen“ (`queryOrtus()`: Ortus converts the input,
 ///   its WGS 84 answer is stored and its place data, zone and height
 ///   written without a second request) or through the map
@@ -54,8 +54,17 @@ final class SampleFormViewModel: ObservableObject {
     @Published private(set) var storedCoordinate: CLLocationCoordinate2D?
     /// „Ortsangaben neu übernehmen?“ for a sample with a manual place.
     @Published var askRetakePlace = false
-    /// „Koordinate verwerfen?“ raised by `finishEditing()`.
+    /// Discard question raised by `finishEditing()`; `discardReason`
+    /// says which one.
     @Published var askDiscardCoordinate = false
+    @Published private(set) var discardReason: DiscardReason = .coordinate
+
+    enum DiscardReason: Equatable {
+        /// „Koordinate verwerfen?“: a typed position wasn't taken over.
+        case coordinate
+        /// „Ungültige Eingaben verwerfen?“: height or error can't be saved.
+        case invalidValues
+    }
 
     // MARK: Zeit
 
@@ -87,6 +96,8 @@ final class SampleFormViewModel: ObservableObject {
     private let mutationsStore: PendingMutationsStore
     private let sync: SyncRunner
     private let ortus: OrtusQuerying?
+    /// `AppConfig.coordinateDisplayFormat`: MGRS prefills MGRS.
+    private let displayFormat: CoordinateDisplayFormat
     private let correction: CoordinateCorrection
     private var rowObservation: Task<Void, Never>?
 
@@ -110,9 +121,11 @@ final class SampleFormViewModel: ObservableObject {
         mutationsStore: PendingMutationsStore,
         sync: SyncRunner,
         ortus: OrtusQuerying?,
-        resolver: SampleLocationResolver?
+        resolver: SampleLocationResolver?,
+        displayFormat: CoordinateDisplayFormat = .default
     ) {
         self.sampleID = sampleID
+        self.displayFormat = displayFormat
         self.store = store
         self.placemarkStore = placemarkStore
         self.mutationsStore = mutationsStore
@@ -140,6 +153,18 @@ final class SampleFormViewModel: ObservableObject {
 
     private var currentInput: CoordinateInput {
         CoordinateInput(system: system, first: first, second: second)
+    }
+
+    /// What „Ortsdaten neu abfragen“ sends: the stored WGS 84 position
+    /// while the fields still show it (an MGRS prefill would shift it by
+    /// up to a metre), else the typed input.
+    private var queryInput: CoordinateInput {
+        guard Self.trimmed(currentInput) == Self.trimmed(appliedInput), let stored = storedCoordinate else {
+            return currentInput
+        }
+        return CoordinateInput(
+            system: .wgs84, first: Self.format(stored.latitude), second: Self.format(stored.longitude)
+        )
     }
 
     /// A typed position that wasn't taken over (empty fields don't count).
@@ -191,7 +216,7 @@ final class SampleFormViewModel: ObservableObject {
     func queryOrtus() async {
         guard !isQuerying, sampleExists else { return }
         coordinateError = nil
-        let input = currentInput
+        let input = queryInput
         do {
             _ = try input.queryItems()
         } catch {
@@ -265,8 +290,15 @@ final class SampleFormViewModel: ObservableObject {
     }
 
     private func requestCorrection(latitude: Double, longitude: Double, response: OrtusResponse?) {
-        // Typed place data and height go first, so the correction sees
-        // a place the user just set by hand (and asks about it).
+        // Typed time, place data and height go first: the correction
+        // sees a place the user just set by hand (and asks about it), and
+        // a new Ortus zone moves the saved (all-day) window, not a stale one.
+        do {
+            _ = try saveTime()
+        } catch {
+            Log.persistence.error("sample form time save failed: \(error.localizedDescription)")
+            saveError = "Änderungen konnten nicht gespeichert werden."
+        }
         savePlace()
         let pending = CoordinateCorrection.Pending(
             latitude: latitude,
@@ -302,6 +334,7 @@ final class SampleFormViewModel: ObservableObject {
         }
         saveEdits()
         if hasUnappliedCoordinate || hasInvalidCoordinateValues {
+            discardReason = hasUnappliedCoordinate ? .coordinate : .invalidValues
             askDiscardCoordinate = true
             return false
         }
@@ -386,13 +419,22 @@ final class SampleFormViewModel: ObservableObject {
 
     private func adoptCoordinate(_ sample: LocalSample) {
         storedCoordinate = Self.coordinate(sample)
-        let input = storedCoordinate.map {
-            CoordinateInput(system: .wgs84, first: Self.format($0.latitude), second: Self.format($0.longitude))
-        } ?? CoordinateInput(system: .wgs84)
+        let input = storedCoordinate.map { prefill($0) } ?? CoordinateInput(system: RetrospectiveCoordinateViewModel.defaultSystem(for: displayFormat))
         appliedInput = input
         system = input.system
         first = input.first
         second = input.second
+    }
+
+    /// The stored position in the prefill system: MGRS (5 digits) for the
+    /// MGRS display format, else WGS 84 decimal.
+    private func prefill(_ c: CLLocationCoordinate2D) -> CoordinateInput {
+        if RetrospectiveCoordinateViewModel.defaultSystem(for: displayFormat) == .mgrs,
+           let mgrs = CoordinateConverter.toMGRS(lat: c.latitude, lon: c.longitude, precision: 5)
+        {
+            return CoordinateInput(system: .mgrs, first: mgrs)
+        }
+        return CoordinateInput(system: .wgs84, first: Self.format(c.latitude), second: Self.format(c.longitude))
     }
 
     private func adoptHorizontalAccuracy(_ sample: LocalSample) {
