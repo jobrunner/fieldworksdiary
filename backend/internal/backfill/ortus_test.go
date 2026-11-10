@@ -36,11 +36,15 @@ func newApp(t *testing.T) *tests.TestApp {
 }
 
 func newRunner(t *testing.T, app *tests.TestApp, labels *adminlabels.Table) (*Runner, *int) {
+	return newRunnerFixture(t, app, labels, "query_de_ochsenfurt.json")
+}
+
+func newRunnerFixture(t *testing.T, app *tests.TestApp, labels *adminlabels.Table, fixture string) (*Runner, *int) {
 	t.Helper()
 	hits := new(int)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		*hits++
-		raw, err := os.ReadFile(filepath.Join(testdata, "query_de_ochsenfurt.json"))
+		raw, err := os.ReadFile(filepath.Join(testdata, fixture))
 		if err != nil {
 			w.WriteHeader(500)
 			return
@@ -60,10 +64,15 @@ func newRunner(t *testing.T, app *tests.TestApp, labels *adminlabels.Table) (*Ru
 
 func newUser(t *testing.T, app *tests.TestApp) *models.Record {
 	t.Helper()
+	return newUserNamed(t, app, "bfuser")
+}
+
+func newUserNamed(t *testing.T, app *tests.TestApp, name string) *models.Record {
+	t.Helper()
 	coll, _ := app.Dao().FindCollectionByNameOrId("users")
 	u := models.NewRecord(coll)
-	_ = u.SetEmail("bf@example.com")
-	_ = u.SetUsername("bfuser")
+	_ = u.SetEmail(name + "@example.com")
+	_ = u.SetUsername(name)
 	_ = u.SetPassword("test1234password")
 	if err := app.Dao().SaveRecord(u); err != nil {
 		t.Fatal(err)
@@ -72,6 +81,11 @@ func newUser(t *testing.T, app *tests.TestApp) *models.Record {
 }
 
 func newSample(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status string) *models.Record {
+	t.Helper()
+	return newSampleWithID(t, app, owner, lat, lon, status, "260519/"+status)
+}
+
+func newSampleWithID(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status, sid string) *models.Record {
 	t.Helper()
 	d := app.Dao()
 	ftColl, _ := d.FindCollectionByNameOrId("fieldtrips")
@@ -87,7 +101,7 @@ func newSample(t *testing.T, app *tests.TestApp, owner string, lat, lon float64,
 	s := models.NewRecord(coll)
 	s.Set("owner", owner)
 	s.Set("fieldtrip", ft.Id)
-	s.Set("sample_id", "260519/"+status)
+	s.Set("sample_id", sid)
 	s.Set("latitude", lat)
 	s.Set("longitude", lon)
 	s.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
@@ -288,5 +302,82 @@ func TestRemap_ColumnChangeMovesSamples(t *testing.T) {
 	}
 	if reload(t, app, "samples", s.Id).GetString("placemark") != newPM.Id {
 		t.Error("remap not stable")
+	}
+}
+
+func TestBackfill_Idempotent_SeaSample(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	s := newSample(t, app, u.Id, 40.0, -30.0, "pending")
+	r, _ := newRunnerFixture(t, app, adminlabels.Default(), "query_sea.json")
+
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	v1 := reload(t, app, "samples", s.Id).GetInt("version")
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if v2 := reload(t, app, "samples", s.Id).GetInt("version"); v2 != v1 {
+		t.Errorf("second run bumped version %d -> %d", v1, v2)
+	}
+}
+
+func TestBackfill_LegacyManualSharedByTwoOwners(t *testing.T) {
+	app := newApp(t)
+	a := newUserNamed(t, app, "owner_a")
+	b := newUserNamed(t, app, "owner_b")
+	pm := legacyManualPlacemark(t, app)
+	locA := newLocality(t, app, a.Id, pm.Id)
+	locB := newLocality(t, app, b.Id, pm.Id)
+	r, _ := newRunner(t, app, adminlabels.Default())
+
+	if err := r.MapLegacyManual(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	pa := reload(t, app, "localities", locA.Id).GetString("placemark")
+	pb := reload(t, app, "localities", locB.Id).GetString("placemark")
+	if pa == pb {
+		t.Fatal("both owners still share one placemark")
+	}
+	for id, owner := range map[string]string{pa: a.Id, pb: b.Id} {
+		p := reload(t, app, "placemarks", id)
+		if p.GetString("owner") != owner || p.GetString("geocoding_source") != "manual" ||
+			p.GetString("admin_municipality") != "Würzburg" {
+			t.Errorf("placemark %s: owner=%q", id, p.GetString("owner"))
+		}
+	}
+}
+
+func TestRemap_OrphanNotCounted(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	s := newSample(t, app, u.Id, deLat, deLon, "pending")
+	r, _ := newRunner(t, app, adminlabels.Default())
+	if err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	labels := adminlabels.Default()
+	c := labels.Countries["DE"]
+	parish := adminlabels.Tier("admin_parish")
+	levels := map[int]adminlabels.LevelEntry{}
+	for k, v := range c.Levels {
+		levels[k] = v
+	}
+	e := levels[8]
+	e.Column = &parish
+	levels[8] = e
+	c.Levels = levels
+	labels.Countries["DE"] = c
+	r.Labels = labels
+	if err := r.Remap(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	v := reload(t, app, "samples", s.Id).GetInt("version")
+	if err := r.Remap(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if reload(t, app, "samples", s.Id).GetInt("version") != v {
+		t.Error("second remap changed the sample")
 	}
 }

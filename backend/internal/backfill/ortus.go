@@ -68,7 +68,8 @@ func (r *Runner) Run(ctx context.Context) error {
 func (r *Runner) MapLegacyManual(ctx context.Context) error {
 	dao := r.App.Dao()
 	pms, err := dao.FindRecordsByFilter("placemarks",
-		"geocoding_source = 'manual' && country_iso = '' && country != ''", "created", 0, 0)
+		"geocoding_source = 'manual' && country_iso = '' && (country != '' || administrative_area != '' || "+
+			"sub_administrative_area != '' || locality != '' || sub_locality != '')", "created", 0, 0)
 	if err != nil {
 		return err
 	}
@@ -98,9 +99,10 @@ func (r *Runner) MapLegacyManual(ctx context.Context) error {
 				p.Admin[tier] = geoplace.AdminValue{Name: old[legacy]}
 			}
 		}
+		owners := referencingOwners(dao, pm.Id)
 		owner := pm.GetString("owner")
-		if owner == "" {
-			owner = referencingOwner(dao, pm.Id)
+		if owner == "" && len(owners) > 0 {
+			owner = owners[0]
 		}
 		geoplace.ApplyPlace(pm, p)
 		pm.Set("dedup_hash", p.DedupHash())
@@ -109,6 +111,33 @@ func (r *Runner) MapLegacyManual(ctx context.Context) error {
 		}
 		if err := dao.SaveRecord(pm); err != nil {
 			return fmt.Errorf("save placemark %s: %w", pm.Id, err)
+		}
+		// Pre-O rows were shared; every further owner gets its own clone
+		// (the view rule hides other owners' manual rows).
+		for _, o := range owners {
+			if o == owner {
+				continue
+			}
+			clone, err := geoplace.LookupOrCreatePlacemark(dao, p, "manual", o)
+			if err != nil {
+				return fmt.Errorf("clone placemark %s: %w", pm.Id, err)
+			}
+			err = dao.RunInTransaction(func(tx *daos.Dao) error {
+				for _, field := range []string{"placemark", "placemark_suggestion"} {
+					if _, err := repoint(tx, "samples", field, pm.Id, clone.Id, o); err != nil {
+						return err
+					}
+				}
+				_, err := repoint(tx, "localities", "placemark", pm.Id, clone.Id, o)
+				return err
+			})
+			if err != nil {
+				return fmt.Errorf("repoint owner clone %s: %w", pm.Id, err)
+			}
+			r.log().Info("backfill: legacy manual placemark cloned",
+				slog.String("placemark_id", pm.Id),
+				slog.String("clone_id", clone.Id),
+				slog.String("user_id", o))
 		}
 		done++
 		r.log().Info("backfill: legacy manual placemark",
@@ -130,16 +159,28 @@ func (r *Runner) MapLegacyManual(ctx context.Context) error {
 	return nil
 }
 
-func referencingOwner(dao *daos.Dao, placemarkID string) string {
+// referencingOwners lists the distinct owners of localities and samples
+// that reference the placemark, oldest reference first.
+func referencingOwners(dao *daos.Dao, placemarkID string) []string {
+	var out []string
+	seen := map[string]bool{}
 	for _, coll := range []string{"localities", "samples"} {
-		recs, err := dao.FindRecordsByFilter(coll, "placemark = {:p}", "created", 1, 0, dbx.Params{"p": placemarkID})
-		if err == nil && len(recs) > 0 {
-			if o := recs[0].GetString("owner"); o != "" {
-				return o
+		filter := "placemark = {:p}"
+		if coll == "samples" {
+			filter += " || placemark_suggestion = {:p}"
+		}
+		recs, err := dao.FindRecordsByFilter(coll, filter, "created", 0, 0, dbx.Params{"p": placemarkID})
+		if err != nil {
+			continue
+		}
+		for _, rec := range recs {
+			if o := rec.GetString("owner"); o != "" && !seen[o] {
+				seen[o] = true
+				out = append(out, o)
 			}
 		}
 	}
-	return ""
+	return out
 }
 
 // EnrichSamples (step B) enriches every sample with a coordinate whose
@@ -207,6 +248,7 @@ func (r *Runner) Remap(ctx context.Context) error {
 		if np.DedupHash() == old.DedupHash() {
 			continue
 		}
+		changed := 0
 		err := dao.RunInTransaction(func(tx *daos.Dao) error {
 			target, err := geoplace.LookupOrCreatePlacemark(tx, np, "backend_service", "")
 			if err != nil {
@@ -216,16 +258,23 @@ func (r *Runner) Remap(ctx context.Context) error {
 				return nil
 			}
 			for _, field := range []string{"placemark", "placemark_suggestion"} {
-				if err := repoint(tx, "samples", field, pm.Id, target.Id); err != nil {
+				n, err := repoint(tx, "samples", field, pm.Id, target.Id, "")
+				if err != nil {
 					return err
 				}
+				changed += n
 			}
-			return repoint(tx, "localities", "placemark", pm.Id, target.Id)
+			n, err := repoint(tx, "localities", "placemark", pm.Id, target.Id, "")
+			changed += n
+			return err
 		})
 		if err != nil {
 			r.log().Warn("backfill: remap failed",
 				slog.String("placemark_id", pm.Id), slog.Any("err", err))
 			continue
+		}
+		if changed == 0 {
+			continue // already-remapped orphan
 		}
 		moved++
 		r.log().Info("backfill: placemark remapped", slog.String("placemark_id", pm.Id))
@@ -234,21 +283,29 @@ func (r *Runner) Remap(ctx context.Context) error {
 	return nil
 }
 
-// repoint sets field=to on every record of coll whose field is from,
-// bumping the version so clients holding the old one get a 409.
-func repoint(tx *daos.Dao, coll, field, from, to string) error {
-	recs, err := tx.FindRecordsByFilter(coll, field+" = {:f}", "", 0, 0, dbx.Params{"f": from})
+// repoint sets field=to on every record of coll whose field is from
+// (restricted to one owner when owner != ""), bumping the version so
+// clients holding the old one get a 409. It returns the number of
+// records changed.
+func repoint(tx *daos.Dao, coll, field, from, to, owner string) (int, error) {
+	filter := field + " = {:f}"
+	params := dbx.Params{"f": from}
+	if owner != "" {
+		filter += " && owner = {:o}"
+		params["o"] = owner
+	}
+	recs, err := tx.FindRecordsByFilter(coll, filter, "", 0, 0, params)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	for _, rec := range recs {
 		rec.Set(field, to)
 		rec.Set("version", rec.GetInt("version")+1)
 		if err := tx.SaveRecord(rec); err != nil {
-			return err
+			return 0, err
 		}
 	}
-	return nil
+	return len(recs), nil
 }
 
 // remapPlace re-assigns the stored admin units of p to columns according

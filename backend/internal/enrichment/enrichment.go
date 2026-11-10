@@ -7,6 +7,7 @@ package enrichment
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -19,6 +20,7 @@ import (
 	"go.mett.io/fwd-backend/internal/geoplace"
 	"go.mett.io/fwd-backend/internal/services"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/daos"
 	"github.com/pocketbase/pocketbase/models"
@@ -181,6 +183,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 			return errSkip
 		}
 
+		before := snapshot(rec)
 		if res.Place != nil {
 			switch status {
 			case statusPending, statusInherited:
@@ -211,6 +214,13 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		geoplace.ApplyGeo(rec, res.Geo)
 		applyDEMHeight(rec, res.Geo)
 		applyTimezone(rec, res.Geo)
+		finalStatus = rec.GetString("location_status")
+
+		// Nothing changed (e.g. a re-run over the same place): no save,
+		// no version bump, so clients are not sent into a 409.
+		if snapshot(rec) == before && !featuresChanged(tx, sampleID, res.Features) {
+			return nil
+		}
 
 		// Bump the optimistic-concurrency counter like the version
 		// guard (hooks/version_conflict.go) does for client writes, so
@@ -224,7 +234,6 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		if err := geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), res.Features); err != nil {
 			return fmt.Errorf("replace features: %w", err)
 		}
-		finalStatus = rec.GetString("location_status")
 		return nil
 	})
 	switch {
@@ -240,6 +249,69 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		slog.String("location_status", finalStatus),
 		slog.Int("features", len(res.Features)),
 	)
+}
+
+// enrichedFields are the sample fields the enrichment writes.
+var enrichedFields = []string{
+	"placemark", "placemark_suggestion", "location_status",
+	"elevation", "elevation_source", "vertical_accuracy",
+	"timezone", "timezone_source",
+	"slope_deg", "aspect_deg", "bearing_distance_km", "aspect_compass",
+	"terrain_flat", "bearing_label", "bearing_reference", "bearing_compass",
+	"bearing_inside", "mtb_sheet_number", "mtb_sheet_name", "mtb_quadrant",
+}
+
+// snapshot renders the enriched fields as one comparable string.
+func snapshot(rec *models.Record) string {
+	var b strings.Builder
+	for _, f := range enrichedFields {
+		fmt.Fprintf(&b, "%s=%v\x00", f, rec.Get(f))
+	}
+	return b.String()
+}
+
+// featureKey renders a feature in a form comparable between the stored
+// record and a freshly mapped one (fetched_at is ignored).
+func featureKey(source, layer, id string, props, license any) string {
+	norm := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		var x any
+		if json.Unmarshal(raw, &x) != nil {
+			return string(raw)
+		}
+		out, _ := json.Marshal(x)
+		return string(out)
+	}
+	return strings.Join([]string{source, layer, id, norm(props), norm(license)}, "|")
+}
+
+// featuresChanged reports whether the stored features of the sample
+// differ from fs.
+func featuresChanged(dao *daos.Dao, sampleID string, fs []geoplace.Feature) bool {
+	old, err := dao.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sampleID})
+	if err != nil || len(old) != len(fs) {
+		return true
+	}
+	have := map[string]int{}
+	for _, r := range old {
+		have[featureKey(r.GetString("source_id"), r.GetString("layer"), r.GetString("feature_id"),
+			r.Get("properties"), r.Get("license"))]++
+	}
+	for _, f := range fs {
+		var lic any
+		if len(f.License) > 0 {
+			lic = f.License
+		}
+		k := featureKey(f.SourceID, f.Layer, f.FeatureID, f.Properties, lic)
+		if have[k] == 0 {
+			return true
+		}
+		have[k]--
+	}
+	return false
 }
 
 // errSkip aborts the write transaction without logging a failure.
