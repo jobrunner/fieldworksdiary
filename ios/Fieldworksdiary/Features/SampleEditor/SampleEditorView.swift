@@ -13,7 +13,7 @@ import UIKit
 ///   ├─────────────────────────────────────────────┤
 ///   │  STANDORT UND ZEIT                          │
 ///   │   GPS icon + system / coords + altitude     │
-///   │   Gazetteer-Zeile, Peilung, Exposition, MTB │
+///   │   Gazetteer-Zeile, Peilung, MTB, Gelände    │
 ///   │   Datum, Uhrzeit, Sonne / Mond              │
 ///   ├─────────────────────────────────────────────┤
 ///   │  [ static map snippet with pin ]            │
@@ -495,11 +495,6 @@ private struct SampleEditorContent: View {
                 }
                 placeStatusLine
                 placeSummary
-                if let mtb = viewModel.mtbText {
-                    Text(mtb)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
                 if let error = viewModel.placeActionError {
                     Text(error)
                         .font(.footnote)
@@ -609,39 +604,43 @@ private struct SampleEditorContent: View {
         .background(AppColor.surface, in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
-    /// Gazetteer line, then one line each for bearing, aspect and slope.
+    /// Gazetteer line, bearing, MTB, then aspect and slope on one line.
     @ViewBuilder
     private var placeSummary: some View {
         if let line = viewModel.gazetteerLine {
             Text(line)
                 .font(.body)
         }
-        ForEach(viewModel.placeDetailLines) { line in
-            placeDetailRow(line)
+        if let bearing = viewModel.placeBearing {
+            Text(bearing)
+                .font(.footnote)
         }
-    }
-
-    /// „Exposition SSW (203°)“; stacks label over value when the pair
-    /// doesn't fit on one line (AX sizes). The bearing has no label.
-    @ViewBuilder
-    private func placeDetailRow(_ line: PlaceDisplay.DetailLine) -> some View {
-        if let label = line.label {
+        if let mtb = viewModel.mtbText {
+            Text(mtb)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        let terrain = viewModel.placeTerrainItems
+        if !terrain.isEmpty {
+            // „Exposition: SSW (203°)   Hangneigung: 8°“ side by side;
+            // one item per line when that doesn't fit (AX sizes).
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xs) {
-                    Text(label).foregroundStyle(.secondary)
-                    Text(line.value)
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.lg) {
+                    ForEach(terrain) { terrainText($0) }
                 }
                 VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-                    Text(label).foregroundStyle(.secondary)
-                    Text(line.value)
+                    ForEach(terrain) { terrainText($0) }
                 }
             }
             .font(.footnote)
             .accessibilityElement(children: .combine)
-        } else {
-            Text(line.value)
-                .font(.footnote)
         }
+    }
+
+    /// „Exposition: SSW (203°)“ with a secondary label, or a bare „eben“.
+    private func terrainText(_ item: PlaceDisplay.DetailLine) -> Text {
+        guard let label = item.label else { return Text(item.value) }
+        return Text("\(label):").foregroundStyle(.secondary) + Text(" " + item.value)
     }
 
     private var timeRow: some View {

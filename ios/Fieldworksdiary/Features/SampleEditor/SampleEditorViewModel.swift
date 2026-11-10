@@ -499,9 +499,14 @@ final class SampleEditorViewModel: ObservableObject {
         PlaceDisplay.gazetteerLine(currentPlacemark?.place)
     }
 
-    /// Bearing, aspect and slope of the saved sample.
-    var placeDetailLines: [PlaceDisplay.DetailLine] {
-        savedSample.map(PlaceDisplay.detailLines) ?? []
+    /// „2 km WNW Ochsenfurt“, nil inside the reference place.
+    var placeBearing: String? {
+        savedSample.flatMap(PlaceDisplay.bearing)
+    }
+
+    /// Aspect and slope (or „eben“) of the saved sample.
+    var placeTerrainItems: [PlaceDisplay.DetailLine] {
+        savedSample.map(PlaceDisplay.terrainItems) ?? []
     }
 
     /// „MTB 6326/1 Ochsenfurt“ (DE only), nil otherwise.

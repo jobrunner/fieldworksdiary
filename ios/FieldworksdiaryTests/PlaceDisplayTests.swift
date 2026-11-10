@@ -130,44 +130,29 @@ final class PlaceDisplayTests: XCTestCase {
         XCTAssertNil(PlaceDisplay.gazetteerLine(Place(countryISO: "")))
     }
 
-    func testDetailLines_BearingAspectSlope_OnlyPresent() {
-        let lines = PlaceDisplay.detailLines(
-            bearingLabel: "2 km WNW Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5,
-            slopeDeg: 8.4, terrainFlat: false
-        )
-        XCTAssertEqual(lines.map(\.label), [nil, "Exposition", "Hangneigung"])
-        XCTAssertEqual(lines.map(\.value), ["2 km WNW Ochsenfurt", "SSW (203°)", "8°"])
+    func testTerrainItems_AspectAndSlope_OnlyPresent() {
+        let items = PlaceDisplay.terrainItems(aspectCompass: "SSW", aspectDeg: 202.5, slopeDeg: 8.4, terrainFlat: false)
+        XCTAssertEqual(items.map(\.label), ["Exposition", "Hangneigung"])
+        XCTAssertEqual(items.map(\.value), ["SSW (203°)", "8°"])
 
-        let onlyCompass = PlaceDisplay.detailLines(
-            bearingLabel: nil, aspectCompass: "N", aspectDeg: nil, slopeDeg: nil, terrainFlat: false
-        )
-        XCTAssertEqual(onlyCompass, [PlaceDisplay.DetailLine(label: "Exposition", value: "N")])
-
-        XCTAssertTrue(PlaceDisplay.detailLines(
-            bearingLabel: " ", aspectCompass: nil, aspectDeg: nil, slopeDeg: nil, terrainFlat: false
-        ).isEmpty)
+        XCTAssertEqual(PlaceDisplay.terrainItems(aspectCompass: "N", aspectDeg: nil, slopeDeg: nil, terrainFlat: false),
+                       [PlaceDisplay.DetailLine(label: "Exposition", value: "N")])
+        XCTAssertTrue(PlaceDisplay.terrainItems(aspectCompass: " ", aspectDeg: nil, slopeDeg: nil, terrainFlat: false).isEmpty)
     }
 
-    func testDetailLines_BearingOnlyWhenItAddsInformation() {
-        func bearing(_ label: String?, km: Double?, inside: Bool) -> [PlaceDisplay.DetailLine] {
-            PlaceDisplay.detailLines(bearingLabel: label, bearingDistanceKm: km, bearingInside: inside,
-                                     aspectCompass: nil, aspectDeg: nil, slopeDeg: nil, terrainFlat: false)
-        }
-        XCTAssertEqual(bearing("2 km WNW Ochsenfurt", km: 2.3, inside: false),
-                       [PlaceDisplay.DetailLine(label: nil, value: "2 km WNW Ochsenfurt")])
-        XCTAssertTrue(bearing("in Ochsenfurt", km: 0, inside: true).isEmpty)
-        XCTAssertTrue(bearing("in Ochsenfurt", km: nil, inside: false).isEmpty)
-        XCTAssertTrue(bearing("0 km N Ochsenfurt", km: 0.3, inside: false).isEmpty)
+    func testTerrainItems_FlatTerrainShowsEbenInsteadOfAspectAndSlope() {
+        XCTAssertEqual(PlaceDisplay.terrainItems(aspectCompass: "SSW", aspectDeg: 202.5, slopeDeg: 0.4, terrainFlat: true),
+                       [PlaceDisplay.DetailLine(label: nil, value: "eben")])
     }
 
-    func testDetailLines_FlatTerrainShowsEbenInsteadOfAspectAndSlope() {
-        let lines = PlaceDisplay.detailLines(
-            bearingLabel: "Ochsenfurt", aspectCompass: "SSW", aspectDeg: 202.5, slopeDeg: 0.4, terrainFlat: true
-        )
-        XCTAssertEqual(lines, [
-            PlaceDisplay.DetailLine(label: nil, value: "Ochsenfurt"),
-            PlaceDisplay.DetailLine(label: nil, value: "eben")
-        ])
+    func testBearing_OnlyWhenItAddsInformation() {
+        XCTAssertEqual(PlaceDisplay.meaningfulBearing("2 km WNW Ochsenfurt", distanceKm: 2.3, inside: false),
+                       "2 km WNW Ochsenfurt")
+        XCTAssertEqual(PlaceDisplay.meaningfulBearing("Ochsenfurt", distanceKm: nil, inside: false), "Ochsenfurt")
+        XCTAssertNil(PlaceDisplay.meaningfulBearing("in Ochsenfurt", distanceKm: 0, inside: true))
+        XCTAssertNil(PlaceDisplay.meaningfulBearing("in Ochsenfurt", distanceKm: nil, inside: false))
+        XCTAssertNil(PlaceDisplay.meaningfulBearing("0 km N Ochsenfurt", distanceKm: 0.3, inside: false))
+        XCTAssertNil(PlaceDisplay.meaningfulBearing(" ", distanceKm: nil, inside: false))
     }
 
     func testCoordinate_FollowsDisplayFormat() {

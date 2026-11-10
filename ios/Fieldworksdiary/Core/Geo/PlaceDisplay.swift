@@ -86,9 +86,8 @@ enum PlaceDisplay {
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
-    /// One terrain line below the gazetteer line: the label-less
-    /// bearing („2 km WNW Ochsenfurt“), „Exposition“, „Hangneigung“, or
-    /// a label-less „eben“.
+    /// One terrain item of the sample view: „Exposition“,
+    /// „Hangneigung“, or a label-less „eben“.
     struct DetailLine: Identifiable, Equatable {
         let label: String?
         let value: String
@@ -97,26 +96,25 @@ enum PlaceDisplay {
         }
     }
 
-    /// Bearing, aspect and slope of a sample, only the present ones.
-    /// Flat terrain shows „eben“ instead of aspect and slope.
-    static func detailLines(_ sample: LocalSample) -> [DetailLine] {
-        detailLines(bearingLabel: sample.bearingLabel, bearingDistanceKm: sample.bearingDistanceKm,
-                    bearingInside: sample.bearingInside, aspectCompass: sample.aspectCompass,
-                    aspectDeg: sample.aspectDeg, slopeDeg: sample.slopeDeg, terrainFlat: sample.terrainFlat)
+    /// The bearing line of a sample, nil when it adds nothing.
+    static func bearing(_ sample: LocalSample) -> String? {
+        meaningfulBearing(sample.bearingLabel, distanceKm: sample.bearingDistanceKm, inside: sample.bearingInside)
     }
 
-    static func detailLines(bearingLabel: String?, bearingDistanceKm: Double? = nil, bearingInside: Bool = false,
-                            aspectCompass: String?, aspectDeg: Double?,
-                            slopeDeg: Double?, terrainFlat: Bool) -> [DetailLine]
+    /// Aspect and slope of a sample, only the present ones. Flat
+    /// terrain shows „eben“ instead of aspect and slope.
+    static func terrainItems(_ sample: LocalSample) -> [DetailLine] {
+        terrainItems(aspectCompass: sample.aspectCompass, aspectDeg: sample.aspectDeg,
+                     slopeDeg: sample.slopeDeg, terrainFlat: sample.terrainFlat)
+    }
+
+    static func terrainItems(aspectCompass: String?, aspectDeg: Double?,
+                             slopeDeg: Double?, terrainFlat: Bool) -> [DetailLine]
     {
-        var lines: [DetailLine] = []
-        if let bearing = meaningfulBearing(bearingLabel, distanceKm: bearingDistanceKm, inside: bearingInside) {
-            lines.append(DetailLine(label: nil, value: bearing))
-        }
         if terrainFlat {
-            lines.append(DetailLine(label: nil, value: "eben"))
-            return lines
+            return [DetailLine(label: nil, value: "eben")]
         }
+        var lines: [DetailLine] = []
         let compass = aspectCompass?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let degrees = aspectDeg.map { "\(Int($0.rounded()))°" }
         switch (compass.isEmpty ? nil : compass, degrees) {
