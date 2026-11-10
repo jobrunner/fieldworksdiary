@@ -3,13 +3,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml pull
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --no-build
 #
-# Voraussetzung: das Image `${BACKEND_IMAGE:-ghcr.io/jbrunner/fieldworksdiary:staging}`
+# Voraussetzung: das Image `${BACKEND_IMAGE:-ghcr.io/jobrunner/fieldworksdiary:staging}`
 # liegt in der Registry — CI baut + pusht es nach jedem Push auf den
 # staging-Branch.
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jbrunner/fieldworksdiary:staging}
+    image: ${BACKEND_IMAGE:-ghcr.io/jobrunner/fieldworksdiary:staging}
     container_name: fieldworksdiary-backend-staging
     ports: !override
       - "8091:8090"

@@ -1,7 +1,10 @@
 # ADR 0003: Drei-Stage-System mit getrennten Bundle-IDs und Co-Hosting
 
 **Datum:** 2026-05-16
-**Status:** akzeptiert
+**Status:** teilweise abgelöst (2026-11-10): die automatischen
+Deploy-Workflows (SSH-Deploy, TestFlight-Upload) sind entfernt; CI baut
+nur noch das Image (`docker-release.yml`), deployt wird manuell. Siehe
+`docs/ENVIRONMENTS.md`.
 **Kontext:** Pre-App-Store-Submit, Aufbau Staging-Pipeline
 
 ## Entscheidung

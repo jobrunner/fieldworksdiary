@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26.6-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26.6-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum* ./
 RUN go mod download
@@ -19,8 +19,10 @@ COPY . .
 # reiner Version-Bump trotzdem ein Sekunden- statt Minuten-Rebuild ist.
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG TARGETOS
+ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X go.mett.io/fwd-backend/internal/version.Version=${VERSION} -X go.mett.io/fwd-backend/internal/version.Commit=${COMMIT}" -o /out/fieldworksdiary .
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X go.mett.io/fwd-backend/internal/version.Version=${VERSION} -X go.mett.io/fwd-backend/internal/version.Commit=${COMMIT}" -o /out/fieldworksdiary .
 
 FROM alpine:3.24.1
 RUN apk add --no-cache ca-certificates tzdata

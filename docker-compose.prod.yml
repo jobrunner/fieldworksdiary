@@ -8,7 +8,7 @@
 
 services:
   backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jbrunner/fieldworksdiary:prod}
+    image: ${BACKEND_IMAGE:-ghcr.io/jobrunner/fieldworksdiary:prod}
     container_name: fieldworksdiary-backend-prod
     ports: !override
       - "8090:8090"
