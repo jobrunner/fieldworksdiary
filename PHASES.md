@@ -1135,3 +1135,17 @@ Demo Z (Branch-Backend + `https://ortus.fieldworksdiary.org`, 2026-11-10):
 - Features ohne `timezones-2026a`; DE-Sample MTB 6226/3, 247 m.
 
 Nacharbeiten (nicht in Phase Z): Konflikthinweis wegklickbar machen, wenn „X (2)“ bleiben soll; Exkursions-Astro/Anzeige noch fest Europe/Berlin; Tap-Target-Token; Unique-Index auf `client_uuid` (Altthema).
+
+## Phase E – Sofort-Anlage, Hintergrund-Ortung, Feature-Flags
+
+**Status: in progress** (gestartet 2026-11-10, Branch `feat/sofort-anlage`)
+
+- Spec: `docs/superpowers/specs/2026-11-10-sofort-anlage-design.md`
+- Plan: `docs/superpowers/plans/2026-11-10-sofort-anlage.md`
+
+- [x] Task 0: Phasenstatus
+- [ ] Task 1: Sample löschen über die Outbox
+- [ ] Task 2: PendingFixService und Ortungsberechtigung „Immer“
+- [ ] Task 3: Sofort-Anlage und Editor im Navigation-Stack
+- [ ] Task 4: Feature-Flags mit Flipt
+- [ ] Task 5: Phase E abschließen
