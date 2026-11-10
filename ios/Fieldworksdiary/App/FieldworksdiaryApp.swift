@@ -12,6 +12,7 @@ struct FieldworksdiaryApp: App {
                 .environmentObject(container.config)
                 .environmentObject(container.auth)
                 .environmentObject(container.sync)
+                .environmentObject(container.featureFlags)
                 .task { await container.bootstrap() }
         }
         .onChange(of: scenePhase) { _, newPhase in

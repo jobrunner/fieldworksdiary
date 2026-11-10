@@ -13,6 +13,7 @@ struct SettingsView: View {
 struct SettingsScreen: View {
     @EnvironmentObject var config: AppConfig
     @EnvironmentObject var auth: AuthSession
+    @EnvironmentObject var featureFlags: FeatureFlags
     @State private var draft: String = ""
     @State private var savedHint: Bool = false
     @State private var ortusDraft: String = ""
@@ -38,6 +39,9 @@ struct SettingsScreen: View {
             endpointSection
             ortusEndpointSection
             aboutSection
+            #if DEBUG
+                featureFlagsSection
+            #endif
         }
         .navigationTitle("Einstellungen")
         .toolbar {
@@ -298,6 +302,29 @@ struct SettingsScreen: View {
             Text("Rechtliches")
         }
     }
+
+    #if DEBUG
+        /// Debug only: loaded flag keys with their evaluated value.
+        private var featureFlagsSection: some View {
+            Section {
+                let flags = featureFlags.debugSnapshot()
+                if flags.isEmpty {
+                    Text("Keine Flags geladen")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(flags, id: \.key) { flag in
+                        LabeledContent(flag.key) {
+                            Label(flag.enabled ? "An" : "Aus",
+                                  systemImage: flag.enabled ? "checkmark.circle" : "xmark.circle")
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            } header: {
+                Text("Feature-Flags")
+            }
+        }
+    #endif
 
     private func runExport() async {
         exportState = .downloading

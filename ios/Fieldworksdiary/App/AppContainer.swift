@@ -29,6 +29,8 @@ final class AppContainer: ObservableObject {
     let sync: SyncRunner
     /// Fills in coordinates of instantly created samples (Phase E).
     let pendingFixes: PendingFixService
+    /// Feature flags from Flipt (Phase E); `false` until loaded.
+    let featureFlags: FeatureFlags
 
     /// Tracks which user id the local stores currently hold data for,
     /// so we can detect "different user just signed in" vs. "session
@@ -128,6 +130,7 @@ final class AppContainer: ObservableObject {
             }
         )
 
+        self.featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
         self.config = config
         self.auth = auth
         self.database = database
@@ -166,6 +169,7 @@ final class AppContainer: ObservableObject {
     /// container — it's our hook for "user changed → wipe + re-hydrate".
     func bootstrap() async {
         MetricsReporter.shared.register()
+        featureFlags.start(url: config.featureFlagsURL)
         startObservingAuth()
         startObservingUserSettings()
         await auth.restoreOnLaunch()

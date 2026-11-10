@@ -54,6 +54,10 @@ final class AppConfig: ObservableObject {
         }
     }
 
+    /// Base URL of the Flipt server for feature flags (Phase E). An
+    /// empty value disables flags: every flag then reads `false`.
+    let featureFlagsURL = "https://ff.fieldworksdiary.org"
+
     static let defaultOrtusEndpointURL = "https://ortus.fieldworksdiary.org"
 
     /// Sample-ID template (Phase Z). Mirrored from the users record
