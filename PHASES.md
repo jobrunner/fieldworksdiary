@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase O (Ortus-Ortsdaten am Sample) in progress (gestartet 2026-11-09, Branch `feat/ortus-sample-ort`) — O1 (Backend) done 2026-11-09, O2 (iOS) implementiert – wartet auf Test durch Jo, O3 (Backfill/Aufräumen) offen; parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1138,14 +1138,20 @@ Nacharbeiten (nicht in Phase Z): Konflikthinweis wegklickbar machen, wenn „X (
 
 ## Phase E – Sofort-Anlage, Hintergrund-Ortung, Feature-Flags
 
-**Status: in progress** (gestartet 2026-11-10, Branch `feat/sofort-anlage`)
+**Status: implementiert, wartet auf Test durch Jo** (gestartet 2026-11-10, Branch `feat/sofort-anlage`, nicht gemerged)
 
 - Spec: `docs/superpowers/specs/2026-11-10-sofort-anlage-design.md`
 - Plan: `docs/superpowers/plans/2026-11-10-sofort-anlage.md`
 
 - [x] Task 0: Phasenstatus
-- [ ] Task 1: Sample löschen über die Outbox
-- [ ] Task 2: PendingFixService und Ortungsberechtigung „Immer“
-- [ ] Task 3: Sofort-Anlage und Editor im Navigation-Stack
-- [ ] Task 4: Feature-Flags mit Flipt
-- [ ] Task 5: Phase E abschließen
+- [x] Task 1: Sample löschen über die Outbox
+- [x] Task 2: PendingFixService und Ortungsberechtigung „Immer“
+- [x] Task 3: Sofort-Anlage und Editor im Navigation-Stack
+- [x] Task 4: Feature-Flags mit Flipt
+- [ ] Task 5: Phase E abschließen — Xcode-Suite 313/313 grün, Typecheck leer, Abschluss-Review + Korrekturrunde durch; offen: Test durch Jo im Simulator/Gerät
+
+Korrekturrunde nach dem Abschluss-Review: „Probe nachtragen“ als Home-Eintrag (manueller Modus war mit dem Sheet unerreichbar); Hintergrund-Fix nur für auf diesem Gerät angelegte Samples (sonst Fix auf fremde, per Sync hereingekommene Samples); Kartenwahl fusioniert auch offline; Fundort eines gelöschten neuen Samples wird mitgelöscht (nur wenn eigens dafür angelegt und sonst unbenutzt, GRDB v17 `locality_origins`); eine gemeinsame Genauigkeitsschwelle; Wisch-Geste zurück im Editor explizit abgeschaltet.
+
+Testhinweise für Jo: beide Berechtigungsdialoge („Beim Verwenden“, danach „Immer“); Wisch-Geste zurück unter iOS 26 auf dem Gerät; App im Flugmodus starten (Feature-Flags → false, kein Hänger); neues Sample mit leerer ID → Nachfrage, „Sample löschen“ entfernt es auch auf dem Server.
+
+Nacharbeiten (nicht in Phase E): später Fix während laufendem Create überspringt `awaitEnrichment`; HomeView hält den Resolver einmalig; beide Berechtigungsdialoge können beim Tippen erscheinen; verwaister Fundort, wenn das Ursprungs-Sample vor einem Mitnutzer gelöscht wird; „Immer“ ohne sichtbare Funktion ist ein App-Store-Risiko.
