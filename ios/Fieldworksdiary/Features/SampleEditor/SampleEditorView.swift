@@ -25,10 +25,11 @@ import UIKit
 ///
 /// Saving (Phase E): no save button for a saved sample. The custom
 /// back button saves and validates the id; going to the background
-/// saves without dialogs. The navigation bar's back button is hidden,
-/// which also disables the interactive swipe-back, so every way out
-/// goes through `finishEditing()` (`onDisappear` only saves as a
-/// fallback, e.g. pop-to-root).
+/// saves without dialogs. The navigation bar's back button is hidden
+/// and `interactivePopDisabled()` switches off the swipe-back gestures
+/// (hiding the button alone doesn't reliably do that on iOS 26), so
+/// every way out goes through `finishEditing()`. `onDisappear` stays
+/// as the last-resort save (pop-to-root, an unknown gesture).
 struct SampleEditorView: View {
     /// nil ⇒ unsaved create path (manual „Nachträglich“ flow, GPS
     /// starts, „Probe anlegen“ inserts the row).
@@ -38,6 +39,8 @@ struct SampleEditorView: View {
     var isNew: Bool = false
     /// Running number of its suggested id (see `InstantSampleCreator`).
     var suggestedRunning: Int?
+    /// Mode of the unsaved create path; `.later` for „Probe nachtragen“.
+    var initialMode: SampleEditorViewModel.Mode = .field
 
     @EnvironmentObject var container: AppContainer
 
@@ -54,7 +57,8 @@ struct SampleEditorView: View {
             sync: container.sync,
             locationResolver: container.makeLocationResolver(),
             placemarkStore: container.placemarksStore,
-            pendingFixes: container.pendingFixes
+            pendingFixes: container.pendingFixes,
+            initialMode: initialMode
         )
     }
 }
@@ -97,7 +101,8 @@ private struct SampleEditorContent: View {
         sync: SyncRunner,
         locationResolver: SampleLocationResolver,
         placemarkStore: LocalPlacemarkStore,
-        pendingFixes: PendingFixService
+        pendingFixes: PendingFixService,
+        initialMode: SampleEditorViewModel.Mode
     ) {
         _viewModel = StateObject(wrappedValue: SampleEditorViewModel(
             sampleID: sampleID,
@@ -111,7 +116,8 @@ private struct SampleEditorContent: View {
             sync: sync,
             locationResolver: locationResolver,
             placemarkStore: placemarkStore,
-            pendingFixes: pendingFixes
+            pendingFixes: pendingFixes,
+            initialMode: initialMode
         ))
     }
 
@@ -172,10 +178,10 @@ private struct SampleEditorContent: View {
         .background(Color(.systemBackground))
         .navigationTitle(viewModel.isExistingSample && !viewModel.isNew ? "Probe" : "Neue Probe")
         .navigationBarTitleDisplayMode(.inline)
-        // Our own back button saves first. Hiding the system one also
-        // disables the interactive swipe-back, so it can't bypass the
-        // id validation.
+        // Our own back button saves first. The swipe-back is switched
+        // off explicitly so it can't bypass the id validation.
         .navigationBarBackButtonHidden(true)
+        .interactivePopDisabled()
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button(action: goBack) {
@@ -229,6 +235,8 @@ private struct SampleEditorContent: View {
             if phase == .background { viewModel.saveEdits() }
         }
         .onDisappear {
+            // Last resort: every regular way out went through
+            // `finishEditing()` already.
             if !viewModel.finished { viewModel.saveEdits() }
         }
         .refreshable { viewModel.refreshDerivedFields() }
