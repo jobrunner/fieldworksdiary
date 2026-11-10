@@ -217,6 +217,22 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(updates.map(\.entityId), [sample.id], "missed edit goes out as update")
     }
 
+    func testCreate_RowDeletedDuringPost_QueuesServerDelete() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-1", code: sample.sampleID)
+        push.duringCreate = { [store, mutations] in
+            guard let store, let mutations else { return }
+            try? store.deleteSample(id: sample.id, mutationsStore: mutations)
+        }
+        await runUntilQuiescent(makeRunner(push: push))
+
+        XCTAssertNil(try store.fetchById(sample.id), "no resurrection")
+        let deletes = try mutations.fetch(entityType: .sample).filter { $0.op == .delete }
+        XCTAssertEqual(deletes.map(\.entityId), ["backend-1"])
+        XCTAssertTrue(try mutations.fetch(entityType: .sample).filter { $0.op == .create }.isEmpty)
+    }
+
     func testCreate_FeaturesPutFails_QueuesFeatureUpdate() async throws {
         let sample = try seedResolvedSample()
         try placemarks.setBackend(localID: XCTUnwrap(sample.placemark), backendID: "pmbackend00001", owner: nil)

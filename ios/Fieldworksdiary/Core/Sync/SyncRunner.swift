@@ -546,9 +546,13 @@ final class SyncRunner: ObservableObject {
             guard var fresh = try store.fetchById(localId) else {
                 // Deleted locally while the POST was in flight: the
                 // server now has a record nobody owns — delete it.
-                _ = try? mutationsStore.enqueue(
-                    entityType: .sample, entityId: created.id, op: .delete, payload: Data()
-                )
+                do {
+                    _ = try mutationsStore.enqueue(
+                        entityType: .sample, entityId: created.id, op: .delete, payload: Data()
+                    )
+                } catch {
+                    Log.sync.error("queueing delete for orphaned create failed: \(error.localizedDescription)")
+                }
                 try? mutationsStore.dequeue(mutation.id)
                 return
             }
@@ -751,6 +755,14 @@ final class SyncRunner: ObservableObject {
                                         error: "Versionskonflikt – wird erneut versucht.")
                 try? mutationsStore.recordFailure(mutation.id, error: "409 conflict")
             }
+        } catch SampleClientError.http(status: 404, _) {
+            // The server record is gone (deleted elsewhere): the edit
+            // is moot. Drop it; the local row is not touched here (a
+            // missing row cannot be resurrected by `store.update`,
+            // GRDB throws record-not-found).
+            Log.sync.warning("sample update dropped: server record not found")
+            try? mutationsStore.dequeue(mutation.id)
+            absorbed.forEach { try? mutationsStore.dequeue($0) }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             try? store.setSyncState(id: localID, status: .failed, error: message)

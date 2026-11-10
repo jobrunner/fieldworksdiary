@@ -426,9 +426,12 @@ final class LocalSampleStore {
     /// - Pushed: all queued mutations are dropped and a
     ///   `.sample/.delete` carrying the *backend* id is queued; the
     ///   SyncRunner deletes it on the server (404 = done).
-    func deleteSample(id: String, mutationsStore: PendingMutationsStore) throws {
-        let backendID: String? = try database.writer.write { db in
-            guard let sample = try LocalSample.fetchOne(db, key: id) else { return nil }
+    func deleteSample(id: String, mutationsStore _: PendingMutationsStore) throws {
+        // Local delete and the server-delete mutation share one
+        // transaction (outbox and samples use the same writer): either
+        // both happen or neither.
+        try database.writer.write { db in
+            guard let sample = try LocalSample.fetchOne(db, key: id) else { return }
             let photoIDs = try String.fetchAll(
                 db, sql: "SELECT id FROM local_photos WHERE sample_id = ?", arguments: [id]
             )
@@ -445,12 +448,17 @@ final class LocalSampleStore {
                 arguments: [id]
             )
             _ = try LocalSample.deleteOne(db, key: id)
-            return sample.backendId
+            if let backendID = sample.backendId, !backendID.isEmpty {
+                // entityId of a delete is the *backend* id: the local
+                // row is gone by the time the SyncRunner runs it.
+                var mutation = PendingMutation(
+                    id: UUID().uuidString, entityType: .sample, entityId: backendID, op: .delete,
+                    payloadJson: Data(), createdAt: Date(), attempts: 0, lastAttemptAt: nil, lastError: nil
+                )
+                try mutation.insert(db)
+            }
         }
         PhotoStorage.deleteSampleDir(sampleID: id)
-
-        guard let backendID, !backendID.isEmpty else { return }
-        _ = try mutationsStore.enqueue(entityType: .sample, entityId: backendID, op: .delete, payload: Data())
     }
 
     // MARK: - Phase O2 place edits (Task 17)
