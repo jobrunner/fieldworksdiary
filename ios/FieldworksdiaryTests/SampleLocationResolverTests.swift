@@ -420,4 +420,8 @@ private final class FakeOrtus: OrtusQuerying, @unchecked Sendable {
         queries.append((lat, lon))
         return try result.get()
     }
+
+    func query(input: CoordinateInput) async throws -> OrtusResponse {
+        try result.get()
+    }
 }
