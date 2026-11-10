@@ -75,7 +75,8 @@ func writeOutput(path string, data []byte, force bool, stderr io.Writer) error {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	// The table is a committed repo file and must stay world-readable.
+	return os.WriteFile(path, data, 0o644) //nolint:gosec // G306: committed, non-secret repo file
 }
 
 func main() {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
+
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 )

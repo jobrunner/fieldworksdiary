@@ -297,9 +297,10 @@ func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
 	loc := loadLocation(rec.GetString("timezone"))
 	day, err := time.ParseInLocation("2006-01-02", newDay, loc)
 	if err != nil {
-		// Not a valid day: keep the stored one.
+		// Not a valid day: keep the stored one. A malformed client value
+		// is not an error for the update.
 		rec.Set("collecting_day", oldDay)
-		return nil
+		return nil //nolint:nilerr // invalid day is silently corrected, not rejected
 	}
 	begin := rec.GetDateTime("begin_date").Time()
 	if begin.IsZero() {

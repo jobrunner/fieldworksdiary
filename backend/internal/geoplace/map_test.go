@@ -242,7 +242,7 @@ func TestDedupHash_StableAndCaseInsensitive(t *testing.T) {
 	if a.DedupHash() != b.DedupHash() || a.DedupHash() != c.DedupHash() {
 		t.Error("hash should ignore case, whitespace and normalization form")
 	}
-	if a.DedupHash() != a.DedupHash() || len(a.DedupHash()) != 64 {
+	if h := a.DedupHash(); h != a.DedupHash() || len(h) != 64 {
 		t.Error("hash unstable or wrong length")
 	}
 	d := Place{CountryISO: "DE", Admin: map[adminlabels.Tier]AdminValue{"admin_county": {Name: "Würzburg"}}}

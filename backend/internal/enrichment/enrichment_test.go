@@ -189,7 +189,8 @@ func newFakeOrtus(t *testing.T, fixture string) *fakeOrtus {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		raw, err := os.ReadFile(filepath.Join(ortusTestdata, f.fixture.Load().(string)))
+		name, _ := f.fixture.Load().(string)
+		raw, err := os.ReadFile(filepath.Join(ortusTestdata, name))
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return

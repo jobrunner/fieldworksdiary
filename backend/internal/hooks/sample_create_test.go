@@ -82,15 +82,6 @@ func uniqueSuffix(t *testing.T) string {
 // processSample — ID bleibt wie gesendet, Sammeltag, Fieldtrip
 // ────────────────────────────────────────────────────────────────────
 
-func mustTZ(t *testing.T, name string) *time.Location {
-	t.Helper()
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		t.Fatalf("tz %s: %v", name, err)
-	}
-	return loc
-}
-
 // createSample verarbeitet und speichert ein Sample.
 func createSample(t *testing.T, app *tests.TestApp, ownerID string, set map[string]any) *models.Record {
 	t.Helper()
