@@ -59,6 +59,25 @@ final class SampleEditorFusionTests: XCTestCase {
         )
     }
 
+    /// „Probe nachtragen“ on the home screen opens the unsaved create
+    /// path straight in `.later`; GPS must not start there.
+    func testInitialModeLater_OpensNachtraeglichWithoutGPS() {
+        let vm = SampleEditorViewModel(
+            sampleID: nil,
+            store: samples,
+            photoStore: photos,
+            fieldtripStore: fieldtrips,
+            localitiesStore: localities,
+            mutationsStore: mutations,
+            sync: sync,
+            initialMode: .later
+        )
+        XCTAssertEqual(vm.mode, .later)
+        vm.startGPS()
+        XCTAssertEqual(vm.mode, .later)
+        XCTAssertFalse(vm.isExistingSample)
+    }
+
     func testFieldModeMiss_CreatesNewLocalityAndEnqueuesMutation() async throws {
         let vm = makeVM()
         vm.mode = .field

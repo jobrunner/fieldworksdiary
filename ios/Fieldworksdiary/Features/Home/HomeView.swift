@@ -4,8 +4,10 @@ import SwiftUI
 /// previous 5-tab bar.
 ///
 /// „Sample anlegen“ creates the sample instantly (Phase E) and pushes
-/// its editor onto the stack. Other destinations push via
-/// `NavigationLink` and reuse the existing list screens.
+/// its editor onto the stack. „Probe nachtragen“ opens the unsaved
+/// create path in „Nachträglich“ mode (coordinate from the map, saved
+/// with „Probe anlegen“). Other destinations push via `NavigationLink`
+/// and reuse the existing list screens.
 struct HomeView: View {
     @EnvironmentObject var container: AppContainer
     @EnvironmentObject var auth: AuthSession
@@ -36,6 +38,11 @@ private struct HomeContent: View {
     @StateObject private var viewModel: HomeViewModel
 
     private let sync: SyncRunner
+
+    /// Divider inset that lines up with the row titles: row padding +
+    /// icon + icon spacing; grows with the icon under Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var dividerInset: CGFloat =
+        AppSpacing.lg + HomeMenuRow.baseIconSize + AppSpacing.lg
 
     init(
         auth: AuthSession,
@@ -108,6 +115,10 @@ private struct HomeContent: View {
                 title: "Letzte Probe",
                 destination: { recentSampleDestination }) // last sample shortcut
 
+            row(icon: "clock.arrow.circlepath",
+                title: "Probe nachtragen",
+                destination: { SampleEditorView(sampleID: nil, initialMode: .later) })
+
             row(icon: "photo.on.rectangle.angled",
                 title: "Proben",
                 count: viewModel.sampleCount,
@@ -157,7 +168,7 @@ private struct HomeContent: View {
                 title: "Einstellungen",
                 destination: { SettingsScreen() })
         }
-        .padding(.top, 8)
+        .padding(.top, AppSpacing.sm)
     }
 
     @EnvironmentObject private var container: AppContainer
@@ -173,11 +184,11 @@ private struct HomeContent: View {
             destination()
         } label: {
             HomeMenuRow(title: title, systemImage: icon, count: count)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, AppSpacing.lg)
         }
         .buttonStyle(.plain)
         Divider()
-            .padding(.leading, 60)
+            .padding(.leading, dividerInset)
     }
 
     /// Recent-sample row jumps either to the sample's detail (when

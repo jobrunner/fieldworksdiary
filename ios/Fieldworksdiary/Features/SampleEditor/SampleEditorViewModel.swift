@@ -163,6 +163,7 @@ final class SampleEditorViewModel: ObservableObject {
         locationResolver: SampleLocationResolver? = nil,
         placemarkStore: LocalPlacemarkStore? = nil,
         pendingFixes: PendingFixService? = nil,
+        initialMode: Mode = .field,
         now: @escaping () -> Date = Date.init
     ) {
         self.store = store
@@ -190,6 +191,9 @@ final class SampleEditorViewModel: ObservableObject {
             // user starts with a sensible default instead of an empty
             // text field. They can still edit if they want.
             code = store.peekNextCode()
+            // „Probe nachtragen“ on the home screen opens the create
+            // path straight in `.later` (no GPS start).
+            mode = initialMode
         }
     }
 

@@ -15,7 +15,12 @@ struct HomeMenuRow: View {
     let systemImage: String
     var count: Int? = nil
 
-    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 28
+    /// Icon edge at the default text size; scales with Dynamic Type.
+    static let baseIconSize: CGFloat = 28
+    /// Apple HIG minimum tap target height.
+    private static let minTapHeight: CGFloat = 44
+
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = HomeMenuRow.baseIconSize
 
     var body: some View {
         HStack(spacing: AppSpacing.lg) {
@@ -35,6 +40,7 @@ struct HomeMenuRow: View {
             }
         }
         .padding(.vertical, AppSpacing.xs)
+        .frame(minHeight: Self.minTapHeight)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(count.map { "\($0) Einträge" } ?? "")
