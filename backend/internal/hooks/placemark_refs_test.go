@@ -21,7 +21,6 @@ func makePlacemarkRow(t *testing.T, app *tests.TestApp, owner, source, hash stri
 		t.Fatalf("placemarks collection: %v", err)
 	}
 	rec := models.NewRecord(coll)
-	rec.Set("country", "DE")
 	rec.Set("country_iso", "DE")
 	rec.Set("geocoding_source", source)
 	rec.Set("dedup_hash", hash)

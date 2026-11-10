@@ -12,16 +12,6 @@ import GRDB
 /// schema) but is exposed as `admin: [AdminTier: AdminValue]`.
 struct LocalPlacemark: FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
     var id: String
-    /// Legacy country column (NOT NULL). Mirrors `countryISO` for
-    /// rows created from Ortus, like the backend's `ApplyPlace`.
-    var country: String
-    var administrativeArea: String?
-    var subAdministrativeArea: String?
-    var locality: String?
-    var subLocality: String?
-    var postalCode: String?
-    var name: String?
-    var thoroughfare: String?
     /// `manual` or `backend_service` — see `Placemark.GeocodingSource`.
     var geocodingSource: String
     var geocodingServiceVersion: String?
@@ -53,14 +43,6 @@ struct LocalPlacemark: FetchableRecord, MutablePersistableRecord, Identifiable, 
 
     enum Columns {
         static let id = "id"
-        static let country = "country"
-        static let administrativeArea = "administrative_area"
-        static let subAdministrativeArea = "sub_administrative_area"
-        static let locality = "locality"
-        static let subLocality = "sub_locality"
-        static let postalCode = "postal_code"
-        static let name = "name"
-        static let thoroughfare = "thoroughfare"
         static let geocodingSource = "geocoding_source"
         static let geocodingServiceVersion = "geocoding_service_version"
         static let geocodingDate = "geocoding_date"
@@ -78,14 +60,6 @@ struct LocalPlacemark: FetchableRecord, MutablePersistableRecord, Identifiable, 
 extension LocalPlacemark {
     init(row: Row) throws {
         id = row[Columns.id]
-        country = row[Columns.country]
-        administrativeArea = row[Columns.administrativeArea]
-        subAdministrativeArea = row[Columns.subAdministrativeArea]
-        locality = row[Columns.locality]
-        subLocality = row[Columns.subLocality]
-        postalCode = row[Columns.postalCode]
-        name = row[Columns.name]
-        thoroughfare = row[Columns.thoroughfare]
         geocodingSource = row[Columns.geocodingSource]
         geocodingServiceVersion = row[Columns.geocodingServiceVersion]
         geocodingDate = row[Columns.geocodingDate]
@@ -114,14 +88,6 @@ extension LocalPlacemark {
 
     func encode(to container: inout PersistenceContainer) throws {
         container[Columns.id] = id
-        container[Columns.country] = country
-        container[Columns.administrativeArea] = administrativeArea
-        container[Columns.subAdministrativeArea] = subAdministrativeArea
-        container[Columns.locality] = locality
-        container[Columns.subLocality] = subLocality
-        container[Columns.postalCode] = postalCode
-        container[Columns.name] = name
-        container[Columns.thoroughfare] = thoroughfare
         container[Columns.geocodingSource] = geocodingSource
         container[Columns.geocodingServiceVersion] = geocodingServiceVersion
         container[Columns.geocodingDate] = geocodingDate
@@ -149,14 +115,6 @@ extension LocalPlacemark {
     /// the Ortus place columns and the owner.
     init(from remote: Placemark) {
         id = remote.id
-        country = remote.country
-        administrativeArea = remote.administrativeArea
-        subAdministrativeArea = remote.subAdministrativeArea
-        locality = remote.locality
-        subLocality = remote.subLocality
-        postalCode = remote.postalCode
-        name = remote.name
-        thoroughfare = remote.thoroughfare
         geocodingSource = remote.geocodingSource.rawValue
         geocodingServiceVersion = remote.geocodingServiceVersion
         geocodingDate = remote.geocodingDate
@@ -171,11 +129,9 @@ extension LocalPlacemark {
         owner = remote.owner
     }
 
-    /// New local row for an Ortus place. `country` mirrors the ISO
-    /// code (legacy NOT NULL column), as the backend does.
+    /// New local row for an Ortus place.
     init(id: String, place: Place, source: Placemark.GeocodingSource, now: Date = Date()) {
         self.id = id
-        country = place.countryISO
         geocodingSource = source.rawValue
         geocodingDate = now
         dedupHash = place.dedupHash

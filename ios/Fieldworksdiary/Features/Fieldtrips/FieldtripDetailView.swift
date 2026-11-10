@@ -383,25 +383,6 @@ struct FieldtripDetailView: View {
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            if let admin = current.adminUnits, let locality = admin.locality {
-                Text(locality)
-                    .font(.body.weight(.medium))
-                if let area = admin.adminArea, let country = admin.country {
-                    Text("\(country), \(area)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if let mtb = current.mtb, let sheetNumber = mtb.sheetNumber, let sheetName = mtb.sheetName {
-                HStack(spacing: 6) {
-                    Image(systemName: "square.grid.2x2")
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    Text("MTB \(sheetNumber) — \(sheetName)")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
             if let lat = current.centroidLat, let lon = current.centroidLon {
                 Text(String(format: "Centroid %.5f, %.5f", lat, lon))
                     .font(.footnote.monospacedDigit())

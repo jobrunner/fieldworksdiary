@@ -69,6 +69,7 @@ final class Database {
         migrator.registerMigration("v12_localities_needs_human_review", migrate: migrateV12)
         migrator.registerMigration("v13_ortus_location", migrate: migrateV13)
         migrator.registerMigration("v14_timezone_elevation", migrate: migrateV14)
+        migrator.registerMigration("v15_drop_legacy_location", migrate: migrateV15)
         return migrator
     }
 
@@ -455,5 +456,46 @@ final class Database {
             t.drop(column: "elevation_dem")
             t.drop(column: "elevation_dem_accuracy")
         }
+    }
+
+    /// Phase O3: drops the legacy location columns, mirroring the
+    /// PocketBase migration 1700000027, plus the dead sample-code
+    /// leftovers of Phase Z (`local_sequences`, `backend_code`).
+    ///
+    /// - `local_samples`: `admin_units_locality`, `admin_units_country`,
+    ///   `backend_code`, `altitude` (replaced by `elevation` in v13)
+    /// - `local_fieldtrips`: `admin_units_json`, `mtb_json`, `country`,
+    ///   `admin_area` (and the index on `country`)
+    /// - `local_placemarks`: `country`, `administrative_area`,
+    ///   `sub_administrative_area`, `locality`, `sub_locality`,
+    ///   `postal_code`, `name`, `thoroughfare`
+    /// - table `local_sequences`
+    ///
+    /// Data of the new columns (`country_iso`, `admin_*`, `mtb_*`,
+    /// `elevation`) is untouched.
+    private static func migrateV15(_ db: GRDB.Database) throws {
+        // Indexes on dropped columns must go first (SQLite refuses to
+        // drop an indexed column). The index kept its pre-rename name.
+        try db.execute(sql: "DROP INDEX IF EXISTS index_local_excursions_on_country")
+        try db.execute(sql: "DROP INDEX IF EXISTS index_local_fieldtrips_on_country")
+        try db.alter(table: "local_samples") { t in
+            for column in ["admin_units_locality", "admin_units_country", "backend_code", "altitude"] {
+                t.drop(column: column)
+            }
+        }
+        try db.alter(table: "local_fieldtrips") { t in
+            for column in ["admin_units_json", "mtb_json", "country", "admin_area"] {
+                t.drop(column: column)
+            }
+        }
+        try db.alter(table: "local_placemarks") { t in
+            for column in [
+                "country", "administrative_area", "sub_administrative_area", "locality",
+                "sub_locality", "postal_code", "name", "thoroughfare",
+            ] {
+                t.drop(column: column)
+            }
+        }
+        try db.drop(table: "local_sequences")
     }
 }

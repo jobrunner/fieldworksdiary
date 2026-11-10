@@ -43,11 +43,7 @@ struct PlacemarkEditSheet: View {
         self.existing = existing
         self.onSaved = onSaved
         self.onCleared = onCleared
-        // Legacy rows (pre-Ortus) have no country_iso; start with their
-        // ISO country so the user only fills in the levels.
-        let place = existing.map { pm in
-            pm.countryISO.isEmpty ? Place(countryISO: pm.country.count == 2 ? pm.country.uppercased() : "") : pm.place
-        }
+        let place = existing?.place
         _form = State(initialValue: PlaceForm(place: place?.countryISO.isEmpty == false ? place : nil))
     }
 

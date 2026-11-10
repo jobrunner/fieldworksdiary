@@ -14,11 +14,9 @@ import (
 )
 
 // ApplyPlace writes the place columns onto a placemark record. Tiers
-// missing from p.Admin are cleared. The legacy required column `country`
-// is mirrored from CountryISO until the legacy columns are dropped.
+// missing from p.Admin are cleared.
 func ApplyPlace(rec *models.Record, p Place) {
 	rec.Set("country_iso", p.CountryISO)
-	rec.Set("country", p.CountryISO)
 	for _, t := range adminlabels.Tiers {
 		v := p.Admin[t]
 		s := string(t)

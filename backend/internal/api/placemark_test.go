@@ -197,8 +197,8 @@ func TestClearManualPlacemark_DetachesPlacemark(t *testing.T) {
 	// Seed an attached placemark first.
 	pmColl, _ := app.Dao().FindCollectionByNameOrId("placemarks")
 	pm := models.NewRecord(pmColl)
-	pm.Set("country", "DE")
-	pm.Set("locality", "Würzburg")
+	pm.Set("country_iso", "DE")
+	pm.Set("admin_municipality", "Würzburg")
 	pm.Set("geocoding_source", "manual")
 	pm.Set("dedup_hash", "deadbeef0000000000000000000000000000000000000000000000000000beef")
 	if err := app.Dao().SaveRecord(pm); err != nil {

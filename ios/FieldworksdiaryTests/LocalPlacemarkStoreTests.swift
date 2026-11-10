@@ -40,7 +40,6 @@ final class LocalPlacemarkStoreTests: XCTestCase {
         XCTAssertEqual(created.dedupHash, place.dedupHash)
         XCTAssertEqual(created.geocodingSource, "backend_service")
         XCTAssertEqual(created.countryISO, "DE")
-        XCTAssertEqual(created.country, "DE", "legacy country mirrors country_iso")
         XCTAssertNil(created.backendId)
         XCTAssertNotNil(created.geocodingDate)
 
@@ -85,7 +84,6 @@ final class LocalPlacemarkStoreTests: XCTestCase {
             for id in ["older", "newer"] {
                 var row = LocalPlacemark(
                     id: id,
-                    country: "DE",
                     geocodingSource: "backend_service",
                     dedupHash: place.dedupHash,
                     backendUpdatedAt: Date()

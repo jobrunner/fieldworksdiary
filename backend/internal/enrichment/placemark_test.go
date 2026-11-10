@@ -67,8 +67,8 @@ func TestPlacemarkEnricher_LookupOrCreateOnFirstRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("placemark vanished: %v", err)
 	}
-	if pm.GetString("country") != "DE" {
-		t.Errorf("country = %q, want DE", pm.GetString("country"))
+	if pm.GetString("country_iso") != "DE" {
+		t.Errorf("country_iso = %q, want DE", pm.GetString("country_iso"))
 	}
 	if got := pm.GetString("admin_municipality"); got != "Ochsenfurt" {
 		t.Errorf("admin_municipality = %q, want Ochsenfurt", got)
@@ -126,8 +126,8 @@ func TestPlacemarkEnricher_RespectsManualOverride(t *testing.T) {
 
 	pmColl, _ := app.Dao().FindCollectionByNameOrId("placemarks")
 	manual := models.NewRecord(pmColl)
-	manual.Set("country", "FR")
-	manual.Set("locality", "Paris")
+	manual.Set("country_iso", "FR")
+	manual.Set("admin_municipality", "Paris")
 	manual.Set("geocoding_source", "manual")
 	manual.Set("dedup_hash", "manual-test-hash")
 	if err := app.Dao().SaveRecord(manual); err != nil {

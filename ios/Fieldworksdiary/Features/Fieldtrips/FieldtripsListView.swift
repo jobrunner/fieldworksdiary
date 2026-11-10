@@ -163,13 +163,6 @@ struct FieldtripsListScreen: View {
             HStack(spacing: 8) {
                 Text(fieldtrip.collectingDay)
                     .font(.footnote.monospacedDigit())
-                if let locality = fieldtrip.adminUnits?.locality, !locality.isEmpty {
-                    Text("·")
-                    Text(locality)
-                }
-                if let mtb = fieldtrip.mtb?.sheetNumber, !mtb.isEmpty {
-                    Text("· MTB \(mtb)")
-                }
             }
             .font(.footnote)
             .foregroundStyle(.secondary)

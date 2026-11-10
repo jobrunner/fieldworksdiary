@@ -19,7 +19,7 @@ func TestDropSamplesAdminUnits_ColumnRemoved(t *testing.T) {
 // fieldtrips keeps its admin_units snapshot (NEW-2) — make sure R7.4
 // didn't touch the wrong collection.
 func TestDropSamplesAdminUnits_FieldtripUntouched(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 
 	fieldtrips, err := app.Dao().FindCollectionByNameOrId("fieldtrips")
 	if err != nil {

@@ -48,7 +48,7 @@ func TestPlacemarksOrtusMigration_Schema(t *testing.T) {
 }
 
 func TestPlacemarksMigration_RenamesBackendService(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 	// Revert, seed a legacy row, re-apply the up-step.
 	if err := placemarksOrtusDown(dao.DB()); err != nil {
@@ -73,7 +73,7 @@ func TestPlacemarksMigration_RenamesBackendService(t *testing.T) {
 }
 
 func TestPlacemarksOrtusMigration_DownRestores(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 	if err := placemarksOrtusDown(dao.DB()); err != nil {
 		t.Fatalf("down: %v", err)

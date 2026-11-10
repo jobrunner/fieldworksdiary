@@ -235,7 +235,7 @@ func makePlacemark(t *testing.T, app *tests.TestApp, country, state, municipalit
 		t.Fatalf("placemarks collection: %v", err)
 	}
 	rec := models.NewRecord(coll)
-	rec.Set("country", country)
+	rec.Set("country_iso", country)
 	rec.Set("admin_country", country)
 	rec.Set("admin_state", state)
 	rec.Set("admin_municipality", municipality)

@@ -63,8 +63,8 @@ func TestLookupOrCreate_ReusesSameHash(t *testing.T) {
 	if a.Id != b.Id {
 		t.Errorf("ids differ: %s vs %s", a.Id, b.Id)
 	}
-	if a.GetString("country_iso") != "ES" || a.GetString("country") != "ES" {
-		t.Errorf("country not set: %q/%q", a.GetString("country_iso"), a.GetString("country"))
+	if a.GetString("country_iso") != "ES" {
+		t.Errorf("country_iso = %q", a.GetString("country_iso"))
 	}
 	if a.GetString("owner") != "" {
 		t.Errorf("owner = %q", a.GetString("owner"))

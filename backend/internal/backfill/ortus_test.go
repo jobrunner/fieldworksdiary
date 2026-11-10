@@ -16,6 +16,7 @@ import (
 	_ "go.mett.io/fwd-backend/migrations"
 
 	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -138,9 +139,28 @@ func reload(t *testing.T, app *tests.TestApp, coll, id string) *models.Record {
 	return r
 }
 
+// addLegacyPlacemarkColumns re-adds the pre-Ortus placemark columns that
+// migration 1700000027 dropped, so step A can be tested.
+func addLegacyPlacemarkColumns(t *testing.T, app *tests.TestApp) {
+	t.Helper()
+	coll, err := app.Dao().FindCollectionByNameOrId("placemarks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range legacyPlacemarkFields {
+		if coll.Schema.GetFieldByName(n) == nil {
+			coll.Schema.AddField(&schema.SchemaField{Name: n, Type: schema.FieldTypeText})
+		}
+	}
+	if err := app.Dao().SaveCollection(coll); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // legacyManualPlacemark creates a pre-Ortus manual placemark (only legacy columns).
 func legacyManualPlacemark(t *testing.T, app *tests.TestApp) *models.Record {
 	t.Helper()
+	addLegacyPlacemarkColumns(t, app)
 	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
 	pm := models.NewRecord(coll)
 	pm.Set("country", "DE")
@@ -379,5 +399,13 @@ func TestRemap_OrphanNotCounted(t *testing.T) {
 	}
 	if reload(t, app, "samples", s.Id).GetInt("version") != v {
 		t.Error("second remap changed the sample")
+	}
+}
+
+func TestBackfill_StepASkippedWithoutLegacyColumns(t *testing.T) {
+	app := newApp(t) // schema after migration 1700000027: no legacy columns
+	r, _ := newRunner(t, app, adminlabels.Default())
+	if err := r.MapLegacyManual(context.Background()); err != nil {
+		t.Fatalf("step A must tolerate missing legacy columns: %v", err)
 	}
 }

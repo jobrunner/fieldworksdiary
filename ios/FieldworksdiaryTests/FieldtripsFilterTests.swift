@@ -6,7 +6,6 @@ final class FieldtripsFilterTests: XCTestCase {
     private func fieldtrip(
         day: String = "2026-05-10",
         doy: Int? = 130,
-        country: String? = "Deutschland",
         id: String = UUID().uuidString,
         notes: String = "",
         lat: Double? = nil,
@@ -21,14 +20,10 @@ final class FieldtripsFilterTests: XCTestCase {
             endDate: nil,
             centroidLat: lat,
             centroidLon: lon,
-            adminUnitsJson: nil,
-            mtbJson: nil,
             astroJson: nil,
             locality: nil,
             suggestedLocality: nil,
             dayOfYear: doy,
-            country: country,
-            adminArea: nil,
             permitNumber: nil,
             permitPDFFile: nil,
             notes: notes,
@@ -40,7 +35,7 @@ final class FieldtripsFilterTests: XCTestCase {
     func testFilterOff_MatchesAll() {
         let filter = FieldtripsFilter.none
         XCTAssertTrue(filter.matches(fieldtrip()))
-        XCTAssertTrue(filter.matches(fieldtrip(country: nil)))
+        XCTAssertTrue(filter.matches(fieldtrip(doy: nil)))
     }
 
     func testAbsoluteRange_InsideMatches() throws {
@@ -100,13 +95,6 @@ final class FieldtripsFilterTests: XCTestCase {
         XCTAssertTrue(filter.matches(fieldtrip(), places: [ochsenfurt, garafia]))
         XCTAssertFalse(filter.matches(fieldtrip(), places: [ochsenfurt]))
         XCTAssertFalse(filter.matches(fieldtrip(), places: []), "no sample places ⇒ no match")
-    }
-
-    func testCountryFilter_IgnoresLegacyFieldtripCountry() {
-        var filter = FieldtripsFilter()
-        filter.country = "ES"
-        XCTAssertFalse(filter.matches(fieldtrip(country: "ES"), places: [ochsenfurt]),
-                       "LocalFieldtrip.country is no longer read")
     }
 
     func testPlaceQuery_SearchesAllPlaceFields() {

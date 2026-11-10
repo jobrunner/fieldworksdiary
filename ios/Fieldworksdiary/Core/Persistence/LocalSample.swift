@@ -44,7 +44,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var sampleID: String // provisional or backend-confirmed
     /// ID the user sent when the server appended a conflict suffix
     /// (`sampleID` is then the server's „X (2)“). Cleared on ID edit.
-    /// The legacy `backend_code` column is no longer read or written.
+    /// The legacy `backend_code` column was dropped in Phase O3.
     var originalCode: String?
     var userId: String
     var collectingDay: String // YYYY-MM-DD in user TZ
@@ -53,7 +53,7 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     var horizontalAccuracy: Double?
     var verticalAccuracy: Double?
     /// Metres above sea level. Was `altitude` until Phase O2; the
-    /// legacy column stays in SQLite until O3 but is no longer read.
+    /// legacy column was dropped in Phase O3.
     var elevation: Double?
     var beginDate: Date
     var endDate: Date?
@@ -68,8 +68,6 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
     /// Provenance of the coordinate. Persisted as the raw Int.
     var locationSource: Int
     var version: Int
-    var adminUnitsLocality: String?
-    var adminUnitsCountry: String?
     var mtbSheetNumber: String?
     var mtbSheetName: String?
     var syncStatus: SyncStatus
@@ -113,8 +111,6 @@ struct LocalSample: Codable, FetchableRecord, MutablePersistableRecord, Identifi
         case timezoneSource = "timezone_source"
         case notes, marked, fieldtrip, locality, version
         case locationSource = "location_source"
-        case adminUnitsLocality = "admin_units_locality"
-        case adminUnitsCountry = "admin_units_country"
         case mtbSheetNumber = "mtb_sheet_number"
         case mtbSheetName = "mtb_sheet_name"
         case syncStatus = "sync_status"

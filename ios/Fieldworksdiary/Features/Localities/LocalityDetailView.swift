@@ -178,43 +178,6 @@ struct LocalityDetailView: View {
                     PlaceFieldRow(item)
                 }
             }
-        } else {
-            legacyPlacemarkLines(pm)
-        }
-    }
-
-    /// Pre-Ortus address fields (legacy rows until the O3 backfill).
-    private func legacyPlacemarkLines(_ pm: LocalPlacemark) -> some View {
-        VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-            if let n = pm.name, !n.isEmpty {
-                Text(n).font(.body.weight(.medium))
-            }
-            if let t = pm.thoroughfare, !t.isEmpty {
-                Text(t).font(.body)
-            }
-            HStack(spacing: 6) {
-                if let pc = pm.postalCode, !pc.isEmpty {
-                    Text(pc).font(.body.monospacedDigit())
-                }
-                if let loc = pm.locality, !loc.isEmpty {
-                    Text(loc).font(.body)
-                }
-            }
-            if let sub = pm.subLocality, !sub.isEmpty {
-                Text(sub).font(.footnote).foregroundStyle(.secondary)
-            }
-            HStack(spacing: 6) {
-                Text(pm.country).font(.footnote)
-                if let admin = pm.administrativeArea, !admin.isEmpty {
-                    Text("·").font(.footnote)
-                    Text(admin).font(.footnote)
-                }
-                if let sub = pm.subAdministrativeArea, !sub.isEmpty {
-                    Text("·").font(.footnote)
-                    Text(sub).font(.footnote)
-                }
-            }
-            .foregroundStyle(.secondary)
         }
     }
 

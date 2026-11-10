@@ -48,6 +48,11 @@ func (r *Runner) labels() *adminlabels.Table {
 	return adminlabels.Default()
 }
 
+// legacyPlacemarkFields are the pre-Ortus columns step A reads.
+var legacyPlacemarkFields = []string{
+	"country", "administrative_area", "sub_administrative_area", "locality", "sub_locality",
+}
+
 // Run executes steps A, B and C in order.
 func (r *Runner) Run(ctx context.Context) error {
 	if err := r.MapLegacyManual(ctx); err != nil {
@@ -65,8 +70,24 @@ func (r *Runner) Run(ctx context.Context) error {
 // MapLegacyManual (step A) moves the legacy text columns of manual
 // placemarks onto the new flat columns and fills the owner from the
 // referencing locality (or sample). Source stays manual.
+//
+// The legacy columns (country, administrative_area, …) are dropped by
+// migration 1700000027 (Phase O3). On a database that already ran it
+// there is nothing left to map and the step is a no-op; run the backfill
+// before deploying that migration if legacy manual placemarks exist.
 func (r *Runner) MapLegacyManual(ctx context.Context) error {
 	dao := r.App.Dao()
+	pmColl, err := dao.FindCollectionByNameOrId("placemarks")
+	if err != nil {
+		return err
+	}
+	for _, f := range legacyPlacemarkFields {
+		if pmColl.Schema.GetFieldByName(f) == nil {
+			r.log().Info("backfill: step A skipped, legacy placemark columns are gone",
+				slog.String("missing_column", f))
+			return nil
+		}
+	}
 	pms, err := dao.FindRecordsByFilter("placemarks",
 		"geocoding_source = 'manual' && country_iso = '' && (country != '' || administrative_area != '' || "+
 			"sub_administrative_area != '' || locality != '' || sub_locality != '')", "created", 0, 0)

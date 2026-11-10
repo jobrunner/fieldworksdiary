@@ -44,7 +44,7 @@ func TestBackfillDedupHash_LockedConstant(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_CreatesAndAttaches(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 
 	// Seed an owner + locality (no placemark yet).
@@ -114,7 +114,7 @@ func TestBackfillOnePlacemark_CreatesAndAttaches(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_IdempotentOnRerun(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")
@@ -169,7 +169,7 @@ func TestBackfillOnePlacemark_IdempotentOnRerun(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_SkipsManualOverride(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")
@@ -232,7 +232,7 @@ func TestBackfillOnePlacemark_SkipsManualOverride(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_TolerantOfMalformedJSON(t *testing.T) {
-	app := setupTestApp(t)
+	app := setupLegacyLocationTestApp(t)
 	dao := app.Dao()
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")

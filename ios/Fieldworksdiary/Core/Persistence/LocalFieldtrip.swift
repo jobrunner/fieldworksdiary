@@ -1,8 +1,7 @@
 import Foundation
 import GRDB
 
-/// Local mirror of a `Fieldtrip`. Sub-objects (admin_units, mtb,
-/// astro) are kept as JSON blobs so we can round-trip them through
+/// Local mirror of a `Fieldtrip`. Sub-objects (astro) are kept as JSON blobs so we can round-trip them through
 /// the same decoder the network path uses — no need to mirror every
 /// nested field in SQL.
 struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Identifiable, Equatable {
@@ -14,14 +13,10 @@ struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Ident
     var endDate: Date?
     var centroidLat: Double?
     var centroidLon: Double?
-    var adminUnitsJson: String?
-    var mtbJson: String?
     var astroJson: String?
     var locality: String?
     var suggestedLocality: String?
     var dayOfYear: Int?
-    var country: String?
-    var adminArea: String?
     var permitNumber: String?
     var permitPDFFile: String?
     var notes: String
@@ -36,14 +31,10 @@ struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Ident
         case endDate = "end_date"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
-        case adminUnitsJson = "admin_units_json"
-        case mtbJson = "mtb_json"
         case astroJson = "astro_json"
         case locality
         case suggestedLocality = "suggested_locality"
         case dayOfYear = "day_of_year"
-        case country
-        case adminArea = "admin_area"
         case permitNumber = "permit_number"
         case permitPDFFile = "permit_pdf_file"
         case notes, version
@@ -56,14 +47,6 @@ struct LocalFieldtrip: Codable, FetchableRecord, MutablePersistableRecord, Ident
 extension LocalFieldtrip {
     /// Decode the stored JSON back into the typed model when needed
     /// for display.
-    var adminUnits: AdminUnits? {
-        decode(adminUnitsJson)
-    }
-
-    var mtb: MTB? {
-        decode(mtbJson)
-    }
-
     var astro: Astro? {
         decode(astroJson)
     }
@@ -88,14 +71,10 @@ extension LocalFieldtrip {
         endDate = remote.endDate
         centroidLat = remote.centroidLat
         centroidLon = remote.centroidLon
-        adminUnitsJson = Self.encode(remote.adminUnits)
-        mtbJson = Self.encode(remote.mtb)
         astroJson = Self.encode(remote.astro)
         locality = remote.locality
         suggestedLocality = remote.suggestedLocality
         dayOfYear = remote.dayOfYear
-        country = remote.country
-        adminArea = remote.adminArea
         permitNumber = remote.permitNumber
         permitPDFFile = remote.permitPDFFile
         notes = remote.notes ?? ""
