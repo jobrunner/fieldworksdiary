@@ -48,6 +48,42 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         XCTAssertEqual(stored.version, 4)
     }
 
+    func testUpdate_ChangedFieldtripIsStoredAndPulled() async throws {
+        var local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 1)
+        local.fieldtrip = "ft-old"
+        try store.update(local)
+        var edited = local
+        edited.notes = "moved to 2019"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.updateResponse = remoteSample(id: "backend-1", code: "260605/1", version: 2, fieldtrip: "ft-new")
+        var pulled: [String] = []
+        let runner = makeRunner(mock: mock) { pulled.append($0) }
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(local.id)).fieldtrip, "ft-new")
+        XCTAssertEqual(pulled, ["ft-new"], "the new fieldtrip is pulled like after a create")
+    }
+
+    func testUpdate_SameFieldtripIsNotPulledAgain() async throws {
+        var local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 1)
+        local.fieldtrip = "ft-1"
+        try store.update(local)
+        var edited = local
+        edited.notes = "note"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.updateResponse = remoteSample(id: "backend-1", code: "260605/1", version: 2, fieldtrip: "ft-1")
+        var pulled: [String] = []
+        let runner = makeRunner(mock: mock) { pulled.append($0) }
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(local.id)).fieldtrip, "ft-1")
+        XCTAssertTrue(pulled.isEmpty)
+    }
+
     func testUpdate_SendsVersionPlusOne() async throws {
         // OCC contract: backend's enforceVersion rejects incoming <=
         // current with 409. Client must send current + 1.
@@ -235,7 +271,10 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         return try store.fetchById(sample.id)!
     }
 
-    private func makeRunner(mock: MockUpdateClient) -> SyncRunner {
+    private func makeRunner(
+        mock: MockUpdateClient,
+        onSampleSynced: @escaping (String) -> Void = { _ in }
+    ) -> SyncRunner {
         SyncRunner(
             store: store,
             mutationsStore: mutations,
@@ -243,7 +282,8 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
             authProvider: { nil },
             retryInterval: .seconds(3600),
             enrichmentPollInterval: .milliseconds(1),
-            clientFactory: { _, _ in mock }
+            clientFactory: { _, _ in mock },
+            onSampleSynced: onSampleSynced
         )
     }
 
@@ -273,12 +313,13 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         code: String,
         originalCode: String? = nil,
         notes: String? = nil,
-        version: Int = 2
+        version: Int = 2,
+        fieldtrip: String = ""
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
             "sample_id": code,
-            "fieldtrip": "",
+            "fieldtrip": fieldtrip,
             "latitude": 49.79,
             "longitude": 9.94,
             "begin_date": "2026-06-05T14:00:00.000Z",

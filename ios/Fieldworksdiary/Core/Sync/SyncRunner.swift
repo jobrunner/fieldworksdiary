@@ -854,6 +854,11 @@ final class SyncRunner: ObservableObject {
         guard var fresh = try store.fetchById(localID) else { return nil }
         fresh.version = max(fresh.version, updated.version)
         fresh.locality = updated.locality ?? fresh.locality
+        // A changed collecting day (retrospective sample) moves the
+        // sample to another fieldtrip on the server; follow it locally
+        // and pull the (possibly new) trip like the create path does.
+        let movedToTrip = !updated.fieldtrip.isEmpty && updated.fieldtrip != fresh.fieldtrip
+        if movedToTrip { fresh.fieldtrip = updated.fieldtrip }
         Self.applyCodes(updated, sentCode: input.code, to: &fresh)
         // Place data (placemark, suggestion, status, geo) written while
         // the PATCH was in flight — a manual place, accept/dismiss of a
@@ -867,6 +872,7 @@ final class SyncRunner: ObservableObject {
         fresh.syncStatus = .synced
         fresh.syncError = nil
         try store.update(fresh)
+        if movedToTrip { onSampleSynced(updated.fieldtrip) }
         return PatchOutcome(fresh: fresh, serverSnapshot: snapshot)
     }
 
