@@ -260,6 +260,9 @@ protocol SamplePushClient {
     func createSample(_ input: SampleCreateInput) async throws -> Sample
     func updateSample(id: String, input: SampleUpdateInput) async throws -> Sample
     func fetchSample(id: String) async throws -> Sample
+    /// Deletes the sample on the server. 404 counts as success
+    /// (implementations may also just return).
+    func deleteSample(id: String) async throws
 }
 
 extension SampleClient: SamplePushClient {}
@@ -459,6 +462,8 @@ final class SyncRunner: ObservableObject {
             await executeSampleCreate(mutation, via: client)
         case (.sample, .update):
             await executeSampleUpdate(mutation, via: client)
+        case (.sample, .delete):
+            await executeSampleDelete(mutation, via: client)
         case (.locality, .create):
             await executeLocalityCreate(mutation)
         default:
@@ -467,6 +472,31 @@ final class SyncRunner: ObservableObject {
             let err = "unsupported mutation: \(mutation.entityType.rawValue)/\(mutation.op.rawValue)"
             Log.sync.error("\(err)")
             try? mutationsStore.recordFailure(mutation.id, error: err)
+        }
+    }
+
+    /// Server-side delete of a sample that was already pushed. The
+    /// mutation's `entityId` is the *backend* id (the local row is
+    /// gone). 404 means already deleted — done.
+    private func executeSampleDelete(_ mutation: PendingMutation, via client: SamplePushClient) async {
+        guard let backendID = mutation.entityId, !backendID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+            do {
+                try await client.deleteSample(id: backendID)
+            } catch SampleClientError.http(status: 404, _) {
+                // Already gone on the server.
+            }
+            try? mutationsStore.dequeue(mutation.id)
+            Log.sync.info("sample deleted on server \(backendID, privacy: .public)")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("sample delete failed: \(message)")
         }
     }
 
@@ -514,6 +544,11 @@ final class SyncRunner: ObservableObject {
 
             // 3. Merge server-derived fields onto the row as it is now.
             guard var fresh = try store.fetchById(localId) else {
+                // Deleted locally while the POST was in flight: the
+                // server now has a record nobody owns — delete it.
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: created.id, op: .delete, payload: Data()
+                )
                 try? mutationsStore.dequeue(mutation.id)
                 return
             }

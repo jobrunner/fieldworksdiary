@@ -1241,6 +1241,8 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
         }
         return response
     }
+
+    func deleteSample(id _: String) async throws {}
 }
 
 private final class MockPlacemarks: PlacemarkSyncClient, @unchecked Sendable {

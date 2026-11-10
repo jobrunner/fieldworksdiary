@@ -328,4 +328,6 @@ private final class MockUpdateClient: SamplePushClient, @unchecked Sendable {
         }
         return response
     }
+
+    func deleteSample(id _: String) async throws {}
 }

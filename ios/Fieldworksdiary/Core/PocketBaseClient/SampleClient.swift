@@ -217,6 +217,23 @@ struct SampleClient {
         return try await send(request)
     }
 
+    /// `DELETE /api/collections/samples/records/{id}`. The backend
+    /// cascades photos, determinations and features. A 404 is treated
+    /// as success (already gone), so the caller can retry freely.
+    func deleteSample(id: String) async throws {
+        let url = try makeURL(path: "/api/collections/samples/records/\(id)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 10
+        request.authenticate(with: auth)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200 ..< 300).contains(status) || status == 404 else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw SampleClientError.http(status: status, body: body)
+        }
+    }
+
     func fetchSample(id: String) async throws -> Sample {
         let url = try makeURL(path: "/api/collections/samples/records/\(id)")
         var request = URLRequest(url: url)

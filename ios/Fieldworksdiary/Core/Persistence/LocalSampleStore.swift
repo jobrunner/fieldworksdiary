@@ -417,6 +417,42 @@ final class LocalSampleStore {
         )
     }
 
+    /// Deletes a sample and everything hanging off it locally: photo
+    /// rows and files, feature rows, queued mutations of the sample.
+    /// (Determinations have no local table; the server cascades them.)
+    ///
+    /// - Never pushed (no backend id): the queued `.create` is dropped
+    ///   with the other mutations, nothing goes to the server.
+    /// - Pushed: all queued mutations are dropped and a
+    ///   `.sample/.delete` carrying the *backend* id is queued; the
+    ///   SyncRunner deletes it on the server (404 = done).
+    func deleteSample(id: String, mutationsStore: PendingMutationsStore) throws {
+        let backendID: String? = try database.writer.write { db in
+            guard let sample = try LocalSample.fetchOne(db, key: id) else { return nil }
+            let photoIDs = try String.fetchAll(
+                db, sql: "SELECT id FROM local_photos WHERE sample_id = ?", arguments: [id]
+            )
+            for photoID in photoIDs {
+                try db.execute(
+                    sql: "DELETE FROM pending_mutations WHERE entity_type = 'sample_photo' AND entity_id = ?",
+                    arguments: [photoID]
+                )
+            }
+            try db.execute(sql: "DELETE FROM local_photos WHERE sample_id = ?", arguments: [id])
+            try db.execute(sql: "DELETE FROM local_sample_features WHERE sample_id = ?", arguments: [id])
+            try db.execute(
+                sql: "DELETE FROM pending_mutations WHERE entity_type = 'sample' AND entity_id = ?",
+                arguments: [id]
+            )
+            _ = try LocalSample.deleteOne(db, key: id)
+            return sample.backendId
+        }
+        PhotoStorage.deleteSampleDir(sampleID: id)
+
+        guard let backendID, !backendID.isEmpty else { return }
+        _ = try mutationsStore.enqueue(entityType: .sample, entityId: backendID, op: .delete, payload: Data())
+    }
+
     // MARK: - Phase O2 place edits (Task 17)
 
     /// Saves a place the user typed in: looks up or creates the
@@ -610,6 +646,9 @@ final class LocalSampleStore {
                 let localPlacemarkID: (String) -> String = { backendID in
                     ((try? LocalPlacemarkStore.localID(forBackendID: backendID, in: db)) ?? nil) ?? backendID
                 }
+                // Deleted locally, the server delete is still queued:
+                // do not resurrect the row from the list.
+                if try Self.hasQueuedDelete(db, backendID: r.id) { continue }
                 let match = try findExisting(db, clientUuid: r.clientUuid, backendId: r.id)
                 if var local = match {
                     if local.syncStatus == .pending || local.syncStatus == .syncing {
@@ -665,6 +704,13 @@ final class LocalSampleStore {
         return try LocalSample
             .filter(Column("backend_id") == backendId)
             .fetchOne(db)
+    }
+
+    private static func hasQueuedDelete(_ db: GRDB.Database, backendID: String) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(SELECT 1 FROM pending_mutations
+                          WHERE entity_type = 'sample' AND op = 'delete' AND entity_id = ?)
+        """, arguments: [backendID]) ?? false
     }
 
     private static func hasQueuedMutation(_ db: GRDB.Database, sampleID: String) throws -> Bool {

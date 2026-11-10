@@ -183,6 +183,57 @@ final class SyncRunnerTests: XCTestCase {
         XCTAssertNil(sample.locationStatus)
     }
 
+    // MARK: - Delete
+
+    func testDelete_PushedSample_RunnerCallsDeleteAndDequeues() async throws {
+        var local = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
+        local.backendId = "backend-1"
+        local.syncStatus = .synced
+        try store.update(local)
+        try store.deleteSample(id: local.id, mutationsStore: mutations)
+
+        let mock = MockClient()
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertEqual(mock.deletedIDs, ["backend-1"])
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
+    func testDelete_404CountsAsDone() async throws {
+        _ = try mutations.enqueue(entityType: .sample, entityId: "gone-1", op: .delete, payload: Data())
+        let mock = MockClient()
+        mock.deleteError = SampleClientError.http(status: 404, body: "")
+
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertEqual(mock.deletedIDs, ["gone-1"])
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
+    func testDelete_ServerError_KeepsMutationForRetry() async throws {
+        _ = try mutations.enqueue(entityType: .sample, entityId: "b-2", op: .delete, payload: Data())
+        let mock = MockClient()
+        mock.deleteError = SampleClientError.http(status: 500, body: "")
+
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        let queued = try mutations.fetchAllOrdered()
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertEqual(queued.first?.attempts, 1)
+    }
+
+    func testDelete_LocalOnlySample_NothingReachesServer() async throws {
+        let local = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
+        _ = try mutations.enqueue(entityType: .sample, entityId: local.id, op: .create, payload: Data())
+        try store.deleteSample(id: local.id, mutationsStore: mutations)
+
+        let mock = MockClient()
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertNil(mock.lastCreateInput, "no ghost create")
+        XCTAssertTrue(mock.deletedIDs.isEmpty)
+    }
+
     // MARK: - helpers
 
     private func makeRunner(
@@ -300,6 +351,14 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
     func fetchSample(id _: String) async throws -> Sample {
         // swiftlint:disable:next force_unwrapping
         return fetchResponse ?? createResponse!
+    }
+
+    var deletedIDs: [String] = []
+    var deleteError: Error?
+
+    func deleteSample(id: String) async throws {
+        deletedIDs.append(id)
+        if let deleteError { throw deleteError }
     }
 }
 
