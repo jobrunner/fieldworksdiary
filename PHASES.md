@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) in progress (Branch `feat/nachtragen`, auf `feat/sofort-anlage`). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1155,3 +1155,29 @@ Korrekturrunde nach dem Abschluss-Review: „Probe nachtragen“ als Home-Eintra
 Testhinweise für Jo: beide Berechtigungsdialoge („Beim Verwenden“, danach „Immer“); Wisch-Geste zurück unter iOS 26 auf dem Gerät; App im Flugmodus starten (Feature-Flags → false, kein Hänger); neues Sample mit leerer ID → Nachfrage, „Sample löschen“ entfernt es auch auf dem Server.
 
 Nacharbeiten (nicht in Phase E): später Fix während laufendem Create überspringt `awaitEnrichment`; HomeView hält den Resolver einmalig; beide Berechtigungsdialoge können beim Tippen erscheinen; verwaister Fundort, wenn das Ursprungs-Sample vor einem Mitnutzer gelöscht wird; „Immer“ ohne sichtbare Funktion ist ein App-Store-Risiko.
+
+## Phase N – Probe nachtragen, Bearbeiten-Formular, Koordinatenformate
+
+**Status: in progress** (gestartet 2026-11-10, Branch `feat/nachtragen`, zweigt von `feat/sofort-anlage` ab)
+
+- Spec: `docs/superpowers/specs/2026-11-10-nachtragen-und-formular-design.md`
+- Plan: `docs/superpowers/plans/2026-11-10-nachtragen-und-formular.md`
+
+- [x] Task 0: Phasenstatus
+- [ ] Task 1: GEOTRANS in FieldworksGeo — Formatieren und Parsen
+- [ ] Task 2: Ortus-Anfrage mit Koordinatensystem
+- [ ] Task 3: Backend — nachgetragene Samples, Fieldtrip-Neuzuordnung
+- [ ] Task 4: iOS-Modell, Sammeltag-Regel, Einstellung Koordinatenformat
+- [ ] Task 5: Nachtragen — Auswahl, Dialog „Mit Koordinate“, „Aus Foto“
+- [ ] Task 6: Bearbeiten-Formular
+- [ ] Task 7: Sample-Ansicht entschlacken
+- [ ] Task 8: Phase N abschließen
+
+## Projekt Account-Umbau
+
+**Status: pending** (vor der Weitergabe an Tester nötig, noch nicht eingeplant)
+
+- Owner in PocketBase per `ownerId` statt E-Mail.
+- Durchgehend abgesichert: ein angemeldeter User sieht ausschließlich seine eigenen Einträge (alle Collections, alle Endpunkte).
+- Identifizierung (Apple, Google, E-Mail/Passwort) von der Autorisierung trennen: Login-Wechsel, z.B. nach Löschung eines Apple-Accounts, ohne Zugangsverlust.
+- Sammler-Default in den Einstellungen, am Account hinterlegt.
