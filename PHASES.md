@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) in progress (Branch `feat/nachtragen`, auf `feat/sofort-anlage`). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1158,20 +1158,34 @@ Nacharbeiten (nicht in Phase E): später Fix während laufendem Create überspri
 
 ## Phase N – Probe nachtragen, Bearbeiten-Formular, Koordinatenformate
 
-**Status: in progress** (gestartet 2026-11-10, Branch `feat/nachtragen`, zweigt von `feat/sofort-anlage` ab)
+**Status: implementiert, wartet auf Test durch Jo** (gestartet 2026-11-10, Branch `feat/nachtragen`, zweigt von `feat/sofort-anlage` ab, nicht gemerged)
 
 - Spec: `docs/superpowers/specs/2026-11-10-nachtragen-und-formular-design.md`
 - Plan: `docs/superpowers/plans/2026-11-10-nachtragen-und-formular.md`
 
 - [x] Task 0: Phasenstatus
-- [ ] Task 1: GEOTRANS in FieldworksGeo — Formatieren und Parsen
-- [ ] Task 2: Ortus-Anfrage mit Koordinatensystem
-- [ ] Task 3: Backend — nachgetragene Samples, Fieldtrip-Neuzuordnung
-- [ ] Task 4: iOS-Modell, Sammeltag-Regel, Einstellung Koordinatenformat
-- [ ] Task 5: Nachtragen — Auswahl, Dialog „Mit Koordinate“, „Aus Foto“
-- [ ] Task 6: Bearbeiten-Formular
-- [ ] Task 7: Sample-Ansicht entschlacken
-- [ ] Task 8: Phase N abschließen
+- [x] Task 1: GEOTRANS in FieldworksGeo — Formatieren und Parsen
+- [x] Task 2: Ortus-Anfrage mit Koordinatensystem
+- [x] Task 3: Backend — nachgetragene Samples, Fieldtrip-Neuzuordnung
+- [x] Task 4: iOS-Modell, Sammeltag-Regel, Einstellung Koordinatenformat
+- [x] Task 5: Nachtragen — Auswahl, Dialog „Mit Koordinate“, „Aus Foto“
+- [x] Task 6: Bearbeiten-Formular
+- [x] Task 7: Sample-Ansicht entschlacken
+- [ ] Task 8: Phase N abschließen — Xcode-Suite 391/391, `go test ./...` und `swift test` grün, Typecheck leer, Abschluss-Review + Korrekturrunde durch; offen: Test durch Jo
+
+Abschluss-Review und Korrekturrunde: ganztägige Samples bleiben bei Zeitzonenwechsel (Backend-Anreicherung und App) auf 00:00 desselben Tags; Fieldtrip nach Datumsänderung kommt sofort aus der PATCH-Antwort; Foto ohne GPS zeigt kein „Suche Position …“; „Ortsdaten neu abfragen“ wird beim Scrollen nicht mehr abgebrochen; Karte auch ohne Koordinate („Auf Karte wählen“, Start an letzter bekannter Position); Sammeltag nachgetragener Samples ändert sich nur bei Änderung von Beginn, Zeitzone oder Ganztägig.
+
+Entscheidungen von Claude zur Prüfung: Gazetteer-Zeile endet bei der Gemeinde („…, Landkreis Würzburg, Ochsenfurt“); Karte ohne Koordinate startet an der letzten bekannten Position (ohne: Würzburg).
+
+Testhinweise für Jo:
+1. Ortus-Endpoint in den Einstellungen auf `https://ortus.fieldworksdiary.org` stellen (Prod rechnet nur WGS84).
+2. Probe nachtragen → Mit Koordinate: Gauß-Krüger Zone 3 `3574500` / `5505500` und MGRS `32UNA7440003700` (Kleinochsenfurt), dazu `99999999` / `1` als Fehlerfall (Dialog bleibt offen, Eingabe stehen).
+3. Probe nachtragen → Aus Foto: ein Foto mit und eins ohne Ort; ohne Ort keine „Suche Position …“-Anzeige.
+4. Bearbeiten-Formular: Ganztägig an/aus, Beginn auf ein altes Datum → Fieldtrip wechselt; Formular mit halb eingetippter Koordinate verlassen → Rückfrage.
+5. Einstellungen → Koordinatenformat MGRS/DMS: Sample-Ansicht zeigt das Format mit Namen darunter.
+6. Probe ohne Koordinate → „Auf Karte wählen“: Achtung, „Übernehmen“ ist sofort mit der Geräteposition aktiv.
+
+Nacharbeiten (nicht in Phase N): neue UI-Strings fehlen in `Localizable.xcstrings` (Anzeige fällt auf den deutschen Schlüssel zurück); Karte ohne Koordinate lässt die Geräteposition ohne Tippen übernehmen; laufende Ortus-Anfrage im Formular wird bei Pop-to-root nicht abgebrochen (schreibt dann noch, harmlos); Fieldtrip-Zuordnung im Backend vor dem 409-Guard; Sammeltag eines nachgetragenen Samples folgt einer vom Backend gesetzten Zeitzone erst beim nächsten eigenen Schreiben; Kamera-Button ohne 44-pt-Mindestbreite; Scrim-Token ohne Increase-Contrast-Variante.
 
 ## Projekt Account-Umbau
 
