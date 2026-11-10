@@ -243,6 +243,17 @@ final class LocalSampleStore {
         }
     }
 
+    /// Samples without a coordinate (`hasCoordinate == false`) created
+    /// after `date`. Used by `PendingFixService.resumePending`.
+    func fetchWithoutCoordinate(createdAfter date: Date) throws -> [LocalSample] {
+        try database.reader.read { db in
+            try LocalSample
+                .filter(Column("latitude") == nil || Column("longitude") == nil)
+                .filter(Column("created_at") > date)
+                .fetchAll(db)
+        }
+    }
+
     func fetchById(_ id: String) throws -> LocalSample? {
         try database.reader.read { db in
             try LocalSample.fetchOne(db, key: id)
@@ -338,6 +349,8 @@ final class LocalSampleStore {
         latitude: Double,
         longitude: Double,
         horizontalAccuracy: Double? = nil,
+        verticalAccuracy: Double? = nil,
+        elevation: Double? = nil,
         locationSource: LocationSource = .user,
         keepManualPlace: Bool = true,
         mutationsStore: PendingMutationsStore
@@ -349,6 +362,13 @@ final class LocalSampleStore {
             sample.horizontalAccuracy = horizontalAccuracy
             sample.locationSource = locationSource.rawValue
             sample.clearDerivedLocation(keepManualPlace: keepManualPlace)
+            // GPS height of a field fix (nil for map/manual corrections:
+            // those keep the existing behaviour).
+            if let elevation {
+                sample.elevation = elevation
+                sample.verticalAccuracy = verticalAccuracy
+                sample.elevationSource = .locationService
+            }
             sample.updatedAt = Date()
             try sample.update(db)
             _ = try LocalSampleFeature.filter(Column("sample_id") == id).deleteAll(db)
@@ -866,6 +886,11 @@ extension LocalSample {
 }
 
 extension LocalSample {
+    /// True when both latitude and longitude are set. Samples created
+    /// instantly (Phase E) start without one until a fix or a map pick
+    /// arrives.
+    var hasCoordinate: Bool { latitude != nil && longitude != nil }
+
     /// Clears everything derived from the coordinate (see
     /// `LocalSampleStore.updateCoordinate`).
     mutating func clearDerivedLocation(keepManualPlace: Bool = true) {

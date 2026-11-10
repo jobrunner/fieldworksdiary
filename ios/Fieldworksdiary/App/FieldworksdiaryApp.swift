@@ -16,6 +16,7 @@ struct FieldworksdiaryApp: App {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                container.pendingFixes.resumePending()
                 Task { await container.hydrate() }
             }
         }

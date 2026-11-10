@@ -27,6 +27,8 @@ final class AppContainer: ObservableObject {
     let photos: LocalPhotoStore
     let mutations: PendingMutationsStore
     let sync: SyncRunner
+    /// Fills in coordinates of instantly created samples (Phase E).
+    let pendingFixes: PendingFixService
 
     /// Tracks which user id the local stores currently hold data for,
     /// so we can detect "different user just signed in" vs. "session
@@ -107,6 +109,25 @@ final class AppContainer: ObservableObject {
             }
         )
 
+        let pendingFixes = PendingFixService(
+            store: store,
+            mutations: mutations,
+            source: BackgroundFixSource(),
+            onCoordinateSet: { sampleID in
+                let resolver = SampleLocationResolver(
+                    ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
+                    samples: store,
+                    placemarks: placemarksStore,
+                    features: sampleFeatures,
+                    mutations: mutations
+                )
+                Task { @MainActor in
+                    _ = await resolver.resolveOnline(sampleID: sampleID)
+                    sync.kick()
+                }
+            }
+        )
+
         self.config = config
         self.auth = auth
         self.database = database
@@ -122,6 +143,7 @@ final class AppContainer: ObservableObject {
         self.photos = photos
         self.mutations = mutations
         self.sync = sync
+        self.pendingFixes = pendingFixes
     }
 
     /// Resolver for on-device place data. Reads the Ortus endpoint

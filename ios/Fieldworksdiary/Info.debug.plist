@@ -44,6 +44,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Wird beim Anlegen einer Aufsammlung verwendet, um die Fundkoordinaten zu erfassen.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Fieldworksdiary ortet neue Proben auch bei geschlossener App bis zum ersten genauen Standort und braucht das später für Hinweise im Gelände.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Für das Aufnehmen von Belegfotos zu deinen Proben (Substrat, Wirtspflanze, Probe selbst).</string>
 	<key>NSPhotoLibraryUsageDescription</key>

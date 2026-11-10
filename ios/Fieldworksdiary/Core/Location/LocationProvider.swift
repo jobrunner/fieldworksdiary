@@ -3,7 +3,7 @@ import Foundation
 
 /// Matches the old app's filter values: same thresholds for
 /// horizontal/vertical accuracy and fix freshness.
-private enum LocationThreshold {
+enum LocationThreshold {
     static let horizontalAccuracy: CLLocationAccuracy = 100
     static let verticalAccuracy: CLLocationAccuracy = 100
     static let staleness: TimeInterval = 15
