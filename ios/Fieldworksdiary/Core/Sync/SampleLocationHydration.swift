@@ -12,8 +12,9 @@ import Foundation
 ///    sample id.
 ///
 /// Runs after `LocalSampleStore.upsert` (hydration) and after a
-/// successful enrichment poll. Failures are logged and swallowed —
-/// the next hydration retries.
+/// successful enrichment poll. Failures are logged and reported via the
+/// `hydrate` result; callers that keep a cursor (SamplesHydrator) must
+/// not advance past a failed batch so the next run retries.
 @MainActor
 struct SampleLocationHydration {
     let samples: LocalSampleStore
@@ -26,19 +27,23 @@ struct SampleLocationHydration {
     static let placemarkBatch = 40
     static let featureBatch = 20
 
-    func hydrate(_ remote: [Sample]) async {
-        await hydratePlacemarks(remote)
-        await hydrateFeatures(remote)
+    /// Returns false when any lookup or fetch failed.
+    @discardableResult
+    func hydrate(_ remote: [Sample]) async -> Bool {
+        let placemarksOK = await hydratePlacemarks(remote)
+        let featuresOK = await hydrateFeatures(remote)
+        return placemarksOK && featuresOK
     }
 
-    private func hydratePlacemarks(_ remote: [Sample]) async {
+    private func hydratePlacemarks(_ remote: [Sample]) async -> Bool {
+        var ok = true
         let referenced = remote.flatMap { [$0.placemark, $0.placemarkSuggestion] }.compactMap { $0 }
         let missing: [String]
         do {
             missing = try placemarks.missingBackendIDs(referenced)
         } catch {
             Log.persistence.error("placemark lookup failed: \(error.localizedDescription)")
-            return
+            return false
         }
         for batch in missing.chunked(into: Self.placemarkBatch) {
             do {
@@ -47,11 +52,14 @@ struct SampleLocationHydration {
                 Log.sync.info("hydrated \(fetched.count, privacy: .public) placemarks")
             } catch {
                 Log.sync.warning("placemark hydrate failed: \(error.localizedDescription)")
+                ok = false
             }
         }
+        return ok
     }
 
-    private func hydrateFeatures(_ remote: [Sample]) async {
+    private func hydrateFeatures(_ remote: [Sample]) async -> Bool {
+        var ok = true
         // backend sample id → local sample id, only for samples whose
         // features are missing locally.
         var wanted: [String: String] = [:]
@@ -61,7 +69,7 @@ struct SampleLocationHydration {
             else { continue }
             wanted[r.id] = local.id
         }
-        if wanted.isEmpty { return }
+        if wanted.isEmpty { return true }
 
         for batch in Array(wanted.keys).sorted().chunked(into: Self.featureBatch) {
             do {
@@ -77,8 +85,10 @@ struct SampleLocationHydration {
                 Log.sync.info("hydrated \(fetched.count, privacy: .public) sample features")
             } catch {
                 Log.sync.warning("feature hydrate failed: \(error.localizedDescription)")
+                ok = false
             }
         }
+        return ok
     }
 }
 

@@ -215,18 +215,7 @@ private func decodeNonZeroDouble<K: CodingKey>(_ c: KeyedDecodingContainer<K>, _
 
 /// Wire response from PocketBase's `/api/collections/samples/records`
 /// listing endpoint. Items have the same shape as a single GET; the
-/// envelope carries the pagination metadata the hydrator pages by.
+/// envelope's pagination metadata is ignored (keyset paging).
 struct SampleListResponse: Decodable {
     let items: [Sample]
-    let totalPages: Int
-
-    enum CodingKeys: String, CodingKey {
-        case items, totalPages
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        items = try c.decode([Sample].self, forKey: .items)
-        totalPages = (try? c.decode(Int.self, forKey: .totalPages)) ?? 1
-    }
 }

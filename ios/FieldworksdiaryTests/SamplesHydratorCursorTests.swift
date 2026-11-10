@@ -1,4 +1,5 @@
 @testable import Fieldworksdiary
+import FieldworksGeo
 import XCTest
 
 /// Task 21: the samples hydrator pages through all samples on the first
@@ -36,8 +37,10 @@ final class SamplesHydratorCursorTests: XCTestCase {
 
         await hydrator.pull()
 
-        XCTAssertEqual(list.calls.map(\.page), [1, 2, 3])
+        XCTAssertEqual(list.calls.count, 3)
         XCTAssertTrue(list.calls.allSatisfy { $0.perPage == 200 && $0.updatedSince == nil })
+        XCTAssertNil(list.calls.first?.after)
+        XCTAssertNotNil(list.calls.last?.after)
         XCTAssertEqual(try store.count(), 450)
     }
 
@@ -52,19 +55,19 @@ final class SamplesHydratorCursorTests: XCTestCase {
         let expected = try XCTUnwrap(list.items.compactMap(\.updated).max())
         XCTAssertEqual(list.calls.count, 2)
         XCTAssertEqual(list.calls.last?.updatedSince, expected)
-        XCTAssertEqual(list.calls.last?.page, 1)
+        XCTAssertNil(list.calls.last?.after)
     }
 
     func testPull_FailureMidway_KeepsOldCursor() async throws {
         let list = MockList()
         list.items = (0 ..< 450).map { sample(index: $0) }
-        list.failOnPage = 2
+        list.failOnCall = 2
         let hydrator = makeHydrator(list)
 
         await hydrator.pull()
 
         XCTAssertNil(hydrator.currentCursor())
-        list.failOnPage = nil
+        list.failOnCall = nil
         await hydrator.pull()
         XCTAssertEqual(list.calls.last?.updatedSince, nil, "retry starts from the old (nil) cursor")
         XCTAssertNotNil(hydrator.currentCursor())
@@ -103,21 +106,71 @@ final class SamplesHydratorCursorTests: XCTestCase {
         XCTAssertEqual(try store.fetchById(local.id)?.notes, "local edit")
     }
 
+    func testPull_RowRewrittenBetweenPages_IsStillHydrated() async throws {
+        let list = MockList()
+        list.items = (0 ..< 4).map { sample(index: $0) }
+        // After page 1 (rows 0, 1) row 0 is rewritten and moves to the end.
+        list.beforeCall = { [unowned list] call in
+            guard call == 2 else { return }
+            list.items[0] = self.sample(index: 0, updatedIndex: 10)
+        }
+        let hydrator = makeHydrator(list, perPage: 2)
+
+        await hydrator.pull()
+
+        XCTAssertEqual(try store.count(), 4)
+        for index in 0 ..< 4 {
+            XCTAssertNotNil(try store.fetchByBackendID("backend-\(index)"), "row \(index) hydrated")
+        }
+    }
+
+    func testPull_PlacemarkFetchFails_HoldsCursorThenRetries() async throws {
+        let list = MockList()
+        list.items = [sample(index: 1, placemark: "pmbackend00001")]
+        let pm = FailablePlacemarks()
+        pm.failing = true
+        let placemarks = LocalPlacemarkStore(database: database)
+        let features = LocalSampleFeatureStore(database: database)
+        let hydrator = makeHydrator(list, placemarks: placemarks, features: features, pmClient: pm)
+
+        await hydrator.pull()
+        XCTAssertNil(hydrator.currentCursor(), "cursor must not pass a failed hydration")
+        XCTAssertNil(try placemarks.fetchById("pmbackend00001"))
+
+        pm.failing = false
+        await hydrator.pull()
+        XCTAssertNotNil(try placemarks.fetchById("pmbackend00001"))
+        XCTAssertNotNil(hydrator.currentCursor())
+        XCTAssertNil(list.calls.last?.updatedSince, "retry restarted from the unchanged cursor")
+    }
+
     // MARK: - helpers
 
-    private func makeHydrator(_ list: MockList) -> SamplesHydrator {
+    private func makeHydrator(
+        _ list: MockList,
+        perPage: Int = 200,
+        placemarks: LocalPlacemarkStore? = nil,
+        features: LocalSampleFeatureStore? = nil,
+        pmClient: PlacemarkSyncClient? = nil
+    ) -> SamplesHydrator {
         SamplesHydrator(
             store: store,
+            placemarks: placemarks,
+            features: features,
             endpointProvider: { "http://test.invalid" },
             userIDProvider: { "u1" },
             defaults: defaults,
-            clientFactory: { _, _ in list }
+            perPage: perPage,
+            clientFactory: { _, _ in list },
+            placemarkClientFactory: { _, _ in pmClient ?? FailablePlacemarks() }
         )
     }
 
     /// Remote sample `index`; `updated` rises with the index.
-    private func sample(index: Int, clientUuid: String? = nil, notes: String = "") -> Sample {
-        let updated = Date(timeIntervalSince1970: 1_780_000_000 + Double(index) * 60)
+    private func sample(
+        index: Int, updatedIndex: Int? = nil, clientUuid: String? = nil, notes: String = "", placemark: String = ""
+    ) -> Sample {
+        let updated = Date(timeIntervalSince1970: 1_780_000_000 + Double(updatedIndex ?? index) * 60)
         var dict: [String: Any] = [
             "id": "backend-\(index)",
             "sample_id": "S\(index)",
@@ -131,12 +184,45 @@ final class SamplesHydratorCursorTests: XCTestCase {
             "location_source": "location_service",
             "timezone": "Europe/Berlin",
             "version": 3,
-            "notes": notes
+            "notes": notes,
+            "placemark": placemark
         ]
         if let clientUuid { dict["client_uuid"] = clientUuid }
         // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: dict)
         // swiftlint:disable:next force_try
         return try! JSONDecoder.fieldworks.decode(Sample.self, from: data)
+    }
+}
+
+/// Placemark client whose fetch can be switched to fail.
+private final class FailablePlacemarks: PlacemarkSyncClient, @unchecked Sendable {
+    var failing = false
+
+    func resolve(place _: Place, source _: Placemark.GeocodingSource) async throws -> Placemark {
+        throw SampleClientError.http(status: 500, body: "unused")
+    }
+
+    func fetchMany(ids: [String]) async throws -> [Placemark] {
+        if failing { throw SampleClientError.http(status: 503, body: "") }
+        return ids.map(Self.placemark)
+    }
+
+    private static func placemark(id: String) -> Placemark {
+        let dict: [String: Any] = [
+            "id": id,
+            "country": "DE",
+            "country_iso": "DE",
+            "geocoding_source": "backend_service",
+            "dedup_hash": "hash-\(id)",
+            "owner": "",
+            "state": "Bayern",
+            "state_native": "",
+            "state_level": 4
+        ]
+        // swiftlint:disable:next force_try
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        // swiftlint:disable:next force_try
+        return try! JSONDecoder.fieldworks.decode(Placemark.self, from: data)
     }
 }

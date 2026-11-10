@@ -1288,20 +1288,27 @@ private final class MockFeatures: SampleFeaturesSyncClient, @unchecked Sendable 
 
 final class MockList: SampleListClient, @unchecked Sendable {
     var items: [Sample] = []
-    /// Page number (1-based) that throws instead of answering.
-    var failOnPage: Int?
-    private(set) var calls: [(updatedSince: Date?, page: Int, perPage: Int)] = []
+    /// 1-based request index that throws instead of answering.
+    var failOnCall: Int?
+    /// Runs before each request is answered (1-based index); lets a
+    /// test rewrite rows mid-scan.
+    var beforeCall: ((Int) -> Void)?
+    private(set) var calls: [(updatedSince: Date?, after: (updated: Date, id: String)?, perPage: Int)] = []
 
-    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int) {
-        calls.append((updatedSince, page, perPage))
-        if page == failOnPage { throw SampleClientError.http(status: 500, body: "") }
-        let matching = items.filter { sample in
-            guard let updatedSince else { return true }
-            return (sample.updated ?? .distantPast) >= updatedSince
+    func listPage(updatedSince: Date?, after: (updated: Date, id: String)?, perPage: Int) async throws -> [Sample] {
+        calls.append((updatedSince, after, perPage))
+        beforeCall?(calls.count)
+        if calls.count == failOnCall { throw SampleClientError.http(status: 500, body: "") }
+        let sorted = items.sorted {
+            let l = $0.updated ?? .distantPast, r = $1.updated ?? .distantPast
+            return l == r ? $0.id < $1.id : l < r
         }
-        let totalPages = max(1, (matching.count + perPage - 1) / perPage)
-        let start = min((page - 1) * perPage, matching.count)
-        let end = min(start + perPage, matching.count)
-        return (Array(matching[start ..< end]), totalPages)
+        let matching = sorted.filter { sample in
+            let u = sample.updated ?? .distantPast
+            if let after { return u > after.updated || (u == after.updated && sample.id > after.id) }
+            if let updatedSince { return u >= updatedSince }
+            return true
+        }
+        return Array(matching.prefix(perPage))
     }
 }

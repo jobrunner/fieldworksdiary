@@ -100,10 +100,17 @@ func parseConflictVersion(from body: String) -> Int {
 /// List endpoint the `SamplesHydrator` pulls from. `SampleClient`
 /// conforms; tests inject a mock.
 protocol SampleListClient {
-    /// One page of the owner's samples ordered by `updated,id`. With
-    /// `updatedSince` only rows with `updated >= updatedSince` come back
-    /// (inclusive — duplicates are harmless thanks to the upsert).
-    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int)
+    /// One page of the owner's samples ordered by `updated,id`, always
+    /// requested as page 1 (keyset paging: offset paging would skip rows
+    /// when a row is rewritten mid-scan).
+    ///
+    /// - `after`: continue strictly behind this `(updated, id)` pair.
+    ///   Takes precedence over `updatedSince`.
+    /// - `updatedSince`: first request of an incremental run, inclusive
+    ///   (`updated >= updatedSince`; duplicates are harmless).
+    ///
+    /// A page shorter than `perPage` is the last one.
+    func listPage(updatedSince: Date?, after: (updated: Date, id: String)?, perPage: Int) async throws -> [Sample]
 }
 
 extension SampleClient: SampleListClient {}
@@ -217,18 +224,25 @@ struct SampleClient {
         return try await send(request)
     }
 
-    /// Lists one page of the authenticated user's samples sorted by
-    /// `updated,id`. The collection rule already filters by owner.
-    func listPage(updatedSince: Date?, page: Int, perPage: Int) async throws -> (items: [Sample], totalPages: Int) {
+    /// Lists one keyset page of the authenticated user's samples sorted
+    /// by `updated,id`. The collection rule already filters by owner.
+    func listPage(updatedSince: Date?, after: (updated: Date, id: String)?, perPage: Int) async throws -> [Sample] {
         let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw SampleClientError.noEndpoint }
         var components = URLComponents(string: trimmed.appending("/api/collections/samples/records"))
         var items = [
-            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "page", value: "1"),
             URLQueryItem(name: "perPage", value: String(perPage)),
-            URLQueryItem(name: "sort", value: "updated,id")
+            URLQueryItem(name: "sort", value: "updated,id"),
+            URLQueryItem(name: "skipTotal", value: "1")
         ]
-        if let updatedSince {
+        if let after {
+            let u = Self.pocketBaseDate(after.updated)
+            items.append(URLQueryItem(
+                name: "filter",
+                value: "(updated > \"\(u)\" || (updated = \"\(u)\" && id > \"\(after.id)\"))"
+            ))
+        } else if let updatedSince {
             items.append(URLQueryItem(name: "filter", value: "(updated >= \"\(Self.pocketBaseDate(updatedSince))\")"))
         }
         components?.queryItems = items
@@ -246,8 +260,7 @@ struct SampleClient {
             throw SampleClientError.http(status: status, body: String(data: data, encoding: .utf8) ?? "")
         }
         do {
-            let decoded = try JSONDecoder.fieldworks.decode(SampleListResponse.self, from: data)
-            return (decoded.items, decoded.totalPages)
+            return try JSONDecoder.fieldworks.decode(SampleListResponse.self, from: data).items
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
@@ -259,7 +272,8 @@ struct SampleClient {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "UTC")
         f.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS'Z'"
-        return f.string(from: date)
+        // Round to whole ms so a decoded value formats back to the same literal.
+        return f.string(from: Date(timeIntervalSince1970: (date.timeIntervalSince1970 * 1000).rounded() / 1000))
     }
 
     private func send(_ request: URLRequest) async throws -> Sample {

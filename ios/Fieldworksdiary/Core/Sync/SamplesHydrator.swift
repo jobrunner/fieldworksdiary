@@ -85,6 +85,19 @@ final class SamplesHydrator: ObservableObject {
         return cursor(forKey: cursorKey(endpoint: endpoint))
     }
 
+    /// Pulls the owner's samples with keyset paging over `(updated, id)`:
+    /// each request is page 1 behind the last item seen, so rows rewritten
+    /// mid-scan cannot shift later rows out of the window. Incremental runs
+    /// start inclusively at `updated >= cursor`.
+    ///
+    /// The persisted cursor is just the largest `updated` (inclusive
+    /// restart, upsert makes duplicates harmless). It never advances past
+    /// a page whose placemark/feature hydration failed, so the next run
+    /// retries that page.
+    ///
+    /// Rows `LocalSampleStore.upsert` skips (pending/syncing, queued
+    /// mutations, failed or parked) keep their stale local state until
+    /// their own push resolves — accepted behaviour.
     func pull() async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
@@ -109,28 +122,31 @@ final class SamplesHydrator: ObservableObject {
             }()
 
             var newCursor = since
-            var page = 1
+            var after: (updated: Date, id: String)?
+            var locationFailed = false
+            var page = 0
             var processed = 0
             while true {
-                let result = try await client.listPage(updatedSince: since, page: page, perPage: perPage)
-                try store.upsert(result.items)
-                await locationHydration?.hydrate(result.items)
-                processed += result.items.count
-                if let maxUpdated = result.items.compactMap(\.updated).max(),
-                   newCursor.map({ maxUpdated > $0 }) ?? true
-                {
-                    newCursor = maxUpdated
+                page += 1
+                let items = try await client.listPage(updatedSince: since, after: after, perPage: perPage)
+                try store.upsert(items)
+                if let locationHydration, !(await locationHydration.hydrate(items)) {
+                    locationFailed = true
                 }
-                if page >= result.totalPages || result.items.isEmpty { break }
+                processed += items.count
+                guard let last = items.last, let lastUpdated = last.updated else { break }
+                after = (lastUpdated, last.id)
+                if !locationFailed, newCursor.map({ lastUpdated > $0 }) ?? true {
+                    newCursor = lastUpdated
+                }
+                if items.count < perPage { break }
                 if page >= maxPages {
-                    // Pages arrive in `updated` order — the next run
-                    // continues from the cursor reached here.
-                    Log.sync.warning(
-                        "samples hydrate hit page cap \(self.maxPages, privacy: .public) of \(result.totalPages, privacy: .public)"
-                    )
+                    Log.sync.warning("samples hydrate hit page cap \(self.maxPages, privacy: .public)")
                     break
                 }
-                page += 1
+            }
+            if locationFailed {
+                Log.sync.warning("samples hydrate: location data incomplete, cursor held back")
             }
             if let newCursor, newCursor != since {
                 defaults.set(newCursor.timeIntervalSince1970, forKey: key)
