@@ -212,6 +212,17 @@ final class SampleInstantCreationTests: XCTestCase {
         XCTAssertEqual(late.locationStatus, .idle, "past the 5 minutes nobody is locating")
     }
 
+    func testEditor_RetrospectiveSampleWithoutCoordinate_IsNotLocating() throws {
+        let created = try samples.createRetrospective(
+            code: "260519/1", latitude: nil, longitude: nil, beginDate: Date(),
+            timezone: "Europe/Berlin", timezoneSource: .device, mutationsStore: mutations
+        )
+
+        let vm = makeVM(sampleID: created.id, isNew: true)
+
+        XCTAssertEqual(vm.locationStatus, .idle, "nobody locates for a photo without GPS")
+    }
+
     // MARK: - finishEditing
 
     func testFinishEditing_SavesNotes() throws {

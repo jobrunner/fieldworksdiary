@@ -151,9 +151,11 @@ final class SampleEditorViewModel: ObservableObject {
 
     /// While `PendingFixService` waits for a fix for this new sample
     /// (at most `PendingFixService.timeLimit` from creation) the editor
-    /// shows „locating“; afterwards „without coordinate“.
+    /// shows „locating“; afterwards „without coordinate“. Retrospective
+    /// samples (e.g. a photo without GPS) never wait for a fix: nobody
+    /// is locating for them, so „without coordinate“ shows right away.
     private func trackPendingFix(_ sample: LocalSample, now: Date) {
-        guard !sample.hasCoordinate else { return }
+        guard !sample.hasCoordinate, !sample.isRetrospective else { return }
         let remaining = sample.createdAt.addingTimeInterval(PendingFixService.timeLimit).timeIntervalSince(now)
         guard remaining > 0 else { return }
         locationStatus = .locating
