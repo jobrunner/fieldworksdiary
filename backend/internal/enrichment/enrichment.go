@@ -112,6 +112,13 @@ func (e *Enricher) runSafely(sampleID, ftID string) {
 	}
 }
 
+// EnrichSample runs the Ortus location enrichment for one sample
+// synchronously (used by the backfill command). Failures are logged,
+// never returned; the sample stays unchanged then.
+func (e *Enricher) EnrichSample(ctx context.Context, sampleID string) {
+	e.run(ctx, sampleID)
+}
+
 // run queries Ortus for the sample's coordinate and writes the result
 // following the location_status rules:
 //

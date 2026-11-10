@@ -10,6 +10,7 @@ import (
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/api"
+	"go.mett.io/fwd-backend/internal/backfill"
 	"go.mett.io/fwd-backend/internal/enrichment"
 	"go.mett.io/fwd-backend/internal/fusion"
 	"go.mett.io/fwd-backend/internal/hooks"
@@ -20,6 +21,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
+	"github.com/spf13/cobra"
 )
 
 // defaultAppleAudiences are the iOS bundle ids the native Sign in
@@ -174,7 +176,48 @@ func main() {
 		return nil
 	})
 
+	registerBackfillCommand(app, httpClient)
+
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// registerBackfillCommand adds `ortus-backfill [--remap-only]`: legacy
+// manual placemarks, Ortus enrichment of existing samples and the
+// remap after a label-table change (see internal/backfill).
+func registerBackfillCommand(app *pocketbase.PocketBase, httpClient *http.Client) {
+	var remapOnly bool
+	cmd := &cobra.Command{
+		Use:   "ortus-backfill",
+		Short: "Backfill place data via Ortus (use --remap-only after a label-table change)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			labels := adminlabels.Default()
+			r := &backfill.Runner{
+				App:    app,
+				Labels: labels,
+				Logger: slog.Default(),
+				Enricher: &enrichment.Enricher{
+					App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
+				},
+			}
+			if u := strings.TrimSpace(os.Getenv("ORTUS_BASE_URL")); u != "" {
+				r.Enricher.Ortus = &services.Ortus{
+					BaseURL:    u,
+					HTTPClient: httpClient,
+					Cache:      &services.Geocache{Dao: app.Dao()},
+					MaxRetries: 3,
+					Logger:     slog.Default(),
+				}
+			} else if !remapOnly {
+				slog.Warn("ortus: ORTUS_BASE_URL leer, Anreicherung (Schritt B) wird übersprungen")
+			}
+			if remapOnly {
+				return r.Remap(cmd.Context())
+			}
+			return r.Run(cmd.Context())
+		},
+	}
+	cmd.Flags().BoolVar(&remapOnly, "remap-only", false, "only re-map backend placemarks with the current label table")
+	app.RootCmd.AddCommand(cmd)
 }
