@@ -79,6 +79,11 @@ func main() {
 		Automigrate: true,
 	})
 
+	// PocketBase 0.22 auth tokens (`type: authRecord`) stay valid until
+	// they expire, so logged-in iOS clients survive the 0.23+ upgrade
+	// without a forced re-login (see internal/api/legacy_token.go).
+	api.RegisterLegacyAuthTokens(app)
+
 	// Public build-identity endpoint — the iOS "Status" screen shows
 	// this next to the app's own version.
 	api.RegisterVersionRoute(app)
