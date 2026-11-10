@@ -96,9 +96,9 @@ final class DatabaseMigrationV13Tests: XCTestCase {
         // backend dedups on hash + source + owner).
         XCTAssertNoThrow(try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO local_placemarks (id, country, geocoding_source, dedup_hash, backend_updated_at)
-                VALUES ('a', 'DE', 'backend_service', 'same', '2026-05-19 12:00:00.000'),
-                       ('b', 'DE', 'manual', 'same', '2026-05-19 12:00:00.000')
+                INSERT INTO local_placemarks (id, geocoding_source, dedup_hash, backend_updated_at)
+                VALUES ('a', 'backend_service', 'same', '2026-05-19 12:00:00.000'),
+                       ('b', 'manual', 'same', '2026-05-19 12:00:00.000')
             """)
         })
     }

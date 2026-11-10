@@ -160,9 +160,17 @@ struct FieldtripsListScreen: View {
                         .accessibilityLabel("Nachtexkursion")
                 }
             }
-            HStack(spacing: 8) {
+            HStack(spacing: AppSpacing.sm) {
                 Text(fieldtrip.collectingDay)
                     .font(.footnote.monospacedDigit())
+                if let summary = viewModel.placeSummaries[fieldtrip.id] {
+                    if let name = summary.name {
+                        Text("· \(name)")
+                    }
+                    if let mtb = summary.mtb {
+                        Text("· \(mtb)")
+                    }
+                }
             }
             .font(.footnote)
             .foregroundStyle(.secondary)

@@ -17,6 +17,9 @@ final class FieldtripsListViewModel: ObservableObject {
     /// Places of the local samples per fieldtrip id (Land/Ort filter).
     @Published private(set) var placeIndex: [String: [Place]] = [:]
 
+    /// Place line per fieldtrip id, derived from its samples.
+    @Published private(set) var placeSummaries: [String: FieldtripPlaceSummary] = [:]
+
     private let store: LocalFieldtripStore
     private let hydrator: FieldtripsHydrator
     private let samples: LocalSampleStore?
@@ -61,10 +64,18 @@ final class FieldtripsListViewModel: ObservableObject {
     /// re-applies the filter.
     func reloadPlaces() {
         if let samples, let placemarks {
-            let rows = ((try? samples.fetchAll()) ?? []).map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) }
+            let all = (try? samples.fetchAll()) ?? []
+            let cached = (try? placemarks.fetchAllByID()) ?? [:]
             placeIndex = FieldtripsFilter.placeIndex(
-                samples: rows,
-                placemarks: (try? placemarks.fetchAllByID()) ?? [:]
+                samples: all.map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) },
+                placemarks: cached
+            )
+            placeSummaries = FieldtripPlaceSummary.index(
+                samples: all.map {
+                    (fieldtrip: $0.fieldtrip, placemark: $0.placemark,
+                     mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName)
+                },
+                placemarks: cached
             )
         }
         rebuildVisible()

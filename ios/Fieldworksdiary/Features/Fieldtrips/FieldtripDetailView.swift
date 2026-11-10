@@ -5,6 +5,7 @@ struct FieldtripDetailView: View {
 
     @EnvironmentObject var container: AppContainer
     @State private var local: LocalFieldtrip?
+    @State private var placeSummary: FieldtripPlaceSummary?
     @State private var loadingError: String?
     @State private var localityActionError: String?
     @State private var localityActionBusy = false
@@ -383,6 +384,25 @@ struct FieldtripDetailView: View {
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+            if let name = placeSummary?.name {
+                Text(name)
+                    .font(.body.weight(.medium))
+                if let region = placeSummary?.region {
+                    Text(region)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let mtb = placeSummary?.mtb {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.grid.2x2")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(mtb)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
             if let lat = current.centroidLat, let lon = current.centroidLon {
                 Text(String(format: "Centroid %.5f, %.5f", lat, lon))
                     .font(.footnote.monospacedDigit())
@@ -458,10 +478,23 @@ struct FieldtripDetailView: View {
         return formatter.string(from: date)
     }
 
+    private func loadPlaceSummary() {
+        let samples = (try? container.store.fetchByFieldtrip(fieldtripID)) ?? []
+        let cached = (try? container.placemarksStore.fetchAllByID()) ?? [:]
+        placeSummary = FieldtripPlaceSummary.summarize(samples.map {
+            FieldtripPlaceSummary.Sample(
+                place: $0.placemark.flatMap { cached[$0] }?.place,
+                mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName
+            )
+        })
+    }
+
     private func reload() async {
         local = (try? container.fieldtrips.fetchById(fieldtripID))
+        loadPlaceSummary()
         await container.hydrator.pullOne(fieldtripID)
         local = (try? container.fieldtrips.fetchById(fieldtripID)) ?? local
+        loadPlaceSummary()
         loadingError = container.hydrator.lastError
     }
 
