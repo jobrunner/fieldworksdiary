@@ -59,7 +59,8 @@ Hinweis).
 
 ### 2. Sample-Ansicht (Feldbuch)
 
-- Ortsdaten als eine Gazetteer-Zeile, z.B. „Deutschland, Bayern, Unterfranken, Landkreis Würzburg“
+- Ortsdaten als eine Gazetteer-Zeile, z.B. „Deutschland, Bayern, Unterfranken, Landkreis Würzburg, Ochsenfurt“
+  (alle vorhandenen Ebenen bis zur Gemeinde; Entscheidung von Claude, Jo prüft)
   (Länder-spezifische Begriffe wie bisher über `AdminLabelTable`/`PlaceDisplay`).
 - Darunter Peilung („14 km SE Würzburg“), Exposition und Hangneigung, sofern vorhanden.
 - Koordinate im globalen Anzeigeformat, darunter der Name des Formats (wie in der alten App).
