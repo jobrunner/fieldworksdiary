@@ -1185,6 +1185,8 @@ Testhinweise für Jo:
 5. Einstellungen → Koordinatenformat MGRS/DMS: Sample-Ansicht zeigt das Format mit Namen darunter.
 6. Probe ohne Koordinate → „Auf Karte wählen“: Achtung, „Übernehmen“ ist sofort mit der Geräteposition aktiv.
 
+Anpassungen aus Jos erstem Test (89e34ba, ddafade): Peilung ohne Label und nur, wenn sie über die Gazetteer-Zeile hinaus etwas sagt (nicht „in …“, ab 0,5 km); Sammeltag aus der Sample-Ansicht entfernt; Koordinatensystem (MGRS, UTM, Geographische Koordinaten) über der Koordinate auf Höhe von „Höhe“, Werte und Genauigkeiten in Primärfarbe; Reihenfolge Gazetteer, Peilung, MTB, „Exposition: … Hangneigung: …“ in einer Zeile; iOS-26-Zusatzrand links entfernt, Icon-Spalte schmaler.
+
 Nacharbeiten (nicht in Phase N): neue UI-Strings fehlen in `Localizable.xcstrings` (Anzeige fällt auf den deutschen Schlüssel zurück); Karte ohne Koordinate lässt die Geräteposition ohne Tippen übernehmen; laufende Ortus-Anfrage im Formular wird bei Pop-to-root nicht abgebrochen (schreibt dann noch, harmlos); Fieldtrip-Zuordnung im Backend vor dem 409-Guard; Sammeltag eines nachgetragenen Samples folgt einer vom Backend gesetzten Zeitzone erst beim nächsten eigenen Schreiben; Kamera-Button ohne 44-pt-Mindestbreite; Scrim-Token ohne Increase-Contrast-Variante.
 
 ## Projekt Account-Umbau
