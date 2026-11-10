@@ -1097,6 +1097,27 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(device.timezoneSource, .device)
     }
 
+    func testAdoptServerZone_AllDayKeepsCalendarDayAtMidnight() throws {
+        var sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 0))
+        sample.isAllDay = true
+        sample.endDate = nil
+        sample.adoptServerZone(remote(id: "b", code: "x", timezone: "Atlantic/Canary", timezoneSource: "location_service"))
+        let canary = try XCTUnwrap(TimeZone(identifier: "Atlantic/Canary"))
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = canary
+        let parts = cal.dateComponents([.year, .month, .day, .hour, .minute], from: sample.beginDate)
+        XCTAssertEqual([parts.year, parts.month, parts.day, parts.hour, parts.minute], [2026, 5, 19, 0, 0])
+        XCTAssertNil(sample.endDate)
+        XCTAssertEqual(sample.timezone, "Atlantic/Canary")
+    }
+
+    func testAdoptServerZone_TimedSampleKeepsInstant() throws {
+        var sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let begin = sample.beginDate
+        sample.adoptServerZone(remote(id: "b", code: "x", timezone: "Atlantic/Canary", timezoneSource: "location_service"))
+        XCTAssertEqual(sample.beginDate, begin)
+    }
+
     func testMergeServerLocation_ServerElevationClearsStaleVerticalAccuracy() throws {
         var sample = try store.createLocal(lat: 49.68, lon: 10.04, verticalAccuracy: 7, elevation: 100,
                                            collectedFrom: date(2026, 5, 19, 14))

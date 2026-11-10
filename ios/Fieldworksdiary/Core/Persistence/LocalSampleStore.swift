@@ -996,11 +996,20 @@ final class LocalSampleStore {
 extension LocalSample {
     /// Adopts the server's zone when it comes from the location service
     /// or the user, unless the local zone was set manually (a device
-    /// zone must never override the Ortus zone on a retry).
+    /// zone must never override the Ortus zone on a retry). An all-day
+    /// row keeps its calendar day: its begin moves to 00:00 of that day
+    /// in the new zone (same rule as the backend and the resolver).
     mutating func adoptServerZone(_ r: Sample) {
         guard timezoneSource != .manual,
               let source = r.timezoneSource, source == .locationService || source == .manual,
               !r.timezone.isEmpty else { return }
+        if isAllDay, r.timezone != timezone,
+           let oldZone = TimeZone(identifier: timezone),
+           let newZone = TimeZone(identifier: r.timezone)
+        {
+            beginDate = SampleTime.startOfSameDay(beginDate, from: oldZone, to: newZone)
+            endDate = nil
+        }
         timezone = r.timezone
         timezoneSource = source
     }

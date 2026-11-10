@@ -346,8 +346,34 @@ func applyTimezone(rec *models.Record, g geoplace.SampleGeo) {
 	if g.Timezone == "" || rec.GetString("timezone_source") == "manual" {
 		return
 	}
+	oldZone := rec.GetString("timezone")
 	rec.Set("timezone", g.Timezone)
 	rec.Set("timezone_source", "location_service")
+	if oldZone != g.Timezone && rec.GetBool("is_all_day") {
+		resnapAllDay(rec, oldZone, g.Timezone)
+	}
+}
+
+// resnapAllDay keeps an all-day sample on 00:00 of its calendar day when
+// its zone changes: the day is read in the old zone, the new begin is
+// that day's midnight in the new zone. end_date stays empty for all-day
+// samples. Unknown zones or an empty begin leave the record untouched.
+func resnapAllDay(rec *models.Record, oldZone, newZone string) {
+	begin := rec.GetDateTime("begin_date").Time()
+	if begin.IsZero() {
+		return
+	}
+	oldLoc, err := time.LoadLocation(oldZone)
+	if err != nil {
+		return
+	}
+	newLoc, err := time.LoadLocation(newZone)
+	if err != nil {
+		return
+	}
+	y, m, d := begin.In(oldLoc).Date()
+	rec.Set("begin_date", time.Date(y, m, d, 0, 0, 0, 0, newLoc).UTC())
+	rec.Set("end_date", "")
 }
 
 // currentPlacemarkHash returns the dedup hash of the sample's current

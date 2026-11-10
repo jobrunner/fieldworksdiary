@@ -777,6 +777,49 @@ func TestEnrich_SetsTimezoneUnlessManual(t *testing.T) {
 		}
 	})
 
+	t.Run("all-day begin re-snaps to midnight of the same day", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		canary, err := time.LoadLocation("Atlantic/Canary")
+		if err != nil {
+			t.Fatal(err)
+		}
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status": "pending", "timezone": "Atlantic/Canary", "timezone_source": "device",
+			"is_all_day": true, "begin_date": time.Date(2026, 5, 19, 0, 0, 0, 0, canary), "end_date": "",
+		})
+
+		runEnrich(t, newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json")), sampleID)
+
+		s := loadSample(t, app, sampleID)
+		berlin, err := time.LoadLocation("Europe/Berlin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := time.Date(2026, 5, 19, 0, 0, 0, 0, berlin)
+		if got := s.GetDateTime("begin_date").Time(); !got.Equal(want) {
+			t.Errorf("begin_date = %v, want %v", got, want.UTC())
+		}
+		if !s.GetDateTime("end_date").IsZero() {
+			t.Errorf("end_date = %v, want empty", s.GetDateTime("end_date"))
+		}
+	})
+
+	t.Run("timed begin keeps its instant", func(t *testing.T) {
+		app := newAppForRecordsOnly(t)
+		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+		before := loadSample(t, app, sampleID).GetDateTime("begin_date").Time()
+		updateSample(t, app, sampleID, map[string]any{
+			"location_status": "pending", "timezone": "Atlantic/Canary", "timezone_source": "device",
+		})
+
+		runEnrich(t, newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json")), sampleID)
+
+		if got := loadSample(t, app, sampleID).GetDateTime("begin_date").Time(); !got.Equal(before) {
+			t.Errorf("begin_date = %v, want unchanged %v", got, before)
+		}
+	})
+
 	t.Run("manual stays", func(t *testing.T) {
 		app := newAppForRecordsOnly(t)
 		_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
