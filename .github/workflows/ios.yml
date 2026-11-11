@@ -45,11 +45,19 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Install tooling (xcodegen, SwiftLint, SwiftFormat, periphery)
+      - name: Install tooling (xcodegen, SwiftLint, SwiftFormat)
         run: |
           brew update
           brew install xcodegen swiftlint swiftformat
-          brew install peripheryapp/periphery/periphery
+
+      # Periphery ist nur ein Hinweis-Check und darf den Lint nicht
+      # blockieren. Der Cask aus peripheryapp/periphery scheitert an
+      # `depends_on macos: :catalina` (in Homebrew abgeschaltet), die
+      # Core-Formel ist deprecated, weil das Upstream-Repo archiviert ist
+      # (Abschaltung 2027-08-12). Danach Schritt entfernen oder ersetzen.
+      - name: Install periphery (optional)
+        continue-on-error: true
+        run: brew install periphery
 
       - name: Generate Xcode project
         working-directory: ios
