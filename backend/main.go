@@ -68,7 +68,8 @@ func main() {
 
 	app := pocketbase.New()
 
-	slog.Info("starting fieldworksdiary",
+	slog.Info(
+		"starting fieldworksdiary",
 		slog.String("version", version.Version),
 		slog.String("commit", version.Commit),
 	)
@@ -77,6 +78,11 @@ func main() {
 	migratecmd.MustRegister(app, app.RootCmd, migratecmd.Config{
 		Automigrate: true,
 	})
+
+	// PocketBase 0.22 auth tokens (`type: authRecord`) stay valid until
+	// they expire, so logged-in iOS clients survive the 0.23+ upgrade
+	// without a forced re-login (see internal/api/legacy_token.go).
+	api.RegisterLegacyAuthTokens(app)
 
 	// Public build-identity endpoint — the iOS "Status" screen shows
 	// this next to the app's own version.
@@ -137,13 +143,12 @@ func main() {
 	// fieldtrip astro; locality-side reverse-geocodes the coordinate
 	// into a Placemark row.
 	//
-	// The cache lives in the `geocache` collection; we hand each
-	// enricher a function-bound dao reference because app.Dao() at
-	// startup is nil — the dao is built during app.Start().
+	// The cache lives in the `geocache` collection. The enrichers are
+	// wired on serve, after the app is bootstrapped.
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		cache := &services.Geocache{Dao: app.Dao()}
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		cache := &services.Geocache{App: app}
 		enr := &enrichment.Enricher{
 			App:     app,
 			Labels:  adminlabels.Default(),
@@ -174,7 +179,7 @@ func main() {
 			Timeout: 15 * time.Second,
 		}
 		enrichment.RegisterPlacemarkEnricher(app, pm)
-		return nil
+		return se.Next()
 	})
 
 	registerBackfillCommand(app, httpClient)
@@ -237,7 +242,7 @@ func newBackfillRunner(app core.App, httpClient *http.Client, ortusBaseURL strin
 	ortus := &services.Ortus{
 		BaseURL:    u,
 		HTTPClient: httpClient,
-		Cache:      &services.Geocache{Dao: app.Dao()},
+		Cache:      &services.Geocache{App: app},
 		MaxRetries: 3,
 		Logger:     slog.Default(),
 	}

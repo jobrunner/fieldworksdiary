@@ -8,8 +8,7 @@ import (
 	"go.mett.io/fwd-backend/internal/astro"
 	"go.mett.io/fwd-backend/internal/grouping"
 
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 )
 
 // recomputeFieldtripDerived loads all samples for the given fieldtrip,
@@ -17,14 +16,14 @@ import (
 // suggestion. Best-effort
 // — never crashes the enclosing goroutine, just logs and moves on.
 func (e *Enricher) recomputeFieldtripDerived(ftID string) {
-	dao := e.App.Dao()
-	ft, err := dao.FindRecordById("fieldtrips", ftID)
+	app := e.App
+	ft, err := app.FindRecordById("fieldtrips", ftID)
 	if err != nil {
 		e.log().Warn("astro: fieldtrip vanished", slog.String("id", ftID), slog.Any("err", err))
 		return
 	}
 
-	samples, err := dao.FindRecordsByFilter("samples", "fieldtrip = {:ft}", "", 0, 0,
+	samples, err := app.FindRecordsByFilter("samples", "fieldtrip = {:ft}", "", 0, 0,
 		map[string]any{"ft": ftID})
 	if err != nil {
 		e.log().Warn("astro: sample query failed", slog.String("id", ftID), slog.Any("err", err))
@@ -60,7 +59,7 @@ func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 	// localities in the prompt.
 	if ft.GetString("locality") == "" {
 		ownerID := ft.GetString("owner")
-		if suggested := nearestLocalityID(dao, ownerID, cLat, cLon); suggested != "" {
+		if suggested := nearestLocalityID(app, ownerID, cLat, cLon); suggested != "" {
 			ft.Set("suggested_locality", suggested)
 		} else {
 			// Drop a stale suggestion that no longer applies (e.g.
@@ -69,7 +68,7 @@ func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 		}
 	}
 
-	if err := dao.SaveRecord(ft); err != nil {
+	if err := app.SaveNoValidate(ft); err != nil {
 		e.log().Warn(
 			"astro: save failed",
 			slog.String("id", ftID),
@@ -83,11 +82,11 @@ func (e *Enricher) recomputeFieldtripDerived(ftID string) {
 // Returns "" if no locality qualifies (or if owner is empty, which
 // would indicate a pre-Phase-11 record we shouldn't make suggestions
 // for).
-func nearestLocalityID(dao *daos.Dao, ownerID string, lat, lon float64) string {
+func nearestLocalityID(app core.App, ownerID string, lat, lon float64) string {
 	if ownerID == "" {
 		return ""
 	}
-	recs, err := dao.FindRecordsByFilter(
+	recs, err := app.FindRecordsByFilter(
 		"localities",
 		"owner = {:o}",
 		"",
@@ -113,7 +112,7 @@ func nearestLocalityID(dao *daos.Dao, ownerID string, lat, lon float64) string {
 	return ""
 }
 
-func centroid(samples []*models.Record) (lat, lon float64) {
+func centroid(samples []*core.Record) (lat, lon float64) {
 	if len(samples) == 0 {
 		return 0, 0
 	}

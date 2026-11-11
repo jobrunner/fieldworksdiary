@@ -7,7 +7,7 @@ import (
 
 	"go.mett.io/fwd-backend/internal/adminlabels"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -15,24 +15,24 @@ func newPlacemarkEnricher(app *tests.TestApp, f *fakeOrtus) *PlacemarkEnricher {
 	return &PlacemarkEnricher{App: app, Ortus: f.client(), Labels: adminlabels.Default(), Timeout: 5 * time.Second}
 }
 
-func createPMUser(t *testing.T, app *tests.TestApp) *models.Record {
+func createPMUser(t *testing.T, app *tests.TestApp) *core.Record {
 	t.Helper()
-	usersColl, _ := app.Dao().FindCollectionByNameOrId("users")
-	user := models.NewRecord(usersColl)
+	usersColl, _ := app.FindCollectionByNameOrId("users")
+	user := core.NewRecord(usersColl)
 	n := strings.ReplaceAll(t.Name(), "/", "_")
-	_ = user.SetEmail("pm-" + n + "@example.com")
-	_ = user.SetUsername("pmuser_" + n)
-	_ = user.SetPassword("test1234password")
-	if err := app.Dao().SaveRecord(user); err != nil {
+	user.SetEmail("pm-" + n + "@example.com")
+	user.Set("username", "pmuser_"+n)
+	user.SetPassword("test1234password")
+	if err := app.SaveNoValidate(user); err != nil {
 		t.Fatalf("save user: %v", err)
 	}
 	return user
 }
 
-func createLocality(t *testing.T, app *tests.TestApp, ownerID string, lat, lon float64, placemarkID string) *models.Record {
+func createLocality(t *testing.T, app *tests.TestApp, ownerID string, lat, lon float64, placemarkID string) *core.Record {
 	t.Helper()
-	locColl, _ := app.Dao().FindCollectionByNameOrId("localities")
-	loc := models.NewRecord(locColl)
+	locColl, _ := app.FindCollectionByNameOrId("localities")
+	loc := core.NewRecord(locColl)
 	loc.Set("owner", ownerID)
 	loc.Set("name", "Test")
 	loc.Set("latitude", lat)
@@ -42,7 +42,7 @@ func createLocality(t *testing.T, app *tests.TestApp, ownerID string, lat, lon f
 	if placemarkID != "" {
 		loc.Set("placemark", placemarkID)
 	}
-	if err := app.Dao().SaveRecord(loc); err != nil {
+	if err := app.SaveNoValidate(loc); err != nil {
 		t.Fatalf("save locality: %v", err)
 	}
 	return loc
@@ -58,12 +58,12 @@ func TestPlacemarkEnricher_LookupOrCreateOnFirstRun(t *testing.T) {
 		t.Fatalf("enricher.run: %v", err)
 	}
 
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	pmID := reloaded.GetString("placemark")
 	if pmID == "" {
 		t.Fatal("placemark relation not set after enrich")
 	}
-	pm, err := app.Dao().FindRecordById("placemarks", pmID)
+	pm, err := app.FindRecordById("placemarks", pmID)
 	if err != nil {
 		t.Fatalf("placemark vanished: %v", err)
 	}
@@ -92,8 +92,8 @@ func TestPlacemarkEnricher_SharesPlacemarkAcrossLocalities(t *testing.T) {
 	if err := enricher.run(b.Id); err != nil {
 		t.Fatalf("enrich b: %v", err)
 	}
-	aR, _ := app.Dao().FindRecordById("localities", a.Id)
-	bR, _ := app.Dao().FindRecordById("localities", b.Id)
+	aR, _ := app.FindRecordById("localities", a.Id)
+	bR, _ := app.FindRecordById("localities", b.Id)
 	if aR.GetString("placemark") == "" || aR.GetString("placemark") != bR.GetString("placemark") {
 		t.Errorf("expected shared placemark, got %q vs %q", aR.GetString("placemark"), bR.GetString("placemark"))
 	}
@@ -114,7 +114,7 @@ func TestLocalityPlacemark_SharesRecordWithSample(t *testing.T) {
 	if err := newPlacemarkEnricher(app, f).run(loc.Id); err != nil {
 		t.Fatalf("enrich locality: %v", err)
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if got := reloaded.GetString("placemark"); got != samplePM {
 		t.Errorf("locality placemark = %q, want sample's %q", got, samplePM)
 	}
@@ -124,13 +124,13 @@ func TestPlacemarkEnricher_RespectsManualOverride(t *testing.T) {
 	app := newAppForRecordsOnly(t)
 	user := createPMUser(t, app)
 
-	pmColl, _ := app.Dao().FindCollectionByNameOrId("placemarks")
-	manual := models.NewRecord(pmColl)
+	pmColl, _ := app.FindCollectionByNameOrId("placemarks")
+	manual := core.NewRecord(pmColl)
 	manual.Set("country_iso", "FR")
 	manual.Set("admin_municipality", "Paris")
 	manual.Set("geocoding_source", "manual")
 	manual.Set("dedup_hash", "manual-test-hash")
-	if err := app.Dao().SaveRecord(manual); err != nil {
+	if err := app.SaveNoValidate(manual); err != nil {
 		t.Fatalf("save manual placemark: %v", err)
 	}
 	loc := createLocality(t, app, user.Id, deLat, deLon, manual.Id)
@@ -139,7 +139,7 @@ func TestPlacemarkEnricher_RespectsManualOverride(t *testing.T) {
 	if err := newPlacemarkEnricher(app, f).run(loc.Id); err != nil {
 		t.Fatalf("enrich: %v", err)
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if reloaded.GetString("placemark") != manual.Id {
 		t.Errorf("manual override was overwritten — placemark = %q, want %q",
 			reloaded.GetString("placemark"), manual.Id)
@@ -157,7 +157,7 @@ func TestPlacemarkEnricher_SeaLeavesLocalityUntouched(t *testing.T) {
 	if err := newPlacemarkEnricher(app, f).run(loc.Id); err != nil {
 		t.Fatalf("enrich: %v", err)
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if reloaded.GetString("placemark") != "" {
 		t.Error("sea locality should not get a placemark")
 	}
@@ -172,7 +172,7 @@ func TestPlacemarkEnricher_OrtusDownReturnsError(t *testing.T) {
 	if err := newPlacemarkEnricher(app, f).run(loc.Id); err == nil {
 		t.Error("want error when Ortus fails")
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if reloaded.GetString("placemark") != "" {
 		t.Error("placemark must stay empty")
 	}
@@ -185,7 +185,7 @@ func TestPlacemarkEnricher_NilOrtusIsNoOp(t *testing.T) {
 	if err := (&PlacemarkEnricher{App: app}).run(loc.Id); err != nil {
 		t.Fatalf("enrich: %v", err)
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if reloaded.GetString("placemark") != "" {
 		t.Error("nil Ortus should not set a placemark")
 	}
@@ -199,7 +199,7 @@ func TestPlacemarkEnricher_NoCoordsIsNoOp(t *testing.T) {
 	if err := newPlacemarkEnricher(app, f).run(loc.Id); err != nil {
 		t.Fatalf("enrich: %v", err)
 	}
-	reloaded, _ := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, _ := app.FindRecordById("localities", loc.Id)
 	if reloaded.GetString("placemark") != "" {
 		t.Error("a coordinate-less locality should not get a placemark")
 	}

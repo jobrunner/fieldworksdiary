@@ -21,39 +21,34 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if f := samples.Schema.GetFieldByName("admin_units"); f != nil {
-			samples.Schema.RemoveField(f.Id)
-			return dao.SaveCollection(samples)
+		if samples.Fields.GetByName("admin_units") != nil {
+			removeFields(samples, "admin_units")
+			return app.Save(samples)
 		}
 		// Already dropped — idempotent no-op.
 		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	}, func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if samples.Schema.GetFieldByName("admin_units") != nil {
+		if samples.Fields.GetByName("admin_units") != nil {
 			return nil
 		}
-		samples.Schema.AddField(&schema.SchemaField{
+		samples.Fields.Add(&core.JSONField{
 			Name:    "admin_units",
-			Type:    schema.FieldTypeJson,
-			Options: &schema.JsonOptions{MaxSize: 2 << 20}, // 2 MiB, matches Phase 2
+			MaxSize: 2 << 20, // 2 MiB, matches Phase 2
 		})
-		return dao.SaveCollection(samples)
+		return app.Save(samples)
 	})
 }

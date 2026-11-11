@@ -11,12 +11,12 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
+	m.Register(func(app core.App) error {
 		// Order matters: child tables before parents to keep
 		// the FK-light Pocketbase relations happy on rollback. In
 		// practice PB uses cascade or no-cascade per field setting;
@@ -32,12 +32,12 @@ func init() {
 			"people",
 			"geocache",
 		} {
-			if _, err := db.NewQuery("DELETE FROM " + table).Execute(); err != nil {
+			if _, err := app.DB().NewQuery("DELETE FROM " + table).Execute(); err != nil {
 				return err
 			}
 		}
 		return nil
-	}, func(db dbx.Builder) error {
+	}, func(core.App) error {
 		// Down is a no-op — we can't synthesize back the dev data
 		// we just dropped. Re-running fresh migrations gets the
 		// empty schema you expect.

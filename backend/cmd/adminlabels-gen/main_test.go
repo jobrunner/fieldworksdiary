@@ -10,7 +10,7 @@ import (
 
 func TestWriteOutput_RefusesExistingWithoutForce(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "admin_labels.json")
-	if err := os.WriteFile(path, []byte("curated"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("curated"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var stderr bytes.Buffer
@@ -25,7 +25,7 @@ func TestWriteOutput_RefusesExistingWithoutForce(t *testing.T) {
 
 func TestWriteOutput_ForceOverwritesWithWarning(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "admin_labels.json")
-	if err := os.WriteFile(path, []byte("curated"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("curated"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	var stderr bytes.Buffer

@@ -4,14 +4,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
 // savedBackendServiceSample stores a sample enriched by the backend
 // (status backend_service, shared placemark) and returns it freshly
 // loaded, as the update request hook would see it.
-func savedBackendServiceSample(t *testing.T, app *tests.TestApp) (*models.Record, *models.Record) {
+func savedBackendServiceSample(t *testing.T, app *tests.TestApp) (*core.Record, *core.Record) {
 	t.Helper()
 	owner := createTestUser(t, app, "loc"+uniqueSuffix(t)+"@example.com")
 	pm := makePlacemarkRow(t, app, "", "backend_service", "h-loc")
@@ -21,10 +21,10 @@ func savedBackendServiceSample(t *testing.T, app *tests.TestApp) (*models.Record
 	rec.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, berlin))
 	rec.Set("location_status", "backend_service")
 	rec.Set("placemark", pm.Id)
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
-	fresh, err := app.Dao().FindRecordById("samples", rec.Id)
+	fresh, err := app.FindRecordById("samples", rec.Id)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}

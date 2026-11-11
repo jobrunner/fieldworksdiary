@@ -19,9 +19,8 @@ import (
 	"fmt"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func phaseZSuffixDuplicates(db dbx.Builder) error {
@@ -65,8 +64,8 @@ func phaseZSuffixDuplicates(db dbx.Builder) error {
 	return nil
 }
 
-func phaseZUp(db dbx.Builder) error {
-	dao := daos.New(db)
+func phaseZUp(app core.App) error {
+	db := app.DB()
 
 	// 1. Duplicates first, while sample_id is still untouched.
 	if err := phaseZSuffixDuplicates(db); err != nil {
@@ -74,56 +73,49 @@ func phaseZUp(db dbx.Builder) error {
 	}
 
 	// 2. samples: rename + new columns (DEM columns stay until moved).
-	samples, err := dao.FindCollectionByNameOrId("samples")
+	samples, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		return err
 	}
-	if f := samples.Schema.GetFieldByName("time_zone"); f != nil {
-		f.Name = "timezone"
-	}
-	if samples.Schema.GetFieldByName("timezone_source") == nil {
-		samples.Schema.AddField(&schema.SchemaField{
-			Name: "timezone_source", Type: schema.FieldTypeSelect,
-			Options: &schema.SelectOptions{
-				Values: []string{"device", "location_service", "manual"}, MaxSelect: 1,
-			},
-		})
-	}
-	if samples.Schema.GetFieldByName("collecting_day") == nil {
-		samples.Schema.AddField(&schema.SchemaField{Name: "collecting_day", Type: schema.FieldTypeText})
-	}
-	if err := dao.SaveCollection(samples); err != nil {
+	renameField(samples, "time_zone", "timezone")
+	addFieldIfMissing(samples, &core.SelectField{
+		Name:      "timezone_source",
+		Values:    []string{"device", "location_service", "manual"},
+		MaxSelect: 1,
+	})
+	addFieldIfMissing(samples, &core.TextField{Name: "collecting_day"})
+	if err := app.Save(samples); err != nil {
 		return err
 	}
 
 	// 3. fieldtrips + users.
-	fieldtrips, err := dao.FindCollectionByNameOrId("fieldtrips")
+	fieldtrips, err := app.FindCollectionByNameOrId("fieldtrips")
 	if err != nil {
 		return err
 	}
-	if fieldtrips.Schema.GetFieldByName("timezone") == nil {
-		fieldtrips.Schema.AddField(&schema.SchemaField{Name: "timezone", Type: schema.FieldTypeText})
-		if err := dao.SaveCollection(fieldtrips); err != nil {
+	if fieldtrips.Fields.GetByName("timezone") == nil {
+		fieldtrips.Fields.Add(&core.TextField{Name: "timezone"})
+		if err := app.Save(fieldtrips); err != nil {
 			return err
 		}
 	}
-	users, err := dao.FindCollectionByNameOrId("users")
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
 	}
 	changed := false
-	for _, f := range []*schema.SchemaField{
-		{Name: "sample_id_format", Type: schema.FieldTypeText},
-		{Name: "sample_id_prefix", Type: schema.FieldTypeText},
-		{Name: "sample_id_offset", Type: schema.FieldTypeNumber},
+	for _, f := range []core.Field{
+		&core.TextField{Name: "sample_id_format"},
+		&core.TextField{Name: "sample_id_prefix"},
+		&core.NumberField{Name: "sample_id_offset"},
 	} {
-		if users.Schema.GetFieldByName(f.Name) == nil {
-			users.Schema.AddField(f)
+		if users.Fields.GetByName(f.GetName()) == nil {
+			users.Fields.Add(f)
 			changed = true
 		}
 	}
 	if changed {
-		if err := dao.SaveCollection(users); err != nil {
+		if err := app.Save(users); err != nil {
 			return err
 		}
 	}
@@ -149,60 +141,43 @@ func phaseZUp(db dbx.Builder) error {
 	}
 
 	// 5. Drop the DEM columns.
-	samples, err = dao.FindCollectionByNameOrId("samples")
+	samples, err = app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		return err
 	}
-	for _, n := range []string{"elevation_dem", "elevation_dem_accuracy"} {
-		if f := samples.Schema.GetFieldByName(n); f != nil {
-			samples.Schema.RemoveField(f.Id)
-		}
-	}
-	return dao.SaveCollection(samples)
+	removeFields(samples, "elevation_dem", "elevation_dem_accuracy")
+	return app.Save(samples)
 }
 
-func phaseZDown(db dbx.Builder) error {
-	dao := daos.New(db)
-	samples, err := dao.FindCollectionByNameOrId("samples")
+func phaseZDown(app core.App) error {
+	samples, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		return err
 	}
-	for _, n := range []string{"timezone_source", "collecting_day"} {
-		if f := samples.Schema.GetFieldByName(n); f != nil {
-			samples.Schema.RemoveField(f.Id)
-		}
-	}
-	if f := samples.Schema.GetFieldByName("timezone"); f != nil {
-		f.Name = "time_zone"
-	}
+	removeFields(samples, "timezone_source", "collecting_day")
+	renameField(samples, "timezone", "time_zone")
 	for _, n := range []string{"elevation_dem", "elevation_dem_accuracy"} {
-		if samples.Schema.GetFieldByName(n) == nil {
-			samples.Schema.AddField(&schema.SchemaField{Name: n, Type: schema.FieldTypeNumber})
-		}
+		addFieldIfMissing(samples, &core.NumberField{Name: n})
 	}
-	if err := dao.SaveCollection(samples); err != nil {
+	if err := app.Save(samples); err != nil {
 		return err
 	}
-	fieldtrips, err := dao.FindCollectionByNameOrId("fieldtrips")
+	fieldtrips, err := app.FindCollectionByNameOrId("fieldtrips")
 	if err != nil {
 		return err
 	}
-	if f := fieldtrips.Schema.GetFieldByName("timezone"); f != nil {
-		fieldtrips.Schema.RemoveField(f.Id)
-		if err := dao.SaveCollection(fieldtrips); err != nil {
+	if fieldtrips.Fields.GetByName("timezone") != nil {
+		removeFields(fieldtrips, "timezone")
+		if err := app.Save(fieldtrips); err != nil {
 			return err
 		}
 	}
-	users, err := dao.FindCollectionByNameOrId("users")
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
 	}
-	for _, n := range []string{"sample_id_format", "sample_id_prefix", "sample_id_offset"} {
-		if f := users.Schema.GetFieldByName(n); f != nil {
-			users.Schema.RemoveField(f.Id)
-		}
-	}
-	return dao.SaveCollection(users)
+	removeFields(users, "sample_id_format", "sample_id_prefix", "sample_id_offset")
+	return app.Save(users)
 }
 
 func init() {

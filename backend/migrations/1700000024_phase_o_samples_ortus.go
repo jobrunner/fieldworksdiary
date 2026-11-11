@@ -11,11 +11,8 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
-	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 var samplesOrtusNewFields = []string{
@@ -26,57 +23,49 @@ var samplesOrtusNewFields = []string{
 	"bearing_reference", "bearing_compass", "terrain_flat", "bearing_inside",
 }
 
-func samplesOrtusUp(db dbx.Builder) error {
-	dao := daos.New(db)
-	samples, err := dao.FindCollectionByNameOrId("samples")
+func samplesOrtusUp(app core.App) error {
+	samples, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		return err
 	}
-	placemarks, err := dao.FindCollectionByNameOrId("placemarks")
+	placemarks, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		return err
 	}
-	if f := samples.Schema.GetFieldByName("altitude"); f != nil {
-		f.Name = "elevation"
+	renameField(samples, "altitude", "elevation")
+	sel := func(name string, values ...string) core.Field {
+		return &core.SelectField{Name: name, Values: values, MaxSelect: 1}
 	}
-	add := func(f *schema.SchemaField) {
-		if samples.Schema.GetFieldByName(f.Name) == nil {
-			samples.Schema.AddField(f)
+	rel := func(name string) core.Field {
+		return &core.RelationField{
+			Name:          name,
+			CollectionId:  placemarks.Id,
+			CascadeDelete: false,
+			MinSelect:     0,
+			MaxSelect:     1,
 		}
 	}
-	sel := func(name string, values ...string) *schema.SchemaField {
-		return &schema.SchemaField{Name: name, Type: schema.FieldTypeSelect,
-			Options: &schema.SelectOptions{Values: values, MaxSelect: 1}}
-	}
-	rel := func(name string) *schema.SchemaField {
-		return &schema.SchemaField{Name: name, Type: schema.FieldTypeRelation,
-			Options: &schema.RelationOptions{
-				CollectionId:  placemarks.Id,
-				CascadeDelete: false,
-				MinSelect:     types.Pointer(0),
-				MaxSelect:     types.Pointer(1),
-			}}
-	}
-	add(sel("elevation_source", "location_service", "backend_service", "manual"))
-	add(sel("location_status", "backend_service", "inherited", "manual", "pending"))
-	add(rel("placemark"))
-	add(rel("placemark_suggestion"))
-	add(&schema.SchemaField{Name: "mtb_quadrant", Type: schema.FieldTypeNumber})
+	addFieldIfMissing(samples, sel("elevation_source", "location_service", "backend_service", "manual"))
+	addFieldIfMissing(samples, sel("location_status", "backend_service", "inherited", "manual", "pending"))
+	addFieldIfMissing(samples, rel("placemark"))
+	addFieldIfMissing(samples, rel("placemark_suggestion"))
+	addFieldIfMissing(samples, &core.NumberField{Name: "mtb_quadrant"})
 	for _, n := range []string{"mtb_sheet_number", "mtb_sheet_name"} {
-		t := schema.FieldTypeText
-		add(&schema.SchemaField{Name: n, Type: t})
+		addFieldIfMissing(samples, &core.TextField{Name: n})
 	}
-	for _, n := range []string{"elevation_dem", "elevation_dem_accuracy", "slope_deg",
-		"aspect_deg", "bearing_distance_km"} {
-		add(&schema.SchemaField{Name: n, Type: schema.FieldTypeNumber})
+	for _, n := range []string{
+		"elevation_dem", "elevation_dem_accuracy", "slope_deg",
+		"aspect_deg", "bearing_distance_km",
+	} {
+		addFieldIfMissing(samples, &core.NumberField{Name: n})
 	}
 	for _, n := range []string{"aspect_compass", "bearing_label", "bearing_reference", "bearing_compass"} {
-		add(&schema.SchemaField{Name: n, Type: schema.FieldTypeText})
+		addFieldIfMissing(samples, &core.TextField{Name: n})
 	}
-	add(&schema.SchemaField{Name: "terrain_flat", Type: schema.FieldTypeBool})
-	add(&schema.SchemaField{Name: "bearing_inside", Type: schema.FieldTypeBool})
+	addFieldIfMissing(samples, &core.BoolField{Name: "terrain_flat"})
+	addFieldIfMissing(samples, &core.BoolField{Name: "bearing_inside"})
 
-	if err := dao.SaveCollection(samples); err != nil {
+	if err := app.Save(samples); err != nil {
 		return err
 	}
 	for _, q := range []string{
@@ -86,28 +75,21 @@ func samplesOrtusUp(db dbx.Builder) error {
 		 WHERE elevation IS NOT NULL AND elevation != 0
 		   AND (elevation_source IS NULL OR elevation_source = '')`,
 	} {
-		if _, err := db.NewQuery(q).Execute(); err != nil {
+		if _, err := app.DB().NewQuery(q).Execute(); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func samplesOrtusDown(db dbx.Builder) error {
-	dao := daos.New(db)
-	samples, err := dao.FindCollectionByNameOrId("samples")
+func samplesOrtusDown(app core.App) error {
+	samples, err := app.FindCollectionByNameOrId("samples")
 	if err != nil {
 		return err
 	}
-	for _, name := range samplesOrtusNewFields {
-		if f := samples.Schema.GetFieldByName(name); f != nil {
-			samples.Schema.RemoveField(f.Id)
-		}
-	}
-	if f := samples.Schema.GetFieldByName("elevation"); f != nil {
-		f.Name = "altitude"
-	}
-	return dao.SaveCollection(samples)
+	removeFields(samples, samplesOrtusNewFields...)
+	renameField(samples, "elevation", "altitude")
+	return app.Save(samples)
 }
 
 func init() {

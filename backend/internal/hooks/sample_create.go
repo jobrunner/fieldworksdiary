@@ -1,10 +1,10 @@
 // Package hooks adapts the pure logic in internal/codes and
 // internal/grouping to PocketBase: it implements grouping.Repo on top
-// of a daos.Dao, and wires the BeforeCreate/BeforeUpdate request
-// hooks on the samples collection.
+// of a core.App, and wires the create/update request hooks on the
+// samples collection.
 //
-// Phase 11 changes: the owner is read from the authenticated user in
-// the request context (apis.RequestInfo). The legacy `user_id` text
+// Phase 11 changes: the owner is read from the authenticated user of
+// the request (core.RequestEvent.Auth). The legacy `user_id` text
 // field is gone — every collection now uses `owner` (relation →
 // users) for scoping.
 package hooks
@@ -20,11 +20,8 @@ import (
 	"go.mett.io/fwd-backend/internal/grouping"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
 )
 
 var berlin = func() *time.Location {
@@ -48,13 +45,16 @@ var berlin = func() *time.Location {
 //     " (n)" suffix, the sent value goes to original_code),
 //  5. populates `fieldtrip` and `owner` so PocketBase's subsequent
 //     save sees a complete sample.
-func RegisterSampleCreate(app *pocketbase.PocketBase) {
-	app.OnRecordBeforeCreateRequest("samples").Add(func(e *core.RecordCreateEvent) error {
-		ownerID, err := authOwnerID(e.HttpContext)
+func RegisterSampleCreate(app core.App) {
+	app.OnRecordCreateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
+		ownerID, err := authOwnerID(e.Auth)
 		if err != nil {
 			return err
 		}
-		return processSample(app.Dao(), e.Record, ownerID)
+		if err := processSample(e.App, e.Record, ownerID); err != nil {
+			return err
+		}
+		return e.Next()
 	})
 }
 
@@ -65,10 +65,10 @@ func RegisterSampleCreate(app *pocketbase.PocketBase) {
 // match the authenticated user (otherwise we'd let A claim records
 // for B even with our rules in place, because rules apply post-write
 // on update/delete but not on create).
-func RegisterOwnerSetters(app *pocketbase.PocketBase) {
+func RegisterOwnerSetters(app core.App) {
 	for _, name := range []string{"fieldtrips", "localities", "people", "determinations", "sample_photos"} {
-		app.OnRecordBeforeCreateRequest(name).Add(func(e *core.RecordCreateEvent) error {
-			ownerID, err := authOwnerID(e.HttpContext)
+		app.OnRecordCreateRequest(name).BindFunc(func(e *core.RecordRequestEvent) error {
+			ownerID, err := authOwnerID(e.Auth)
 			if err != nil {
 				return err
 			}
@@ -79,29 +79,24 @@ func RegisterOwnerSetters(app *pocketbase.PocketBase) {
 				)
 			}
 			e.Record.Set("owner", ownerID)
-			return nil
+			return e.Next()
 		})
 	}
 }
 
-// authOwnerID returns the auth record's id. The collection's
-// CreateRule (`@request.auth.id != ”`) blocks the request before
-// our hook ever runs, but we type-check defensively in case the
-// rules ever loosen. We read `ContextAuthRecordKey` directly —
-// `ContextRequestInfoKey` is only populated by the collection
-// handler's RequestInfo init, not by the global LoadAuthContext
-// pre-middleware.
-func authOwnerID(c interface {
-	Get(string) any
-},
-) (string, error) {
-	if rec, _ := c.Get(apis.ContextAuthRecordKey).(*models.Record); rec != nil {
-		return rec.Id, nil
+// authOwnerID returns the id of the authenticated user record. The
+// collection's CreateRule (`@request.auth.id != ”`) blocks the request
+// before our hook ever runs, but we check defensively in case the rules
+// ever loosen. Superusers are no `users` record and get the same 401 as
+// 0.22 admins did (they were no auth record there).
+func authOwnerID(auth *core.Record) (string, error) {
+	if auth != nil && !auth.IsSuperuser() {
+		return auth.Id, nil
 	}
 	return "", apis.NewUnauthorizedError("authentication required", nil)
 }
 
-func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
+func processSample(app core.App, rec *core.Record, ownerID string) error {
 	collectedFrom := rec.GetDateTime("begin_date").Time()
 	if collectedFrom.IsZero() {
 		collectedFrom = time.Now()
@@ -109,7 +104,7 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 	}
 
 	cutoff := 0
-	if user, err := dao.FindRecordById("users", ownerID); err == nil {
+	if user, err := app.FindRecordById("users", ownerID); err == nil {
 		cutoff = user.GetInt("day_cutoff_hour")
 	}
 	day, loc := collectingDayFor(rec, cutoff)
@@ -128,15 +123,15 @@ func processSample(dao *daos.Dao, rec *models.Record, ownerID string) error {
 		ftID    string
 		finalID string
 	)
-	err := dao.RunInTransaction(func(txDao *daos.Dao) error {
-		repo := newPBRepo(txDao)
+	err := app.RunInTransaction(func(txApp core.App) error {
+		repo := newPBRepo(txApp)
 		ft, err := grouping.FindOrCreate(repo, ownerID, day, collectedLocal)
 		if err != nil {
 			return fmt.Errorf("fieldtrip: %w", err)
 		}
 		ftID = ft.ID
 
-		finalID, err = uniqueSampleID(txDao, ownerID, wanted, "")
+		finalID, err = uniqueSampleID(txApp, ownerID, wanted, "")
 		if err != nil {
 			return fmt.Errorf("sample_id: %w", err)
 		}
@@ -183,7 +178,7 @@ func loadLocation(name string) *time.Location {
 // location it was computed in. A valid `collecting_day` sent by the
 // client wins; otherwise the day is derived from begin_date in the
 // sample's timezone under the given rollover hour.
-func collectingDayFor(rec *models.Record, cutoffHour int) (time.Time, *time.Location) {
+func collectingDayFor(rec *core.Record, cutoffHour int) (time.Time, *time.Location) {
 	loc := loadLocation(rec.GetString("timezone"))
 	if d, err := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), loc); err == nil {
 		return d, loc
@@ -198,12 +193,12 @@ func collectingDayFor(rec *models.Record, cutoffHour int) (time.Time, *time.Loca
 // uniqueSampleID makes `wanted` unique among the owner's samples
 // (excluding excludeID): "" stays "", a free ID is kept, a taken one
 // gets the smallest free " (n)" suffix with n >= 2.
-func uniqueSampleID(dao *daos.Dao, ownerID, wanted, excludeID string) (string, error) {
+func uniqueSampleID(app core.App, ownerID, wanted, excludeID string) (string, error) {
 	if wanted == "" {
 		return "", nil
 	}
 	taken := func(id string) (bool, error) {
-		_, err := dao.FindFirstRecordByFilter(
+		_, err := app.FindFirstRecordByFilter(
 			"samples",
 			"owner = {:o} && sample_id = {:s} && id != {:x}",
 			dbx.Params{"o": ownerID, "s": id, "x": excludeID},
@@ -234,13 +229,16 @@ func uniqueSampleID(dao *daos.Dao, ownerID, wanted, excludeID string) (string, e
 // RegisterSampleIDUpdate keeps (owner, sample_id) unique when a
 // client edits the ID: only a changed ID is checked, collisions get
 // the " (n)" suffix and the sent ID lands in original_code.
-func RegisterSampleIDUpdate(app *pocketbase.PocketBase) {
-	app.OnRecordBeforeUpdateRequest("samples").Add(func(e *core.RecordUpdateEvent) error {
+func RegisterSampleIDUpdate(app core.App) {
+	app.OnRecordUpdateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		keepStrongerTimezone(e.Record)
-		if err := followCollectingDayOnUpdate(app.Dao(), e.Record); err != nil {
+		if err := followCollectingDayOnUpdate(e.App, e.Record); err != nil {
 			return err
 		}
-		return resolveSampleIDOnUpdate(app.Dao(), e.Record)
+		if err := resolveSampleIDOnUpdate(e.App, e.Record); err != nil {
+			return err
+		}
+		return e.Next()
 	})
 }
 
@@ -248,8 +246,8 @@ func RegisterSampleIDUpdate(app *pocketbase.PocketBase) {
 // location_service/manual to device: a stale client (409 retry, second
 // device) must not push its device zone over the Ortus or user zone.
 // The stored timezone + source stay in that case.
-func keepStrongerTimezone(rec *models.Record) {
-	orig := rec.OriginalCopy()
+func keepStrongerTimezone(rec *core.Record) {
+	orig := rec.Original()
 	if orig == nil {
 		return
 	}
@@ -274,8 +272,8 @@ func keepStrongerTimezone(rec *models.Record) {
 //     fieldtrip of the new day (found or created, window extended like
 //     on create). The old fieldtrip stays untouched, even when empty.
 //     The sample_id is not touched here.
-func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
-	orig := rec.OriginalCopy()
+func followCollectingDayOnUpdate(app core.App, rec *core.Record) error {
+	orig := rec.Original()
 	if orig == nil {
 		return nil
 	}
@@ -297,9 +295,10 @@ func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
 	loc := loadLocation(rec.GetString("timezone"))
 	day, err := time.ParseInLocation("2006-01-02", newDay, loc)
 	if err != nil {
-		// Not a valid day: keep the stored one.
+		// Not a valid day: keep the stored one. A malformed client value
+		// is not an error for the update.
 		rec.Set("collecting_day", oldDay)
-		return nil
+		return nil //nolint:nilerr // invalid day is silently corrected, not rejected
 	}
 	begin := rec.GetDateTime("begin_date").Time()
 	if begin.IsZero() {
@@ -307,8 +306,8 @@ func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
 	}
 	ownerID := rec.GetString("owner")
 	var ftID string
-	err = dao.RunInTransaction(func(txDao *daos.Dao) error {
-		ft, err := grouping.FindOrCreate(newPBRepo(txDao), ownerID, day, begin.In(loc))
+	err = app.RunInTransaction(func(txApp core.App) error {
+		ft, err := grouping.FindOrCreate(newPBRepo(txApp), ownerID, day, begin.In(loc))
 		if err != nil {
 			return fmt.Errorf("fieldtrip: %w", err)
 		}
@@ -322,16 +321,16 @@ func followCollectingDayOnUpdate(dao *daos.Dao, rec *models.Record) error {
 	return nil
 }
 
-func resolveSampleIDOnUpdate(dao *daos.Dao, rec *models.Record) error {
+func resolveSampleIDOnUpdate(app core.App, rec *core.Record) error {
 	wanted := rec.GetString("sample_id")
 	if strings.TrimSpace(wanted) == "" {
 		rec.Set("sample_id", "")
 		return nil
 	}
-	if orig := rec.OriginalCopy(); orig != nil && orig.GetString("sample_id") == wanted {
+	if orig := rec.Original(); orig != nil && orig.GetString("sample_id") == wanted {
 		return nil
 	}
-	final, err := uniqueSampleID(dao, rec.GetString("owner"), wanted, rec.Id)
+	final, err := uniqueSampleID(app, rec.GetString("owner"), wanted, rec.Id)
 	if err != nil {
 		return err
 	}
@@ -342,20 +341,20 @@ func resolveSampleIDOnUpdate(dao *daos.Dao, rec *models.Record) error {
 	return nil
 }
 
-// pbRepo implements grouping.Repo on top of a PocketBase dao.
+// pbRepo implements grouping.Repo on top of a PocketBase app.
 type pbRepo struct {
-	dao  *daos.Dao
-	coll *models.Collection
+	app  core.App
+	coll *core.Collection
 }
 
-func newPBRepo(dao *daos.Dao) *pbRepo {
-	coll, _ := dao.FindCollectionByNameOrId("fieldtrips")
-	return &pbRepo{dao: dao, coll: coll}
+func newPBRepo(app core.App) *pbRepo {
+	coll, _ := app.FindCollectionByNameOrId("fieldtrips")
+	return &pbRepo{app: app, coll: coll}
 }
 
 func (r *pbRepo) FindByUserAndDay(ownerID string, day time.Time) (*grouping.Fieldtrip, error) {
 	dayStr := day.Format("2006-01-02")
-	rec, err := r.dao.FindFirstRecordByFilter(
+	rec, err := r.app.FindFirstRecordByFilter(
 		"fieldtrips",
 		"owner = {:o} && collecting_day = {:day}",
 		dbx.Params{"o": ownerID, "day": dayStr},
@@ -370,9 +369,11 @@ func (r *pbRepo) FindByUserAndDay(ownerID string, day time.Time) (*grouping.Fiel
 }
 
 func (r *pbRepo) Create(e *grouping.Fieldtrip) error {
-	rec := models.NewRecord(r.coll)
+	rec := core.NewRecord(r.coll)
 	writeFieldtrip(rec, e)
-	if err := r.dao.SaveRecord(rec); err != nil {
+	// Like 0.22's dao.SaveRecord: no validation, hooks of other
+	// requests are not involved.
+	if err := r.app.SaveNoValidate(rec); err != nil {
 		return err
 	}
 	e.ID = rec.Id
@@ -380,15 +381,15 @@ func (r *pbRepo) Create(e *grouping.Fieldtrip) error {
 }
 
 func (r *pbRepo) Update(e *grouping.Fieldtrip) error {
-	rec, err := r.dao.FindRecordById("fieldtrips", e.ID)
+	rec, err := r.app.FindRecordById("fieldtrips", e.ID)
 	if err != nil {
 		return err
 	}
 	writeFieldtrip(rec, e)
-	return r.dao.SaveRecord(rec)
+	return r.app.SaveNoValidate(rec)
 }
 
-func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
+func fieldtripFromRecord(rec *core.Record) *grouping.Fieldtrip {
 	loc := loadLocation(rec.GetString("timezone"))
 	day, _ := time.ParseInLocation("2006-01-02", rec.GetString("collecting_day"), loc)
 	// PocketBase returns datetimes in UTC. We convert to the user's
@@ -405,7 +406,7 @@ func fieldtripFromRecord(rec *models.Record) *grouping.Fieldtrip {
 	}
 }
 
-func writeFieldtrip(rec *models.Record, e *grouping.Fieldtrip) {
+func writeFieldtrip(rec *core.Record, e *grouping.Fieldtrip) {
 	rec.Set("owner", e.UserID)
 	rec.Set("collecting_day", e.Day.Format("2006-01-02"))
 	rec.Set("begin_date", e.StartedAt)

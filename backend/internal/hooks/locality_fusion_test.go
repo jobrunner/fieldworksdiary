@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -13,20 +13,20 @@ import (
 // returns the saved record. Bypasses the create-hook by calling
 // `dao.SaveRecord` directly — handy because the fusion-hook is what
 // we actually want to test.
-func makeLocality(t *testing.T, app *tests.TestApp, ownerID string, lat, lon float64) *models.Record {
+func makeLocality(t *testing.T, app *tests.TestApp, ownerID string, lat, lon float64) *core.Record {
 	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("localities")
+	coll, err := app.FindCollectionByNameOrId("localities")
 	if err != nil {
 		t.Fatalf("localities collection: %v", err)
 	}
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("owner", ownerID)
 	rec.Set("name", "Test")
 	rec.Set("latitude", lat)
 	rec.Set("longitude", lon)
 	rec.Set("location_source", "user")
 	rec.Set("version", 1)
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save locality: %v", err)
 	}
 	return rec
@@ -52,7 +52,7 @@ func TestFusion_NoNeighbors_KeepAsIs(t *testing.T) {
 
 	runFusionFor(t, app, loc.Id)
 
-	reloaded, err := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, err := app.FindRecordById("localities", loc.Id)
 	if err != nil {
 		t.Fatalf("locality vanished: %v", err)
 	}
@@ -73,9 +73,9 @@ func TestFusion_SingleClose_MergeAndEmit(t *testing.T) {
 
 	// Seed two samples on the duplicate so we can check that
 	// they get re-hung onto the target.
-	samColl, _ := app.Dao().FindCollectionByNameOrId("samples")
+	samColl, _ := app.FindCollectionByNameOrId("samples")
 	for i := 0; i < 2; i++ {
-		s := models.NewRecord(samColl)
+		s := core.NewRecord(samColl)
 		s.Set("owner", owner.Id)
 		s.Set("locality", dup.Id)
 		s.Set("sample_id", "260519/X")
@@ -85,7 +85,7 @@ func TestFusion_SingleClose_MergeAndEmit(t *testing.T) {
 		s.Set("location_source", "location_service")
 		s.Set("timezone", "Europe/Berlin")
 		s.Set("version", 1)
-		if err := app.Dao().SaveRecord(s); err != nil {
+		if err := app.SaveNoValidate(s); err != nil {
 			t.Fatalf("seed sample: %v", err)
 		}
 	}
@@ -93,12 +93,12 @@ func TestFusion_SingleClose_MergeAndEmit(t *testing.T) {
 	runFusionFor(t, app, dup.Id)
 
 	// Duplicate is gone.
-	if _, err := app.Dao().FindRecordById("localities", dup.Id); err == nil {
+	if _, err := app.FindRecordById("localities", dup.Id); err == nil {
 		t.Error("duplicate locality should be deleted after merge")
 	}
 
 	// Samples now point at target.
-	moved, err := app.Dao().FindRecordsByFilter(
+	moved, err := app.FindRecordsByFilter(
 		"samples", "locality = {:t}", "", 0, 0,
 		map[string]any{"t": target.Id},
 	)
@@ -110,7 +110,7 @@ func TestFusion_SingleClose_MergeAndEmit(t *testing.T) {
 	}
 
 	// A remap event was emitted, owner-tagged.
-	events, err := app.Dao().FindRecordsByFilter(
+	events, err := app.FindRecordsByFilter(
 		"locality_remap_events",
 		"owner = {:o} && new_locality_id = {:n}",
 		"-created", 0, 0,
@@ -150,7 +150,7 @@ func TestFusion_TwoNeighbors_FlagAmbiguous(t *testing.T) {
 
 	runFusionFor(t, app, incoming.Id)
 
-	reloaded, err := app.Dao().FindRecordById("localities", incoming.Id)
+	reloaded, err := app.FindRecordById("localities", incoming.Id)
 	if err != nil {
 		t.Fatalf("incoming vanished: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestFusion_TwoNeighbors_FlagAmbiguous(t *testing.T) {
 	}
 
 	// No remap event for ambiguous-flag — only merges emit those.
-	events, err := app.Dao().FindRecordsByFilter(
+	events, err := app.FindRecordsByFilter(
 		"locality_remap_events", "owner = {:o}", "", 0, 0,
 		map[string]any{"o": owner.Id},
 	)
@@ -185,7 +185,7 @@ func TestFusion_OwnerScopedCandidates(t *testing.T) {
 
 	// Bob's locality must still exist — Alice's row isn't a
 	// candidate for him.
-	if _, err := app.Dao().FindRecordById("localities", bobLoc.Id); err != nil {
+	if _, err := app.FindRecordById("localities", bobLoc.Id); err != nil {
 		t.Errorf("bob's locality should not be merged into alice's")
 	}
 	if got := bobLoc.GetBool("needs_human_review"); got {
@@ -203,13 +203,13 @@ func TestNoFusionTriggerOnNotesOnlyEdit(t *testing.T) {
 
 	loc := makeLocality(t, app, owner.Id, 49.79, 9.94)
 	loc.Set("notes", strings.Repeat("a", 100))
-	if err := app.Dao().SaveRecord(loc); err != nil {
+	if err := app.SaveNoValidate(loc); err != nil {
 		t.Fatalf("save notes-only update: %v", err)
 	}
 	// `SignificantCoordChange(prev, new) == false` is enforced by
 	// the dedicated unit test in `fusion_test.go`; here we just
 	// verify the locality survives a notes edit unchanged.
-	reloaded, err := app.Dao().FindRecordById("localities", loc.Id)
+	reloaded, err := app.FindRecordById("localities", loc.Id)
 	if err != nil {
 		t.Fatalf("locality vanished: %v", err)
 	}

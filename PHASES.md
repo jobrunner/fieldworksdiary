@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**PocketBase-Update 0.22.42 → 0.40.6 implementiert – wartet auf Test durch Jo (Branch `feat/pocketbase-update`, nicht gemerged, siehe Abschnitt „PocketBase-Update“).** **Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1197,3 +1197,23 @@ Nacharbeiten (nicht in Phase N): neue UI-Strings fehlen in `Localizable.xcstring
 - Durchgehend abgesichert: ein angemeldeter User sieht ausschließlich seine eigenen Einträge (alle Collections, alle Endpunkte).
 - Identifizierung (Apple, Google, E-Mail/Passwort) von der Autorisierung trennen: Login-Wechsel, z.B. nach Löschung eines Apple-Accounts, ohne Zugangsverlust.
 - Sammler-Default in den Einstellungen, am Account hinterlegt.
+
+## PocketBase-Update
+
+**Status: implementiert – wartet auf Test durch Jo** (Branch `feat/pocketbase-update`, nicht gemerged; Entscheidung in `docs/adr/0008-pocketbase-0xx.md`)
+
+Anlass: HIGH-Lücken in `labstack/echo/v5` (GO-2026-6293, GO-2026-6885, CVE-2026-55677), das PocketBase 0.22 einbindet; ab 0.23 ist echo raus.
+
+- PocketBase v0.40.6, Go 1.27.4 (go.mod, Dockerfile, golangci-lint v2.15.0 per goinstall in CI). Die 0.22→0.23-Systemmigration ist in v0.40.6 enthalten: Ein-Schritt-Deploy.
+- Backend auf die neue API portiert (core.App/core.Record, Hooks mit `e.Next()`, neuer Router), Verhalten für die iOS-App unverändert. Alle 28 Migrationen inhaltlich treu portiert, Dateinamen gleich; frische und upgegradete DB haben dasselbe Schema (created/updated, users.username).
+- 0.22-Auth-Tokens bleiben bis zu ihrem Ablauf gültig (kein Zwangs-Logout); Shim nach 14 Tagen Prod-Laufzeit entfernen.
+- `scripts/pb-upgrade-check.sh`: Upgrade-Test alte pb_data → neues Binary mit API-Dump-Vergleich (frische Testdaten oder Kopie echter Daten).
+- govulncheck sauber (Allowlist leer, x/net 0.62.0), Gate schlägt jetzt auch bei gescheitertem Scan an.
+- Bekannte Abweichung: Fehler-JSON `status` statt `code`, einige PocketBase-Meldungen umformuliert (iOS liest beides nicht).
+
+Deploy (manuell, siehe `docs/ENVIRONMENTS.md` „Manuelles Deploy“):
+1. Backup: `cp -a pb_data_prod "pb_data_prod_backups/$(date +%Y%m%d-%H%M%S)"`.
+2. Upgrade-Check gegen eine Kopie (nie gegen das Original): `SU_EMAIL=<admin> SU_PASSWORD=… scripts/pb-upgrade-check.sh --pb-data /pfad/zur/kopie` – optional mit `USER_A`/`USER_B`/`USER_PASSWORD` für die User-Sicht. Muss mit „OK“ enden. Die Dumps im Arbeitsverzeichnis enthalten echte Daten (E-Mails) – danach löschen.
+3. Image bauen/pullen und `docker compose … up -d --no-build` wie gewohnt; beim ersten Start migriert PocketBase die DB selbst. Admin-Login heißt jetzt Superuser (`/_/`, gleiche Zugangsdaten).
+4. Zurück nur mit Backup: auf einer einmal migrierten pb_data startet das alte Image zwar, aber Login und Listen scheitern (geprüft) – Rollback = altes Image + Backup zurückspielen.
+

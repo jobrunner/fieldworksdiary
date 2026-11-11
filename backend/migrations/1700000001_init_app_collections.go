@@ -5,38 +5,29 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-
+	m.Register(func(app core.App) error {
 		open := types.Pointer("")
 
 		// 1. localities
-		localities := &models.Collection{
-			Name: "localities",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{Name: "name", Type: schema.FieldTypeText, Required: true},
-				&schema.SchemaField{Name: "centroid_lat", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "centroid_lon", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "radius_m", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "notes", Type: schema.FieldTypeEditor},
-			),
-			ListRule:   open,
-			ViewRule:   open,
-			CreateRule: open,
-			UpdateRule: open,
-			DeleteRule: open,
-		}
-		if err := dao.SaveCollection(localities); err != nil {
+		localities := newBaseCollection("localities",
+			&core.TextField{Name: "name", Required: true},
+			&core.NumberField{Name: "centroid_lat"},
+			&core.NumberField{Name: "centroid_lon"},
+			&core.NumberField{Name: "radius_m"},
+			&core.EditorField{Name: "notes"},
+		)
+		localities.ListRule = open
+		localities.ViewRule = open
+		localities.CreateRule = open
+		localities.UpdateRule = open
+		localities.DeleteRule = open
+		if err := app.Save(localities); err != nil {
 			return err
 		}
 
@@ -47,127 +38,97 @@ func init() {
 		// `Required` is therefore off — the hook is the single source
 		// of truth, and PocketBase validation runs *before* the hook
 		// so requiring them here would just reject every legit insert.
-		excursions := &models.Collection{
-			Name: "excursions",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{Name: "name", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "user_id", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "started_at", Type: schema.FieldTypeDate},
-				&schema.SchemaField{Name: "ended_at", Type: schema.FieldTypeDate},
-				// collecting_day stored as YYYY-MM-DD (PocketBase has no
-				// date-only type; using text keeps the value uniform
-				// across SQLite and JSON).
-				&schema.SchemaField{Name: "collecting_day", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "night_excursion", Type: schema.FieldTypeBool},
-				&schema.SchemaField{Name: "centroid_lat", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "centroid_lon", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{
-					Name: "locality",
-					Type: schema.FieldTypeRelation,
-					Options: &schema.RelationOptions{
-						CollectionId:  localities.Id,
-						CascadeDelete: false,
-						MinSelect:     types.Pointer(0),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "client_uuid", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "client_updated_at", Type: schema.FieldTypeDate},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE INDEX idx_excursions_user_day ON excursions (user_id, collecting_day)",
+		excursions := newBaseCollection("excursions",
+			&core.TextField{Name: "name"},
+			&core.TextField{Name: "user_id"},
+			&core.DateField{Name: "started_at"},
+			&core.DateField{Name: "ended_at"},
+			// collecting_day stored as YYYY-MM-DD (PocketBase has no
+			// date-only type; using text keeps the value uniform
+			// across SQLite and JSON).
+			&core.TextField{Name: "collecting_day"},
+			&core.BoolField{Name: "night_excursion"},
+			&core.NumberField{Name: "centroid_lat"},
+			&core.NumberField{Name: "centroid_lon"},
+			&core.RelationField{
+				Name:          "locality",
+				CollectionId:  localities.Id,
+				CascadeDelete: false,
+				MinSelect:     0,
+				MaxSelect:     1,
 			},
-			ListRule:   open,
-			ViewRule:   open,
-			CreateRule: open,
-			UpdateRule: open,
-			DeleteRule: open,
+			&core.TextField{Name: "client_uuid"},
+			&core.DateField{Name: "client_updated_at"},
+		)
+		excursions.Indexes = types.JSONArray[string]{
+			"CREATE INDEX idx_excursions_user_day ON excursions (user_id, collecting_day)",
 		}
-		if err := dao.SaveCollection(excursions); err != nil {
+		excursions.ListRule = open
+		excursions.ViewRule = open
+		excursions.CreateRule = open
+		excursions.UpdateRule = open
+		excursions.DeleteRule = open
+		if err := app.Save(excursions); err != nil {
 			return err
 		}
 
 		// 3. samples  (relation → excursions)
-		samples := &models.Collection{
-			Name: "samples",
-			Type: models.CollectionTypeBase,
-			// `code`, `excursion`, `user_id` are filled by the
-			// before-create hook; not Required at schema level (see
-			// note on excursions). `lat` / `lon` come from the client.
-			Schema: schema.NewSchema(
-				&schema.SchemaField{Name: "code", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "original_code", Type: schema.FieldTypeText},
-				&schema.SchemaField{
-					Name: "excursion",
-					Type: schema.FieldTypeRelation,
-					Options: &schema.RelationOptions{
-						CollectionId:  excursions.Id,
-						CascadeDelete: false,
-						MinSelect:     types.Pointer(0),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "user_id", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "collected_from", Type: schema.FieldTypeDate},
-				&schema.SchemaField{Name: "collected_to", Type: schema.FieldTypeDate},
-				&schema.SchemaField{Name: "lat", Type: schema.FieldTypeNumber, Required: true},
-				&schema.SchemaField{Name: "lon", Type: schema.FieldTypeNumber, Required: true},
-				&schema.SchemaField{Name: "altitude_m", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "accuracy_m", Type: schema.FieldTypeNumber},
-				&schema.SchemaField{Name: "notes", Type: schema.FieldTypeEditor},
-				&schema.SchemaField{Name: "client_uuid", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "client_updated_at", Type: schema.FieldTypeDate},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE UNIQUE INDEX idx_samples_code ON samples (code)",
-				"CREATE INDEX idx_samples_excursion ON samples (excursion)",
+		//
+		// `code`, `excursion`, `user_id` are filled by the
+		// before-create hook; not Required at schema level (see
+		// note on excursions). `lat` / `lon` come from the client.
+		samples := newBaseCollection("samples",
+			&core.TextField{Name: "code"},
+			&core.TextField{Name: "original_code"},
+			&core.RelationField{
+				Name:          "excursion",
+				CollectionId:  excursions.Id,
+				CascadeDelete: false,
+				MinSelect:     0,
+				MaxSelect:     1,
 			},
-			ListRule:   open,
-			ViewRule:   open,
-			CreateRule: open,
-			UpdateRule: open,
-			DeleteRule: open,
+			&core.TextField{Name: "user_id"},
+			&core.DateField{Name: "collected_from"},
+			&core.DateField{Name: "collected_to"},
+			&core.NumberField{Name: "lat", Required: true},
+			&core.NumberField{Name: "lon", Required: true},
+			&core.NumberField{Name: "altitude_m"},
+			&core.NumberField{Name: "accuracy_m"},
+			&core.EditorField{Name: "notes"},
+			&core.TextField{Name: "client_uuid"},
+			&core.DateField{Name: "client_updated_at"},
+		)
+		samples.Indexes = types.JSONArray[string]{
+			"CREATE UNIQUE INDEX idx_samples_code ON samples (code)",
+			"CREATE INDEX idx_samples_excursion ON samples (excursion)",
 		}
-		if err := dao.SaveCollection(samples); err != nil {
+		samples.ListRule = open
+		samples.ViewRule = open
+		samples.CreateRule = open
+		samples.UpdateRule = open
+		samples.DeleteRule = open
+		if err := app.Save(samples); err != nil {
 			return err
 		}
 
 		// 4. sample_sequences  (atomic counter per user × collecting_day)
-		sequences := &models.Collection{
-			Name: "sample_sequences",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{Name: "user_id", Type: schema.FieldTypeText, Required: true},
-				&schema.SchemaField{Name: "collecting_day", Type: schema.FieldTypeText, Required: true},
-				&schema.SchemaField{Name: "last_seq", Type: schema.FieldTypeNumber, Required: true},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE UNIQUE INDEX idx_sample_sequences_user_day ON sample_sequences (user_id, collecting_day)",
-			},
-			// sequence rows are written exclusively by the server-side
-			// hook; clients have no business touching them.
-			ListRule:   nil,
-			ViewRule:   nil,
-			CreateRule: nil,
-			UpdateRule: nil,
-			DeleteRule: nil,
+		//
+		// sequence rows are written exclusively by the server-side
+		// hook; clients have no business touching them (nil rules).
+		sequences := newBaseCollection("sample_sequences",
+			&core.TextField{Name: "user_id", Required: true},
+			&core.TextField{Name: "collecting_day", Required: true},
+			&core.NumberField{Name: "last_seq", Required: true},
+		)
+		sequences.Indexes = types.JSONArray[string]{
+			"CREATE UNIQUE INDEX idx_sample_sequences_user_day ON sample_sequences (user_id, collecting_day)",
 		}
-		if err := dao.SaveCollection(sequences); err != nil {
-			return err
-		}
-
-		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
+		return app.Save(sequences)
+	}, func(app core.App) error {
 		// reverse order — samples and sample_sequences first, then
 		// excursions, then localities.
 		for _, name := range []string{"samples", "sample_sequences", "excursions", "localities"} {
-			col, err := dao.FindCollectionByNameOrId(name)
-			if err != nil {
-				continue
-			}
-			if err := dao.DeleteCollection(col); err != nil {
+			if err := deleteCollectionIfExists(app, name); err != nil {
 				return err
 			}
 		}

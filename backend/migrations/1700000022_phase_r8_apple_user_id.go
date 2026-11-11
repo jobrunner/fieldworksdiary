@@ -11,26 +11,17 @@ package migrations
 import (
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		users, err := dao.FindCollectionByNameOrId("users")
+	m.Register(func(app core.App) error {
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
-		if users.Schema.GetFieldByName("apple_user_id") == nil {
-			users.Schema.AddField(&schema.SchemaField{
-				Name:    "apple_user_id",
-				Type:    schema.FieldTypeText,
-				Options: &schema.TextOptions{},
-			})
-		}
+		addFieldIfMissing(users, &core.TextField{Name: "apple_user_id"})
 		// Sparse unique index — empty strings (the bulk of legacy rows)
 		// are allowed to collide; only set values must be unique.
 		const idxName = "idx_users_apple_user_id"
@@ -47,19 +38,16 @@ func init() {
 					"WHERE apple_user_id IS NOT NULL AND apple_user_id != ''",
 			)
 		}
-		return dao.SaveCollection(users)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		users, err := dao.FindCollectionByNameOrId("users")
+		return app.Save(users)
+	}, func(app core.App) error {
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
-		if f := users.Schema.GetFieldByName("apple_user_id"); f != nil {
-			users.Schema.RemoveField(f.Id)
-		}
+		removeFields(users, "apple_user_id")
 		users.Indexes = filterIndexes(users.Indexes, func(s string) bool {
 			return !strings.Contains(s, "idx_users_apple_user_id")
 		})
-		return dao.SaveCollection(users)
+		return app.Save(users)
 	})
 }

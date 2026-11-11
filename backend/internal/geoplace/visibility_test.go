@@ -3,12 +3,13 @@ package geoplace
 import (
 	"testing"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 )
 
-func pmRec(owner, source string) *models.Record {
-	coll := &models.Collection{Name: "placemarks"}
-	r := models.NewRecord(coll)
+func pmRec(owner, source string) *core.Record {
+	coll := core.NewBaseCollection("placemarks")
+	coll.Fields.Add(&core.RelationField{Name: "owner", MaxSelect: 1}, &core.SelectField{Name: "geocoding_source", MaxSelect: 1})
+	r := core.NewRecord(coll)
 	r.Set("owner", owner)
 	r.Set("geocoding_source", source)
 	return r
@@ -31,7 +32,7 @@ func TestVisibleTo(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			var r *models.Record
+			var r *core.Record
 			if c.name != "nil record" {
 				r = pmRec(c.owner, c.source)
 			}

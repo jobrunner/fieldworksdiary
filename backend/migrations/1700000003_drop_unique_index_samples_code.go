@@ -13,34 +13,31 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		coll.Indexes = types.JsonArray[string]{
+		coll.Indexes = types.JSONArray[string]{
 			"CREATE INDEX idx_samples_code ON samples (code)",
 			"CREATE INDEX idx_samples_excursion ON samples (excursion)",
 		}
-		return dao.SaveCollection(coll)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("samples")
+		return app.Save(coll)
+	}, func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		coll.Indexes = types.JsonArray[string]{
+		coll.Indexes = types.JSONArray[string]{
 			"CREATE UNIQUE INDEX idx_samples_code ON samples (code)",
 			"CREATE INDEX idx_samples_excursion ON samples (excursion)",
 		}
-		return dao.SaveCollection(coll)
+		return app.Save(coll)
 	})
 }

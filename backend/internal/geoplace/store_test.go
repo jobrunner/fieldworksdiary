@@ -4,8 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
 	_ "go.mett.io/fwd-backend/migrations"
@@ -16,25 +18,22 @@ import (
 
 func newStoreApp(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
+	app := testutil.NewTestApp(t)
 	return app
 }
 
-func mkUser(t *testing.T, app *tests.TestApp, email string) *models.Record {
+func mkUser(t *testing.T, app *tests.TestApp, email string) *core.Record {
 	t.Helper()
-	coll, err := app.Dao().FindCollectionByNameOrId("users")
+	coll, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := models.NewRecord(coll)
-	_ = u.SetEmail(email)
-	_ = u.SetUsername(email[:5] + "x")
-	_ = u.SetPassword("password1234")
-	_ = u.SetVerified(true)
-	if err := app.Dao().SaveRecord(u); err != nil {
+	u := core.NewRecord(coll)
+	u.SetEmail(email)
+	u.Set("username", email[:5]+"x")
+	u.SetPassword("password1234")
+	u.SetVerified(true)
+	if err := app.SaveNoValidate(u); err != nil {
 		t.Fatalf("user: %v", err)
 	}
 	return u
@@ -52,11 +51,11 @@ func testPlace() geoplace.Place {
 
 func TestLookupOrCreate_ReusesSameHash(t *testing.T) {
 	app := newStoreApp(t)
-	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
+	a, err := geoplace.LookupOrCreatePlacemark(app, testPlace(), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "backend_service", "")
+	b, err := geoplace.LookupOrCreatePlacemark(app, testPlace(), "backend_service", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,15 +81,15 @@ func TestLookupOrCreate_ManualScopedPerOwner(t *testing.T) {
 	app := newStoreApp(t)
 	u1 := mkUser(t, app, "one@example.com")
 	u2 := mkUser(t, app, "two@example.com")
-	a, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
+	a, err := geoplace.LookupOrCreatePlacemark(app, testPlace(), "manual", u1.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u2.Id)
+	b, err := geoplace.LookupOrCreatePlacemark(app, testPlace(), "manual", u2.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := geoplace.LookupOrCreatePlacemark(app.Dao(), testPlace(), "manual", u1.Id)
+	c, err := geoplace.LookupOrCreatePlacemark(app, testPlace(), "manual", u1.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +106,8 @@ func TestLookupOrCreate_ManualScopedPerOwner(t *testing.T) {
 
 func TestApplyGeo_ClearsNil(t *testing.T) {
 	app := newStoreApp(t)
-	coll, _ := app.Dao().FindCollectionByNameOrId("samples")
-	rec := models.NewRecord(coll)
+	coll, _ := app.FindCollectionByNameOrId("samples")
+	rec := core.NewRecord(coll)
 	v := 12.5
 	geoplace.ApplyGeo(rec, geoplace.SampleGeo{ElevationDEM: &v, MTBSheetNumber: "6026", MTBQuadrant: 3, TerrainFlat: true})
 	if rec.GetInt("mtb_quadrant") != 3 || !rec.GetBool("terrain_flat") {
@@ -128,13 +127,13 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 		{SourceID: "a", SourceName: "A", Layer: "l", FeatureID: "1", Properties: map[string]any{"k": "v"}},
 		{SourceID: "b", SourceName: "B", Layer: "l", FeatureID: "2"},
 	}
-	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, fs); err != nil {
 		t.Fatal(err)
 	}
-	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, fs[:1]); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, fs[:1]); err != nil {
 		t.Fatal(err)
 	}
-	recs, err := app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
+	recs, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,36 +143,36 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 	if recs[0].GetDateTime("fetched_at").IsZero() {
 		t.Error("fetched_at unset")
 	}
-	if err := geoplace.ReplaceFeatures(app.Dao(), sample.Id, u.Id, nil); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, nil); err != nil {
 		t.Fatal(err)
 	}
-	recs, _ = app.Dao().FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
+	recs, _ = app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
 	if len(recs) != 0 {
 		t.Errorf("want empty, got %d", len(recs))
 	}
 }
 
-func mkSample(t *testing.T, app *tests.TestApp, u *models.Record) *models.Record {
+func mkSample(t *testing.T, app *tests.TestApp, u *core.Record) *core.Record {
 	t.Helper()
-	ftc, _ := app.Dao().FindCollectionByNameOrId("fieldtrips")
-	ft := models.NewRecord(ftc)
+	ftc, _ := app.FindCollectionByNameOrId("fieldtrips")
+	ft := core.NewRecord(ftc)
 	ft.Set("owner", u.Id)
 	ft.Set("collecting_day", "2026-05-19")
 	ft.Set("title", "T")
 	ft.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	ft.Set("end_date", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
-	if err := app.Dao().SaveRecord(ft); err != nil {
+	if err := app.SaveNoValidate(ft); err != nil {
 		t.Fatalf("fieldtrip: %v", err)
 	}
-	sc, _ := app.Dao().FindCollectionByNameOrId("samples")
-	s := models.NewRecord(sc)
+	sc, _ := app.FindCollectionByNameOrId("samples")
+	s := core.NewRecord(sc)
 	s.Set("owner", u.Id)
 	s.Set("sample_id", "260519/1")
 	s.Set("latitude", 49.793)
 	s.Set("longitude", 9.939)
 	s.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	s.Set("fieldtrip", ft.Id)
-	if err := app.Dao().SaveRecord(s); err != nil {
+	if err := app.SaveNoValidate(s); err != nil {
 		t.Fatalf("sample: %v", err)
 	}
 	return s
@@ -187,12 +186,12 @@ func TestApplyGeo_NoDEMColumns(t *testing.T) {
 	sample := mkSample(t, app, u)
 	v, acc := 12.5, 3.0
 	geoplace.ApplyGeo(sample, geoplace.SampleGeo{ElevationDEM: &v, ElevationDEMAccuracy: &acc})
-	if err := app.Dao().SaveRecord(sample); err != nil {
+	if err := app.SaveNoValidate(sample); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range sample.Collection().Schema.Fields() {
-		if f.Name == "elevation_dem" || f.Name == "elevation_dem_accuracy" {
-			t.Errorf("column %s still in schema", f.Name)
+	for _, f := range sample.Collection().Fields {
+		if f.GetName() == "elevation_dem" || f.GetName() == "elevation_dem_accuracy" {
+			t.Errorf("column %s still in schema", f.GetName())
 		}
 	}
 	if sample.Get("elevation_dem") != nil {

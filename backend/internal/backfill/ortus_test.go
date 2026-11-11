@@ -9,12 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/enrichment"
 	"go.mett.io/fwd-backend/internal/services"
 	_ "go.mett.io/fwd-backend/migrations"
 
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -26,11 +28,7 @@ const (
 
 func newApp(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 	return app
 }
 
@@ -64,43 +62,43 @@ func newRunnerFixture(t *testing.T, app *tests.TestApp, labels *adminlabels.Tabl
 	}, hits
 }
 
-func newUser(t *testing.T, app *tests.TestApp) *models.Record {
+func newUser(t *testing.T, app *tests.TestApp) *core.Record {
 	t.Helper()
 	return newUserNamed(t, app, "bfuser")
 }
 
-func newUserNamed(t *testing.T, app *tests.TestApp, name string) *models.Record {
+func newUserNamed(t *testing.T, app *tests.TestApp, name string) *core.Record {
 	t.Helper()
-	coll, _ := app.Dao().FindCollectionByNameOrId("users")
-	u := models.NewRecord(coll)
-	_ = u.SetEmail(name + "@example.com")
-	_ = u.SetUsername(name)
-	_ = u.SetPassword("test1234password")
-	if err := app.Dao().SaveRecord(u); err != nil {
+	coll, _ := app.FindCollectionByNameOrId("users")
+	u := core.NewRecord(coll)
+	u.SetEmail(name + "@example.com")
+	u.Set("username", name)
+	u.SetPassword("test1234password")
+	if err := app.SaveNoValidate(u); err != nil {
 		t.Fatal(err)
 	}
 	return u
 }
 
-func newSample(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status string) *models.Record {
+func newSample(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status string) *core.Record {
 	t.Helper()
 	return newSampleWithID(t, app, owner, lat, lon, status, "260519/"+status)
 }
 
-func newSampleWithID(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status, sid string) *models.Record {
+func newSampleWithID(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status, sid string) *core.Record {
 	t.Helper()
-	d := app.Dao()
+	d := app
 	ftColl, _ := d.FindCollectionByNameOrId("fieldtrips")
-	ft := models.NewRecord(ftColl)
+	ft := core.NewRecord(ftColl)
 	ft.Set("owner", owner)
 	ft.Set("collecting_day", "2026-05-19")
 	ft.Set("begin_date", time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC))
 	ft.Set("end_date", time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC))
-	if err := d.SaveRecord(ft); err != nil {
+	if err := d.SaveNoValidate(ft); err != nil {
 		t.Fatal(err)
 	}
 	coll, _ := d.FindCollectionByNameOrId("samples")
-	s := models.NewRecord(coll)
+	s := core.NewRecord(coll)
 	s.Set("owner", owner)
 	s.Set("fieldtrip", ft.Id)
 	s.Set("sample_id", sid)
@@ -108,16 +106,16 @@ func newSampleWithID(t *testing.T, app *tests.TestApp, owner string, lat, lon fl
 	s.Set("longitude", lon)
 	s.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
 	s.Set("location_status", status)
-	if err := d.SaveRecord(s); err != nil {
+	if err := d.SaveNoValidate(s); err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func newLocality(t *testing.T, app *tests.TestApp, owner, placemark string) *models.Record {
+func newLocality(t *testing.T, app *tests.TestApp, owner, placemark string) *core.Record {
 	t.Helper()
-	coll, _ := app.Dao().FindCollectionByNameOrId("localities")
-	l := models.NewRecord(coll)
+	coll, _ := app.FindCollectionByNameOrId("localities")
+	l := core.NewRecord(coll)
 	l.Set("owner", owner)
 	l.Set("name", "Test")
 	l.Set("latitude", deLat)
@@ -125,15 +123,15 @@ func newLocality(t *testing.T, app *tests.TestApp, owner, placemark string) *mod
 	l.Set("location_source", "user")
 	l.Set("version", 1)
 	l.Set("placemark", placemark)
-	if err := app.Dao().SaveRecord(l); err != nil {
+	if err := app.SaveNoValidate(l); err != nil {
 		t.Fatal(err)
 	}
 	return l
 }
 
-func reload(t *testing.T, app *tests.TestApp, coll, id string) *models.Record {
+func reload(t *testing.T, app *tests.TestApp, coll, id string) *core.Record {
 	t.Helper()
-	r, err := app.Dao().FindRecordById(coll, id)
+	r, err := app.FindRecordById(coll, id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +178,7 @@ func TestBackfill_Idempotent(t *testing.T) {
 	s2 := reload(t, app, "samples", s.Id)
 	l2 := reload(t, app, "localities", loc.Id)
 	if s1.GetInt("version") != s2.GetInt("version") || s1.GetString("placemark") != s2.GetString("placemark") ||
-		s1.Updated.String() != s2.Updated.String() || l1.Updated.String() != l2.Updated.String() {
+		s1.GetString("updated") != s2.GetString("updated") || l1.GetString("updated") != l2.GetString("updated") {
 		t.Error("second run changed records")
 	}
 	if *hits != h1 {
@@ -316,13 +314,13 @@ func TestRemap_OrphanNotCounted(t *testing.T) {
 
 // legacyBackendPlacemark creates a pre-Ortus backend placemark as
 // migration 20 left it: backend_service without country_iso.
-func legacyBackendPlacemark(t *testing.T, app *tests.TestApp) *models.Record {
+func legacyBackendPlacemark(t *testing.T, app *tests.TestApp) *core.Record {
 	t.Helper()
-	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
-	pm := models.NewRecord(coll)
+	coll, _ := app.FindCollectionByNameOrId("placemarks")
+	pm := core.NewRecord(coll)
 	pm.Set("geocoding_source", "backend_service")
 	pm.Set("dedup_hash", "legacybackendhash")
-	if err := app.Dao().SaveRecord(pm); err != nil {
+	if err := app.SaveNoValidate(pm); err != nil {
 		t.Fatal(err)
 	}
 	return pm
@@ -377,13 +375,13 @@ func TestBackfill_LocalityWithoutPlacemarkEnriched(t *testing.T) {
 func TestBackfill_LocalityWithManualPlacemarkUntouched(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	coll, _ := app.Dao().FindCollectionByNameOrId("placemarks")
-	pm := models.NewRecord(coll)
+	coll, _ := app.FindCollectionByNameOrId("placemarks")
+	pm := core.NewRecord(coll)
 	pm.Set("geocoding_source", "manual")
 	pm.Set("owner", u.Id)
 	pm.Set("admin_municipality", "Eigener Ort")
 	pm.Set("dedup_hash", "manualhash")
-	if err := app.Dao().SaveRecord(pm); err != nil {
+	if err := app.SaveNoValidate(pm); err != nil {
 		t.Fatal(err)
 	}
 	loc := newLocality(t, app, u.Id, pm.Id)
@@ -414,14 +412,14 @@ func TestBackfill_LocalitiesSkippedWithoutOrtus(t *testing.T) {
 }
 
 // tzSample creates a sample with the given location status and timezone.
-func tzSample(t *testing.T, app *tests.TestApp, owner, status, sid, tz, tzSource string) *models.Record {
+func tzSample(t *testing.T, app *tests.TestApp, owner, status, sid, tz, tzSource string) *core.Record {
 	t.Helper()
 	s := newSampleWithID(t, app, owner, deLat, deLon, status, sid)
 	s.Set("timezone", tz)
 	s.Set("timezone_source", tzSource)
 	s.Set("placemark", "")
 	s.Set("version", 3)
-	if err := app.Dao().SaveRecord(s); err != nil {
+	if err := app.SaveNoValidate(s); err != nil {
 		t.Fatal(err)
 	}
 	return reload(t, app, "samples", s.Id)
@@ -438,7 +436,7 @@ func TestBackfill_TimezoneForEnrichedAndManualSamples(t *testing.T) {
 	if err := r.EnrichTimezones(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	for _, before := range []*models.Record{backend, manualLoc} {
+	for _, before := range []*core.Record{backend, manualLoc} {
 		got := reload(t, app, "samples", before.Id)
 		if got.GetString("timezone") != "Europe/Berlin" || got.GetString("timezone_source") != "location_service" {
 			t.Errorf("%s: timezone=%q source=%q", before.GetString("sample_id"),

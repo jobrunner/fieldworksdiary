@@ -129,7 +129,8 @@ func (o *Ortus) Query(ctx context.Context, lat, lon float64) (*OrtusResponse, er
 		case err == nil:
 			var resp OrtusResponse
 			if json.Unmarshal(raw, &resp) == nil {
-				o.log().Debug("ortus: query",
+				o.log().Debug(
+					"ortus: query",
 					slog.String("service", ortusService),
 					slog.String("cache", "hit"),
 					slog.Int64("duration_ms", time.Since(start).Milliseconds()),
@@ -165,13 +166,15 @@ func (o *Ortus) Query(ctx context.Context, lat, lon float64) (*OrtusResponse, er
 	if o.Cache != nil {
 		// The answer is valid; a failing cache only costs a re-query.
 		if err := o.Cache.Put(ortusService, key, body); err != nil {
-			o.log().Warn("ortus: cache write failed",
+			o.log().Warn(
+				"ortus: cache write failed",
 				slog.String("service", ortusService),
 				slog.Any("err", err),
 			)
 		}
 	}
-	o.log().Info("ortus: query",
+	o.log().Info(
+		"ortus: query",
 		slog.String("service", ortusService),
 		slog.String("cache", "miss"),
 		slog.Int64("duration_ms", time.Since(start).Milliseconds()),

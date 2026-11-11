@@ -6,20 +6,24 @@ package api
 import (
 	"net/http"
 
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/router"
 
 	"go.mett.io/fwd-backend/internal/version"
 )
 
 // RegisterVersionRoute wires `GET /api/version`. Call from `main.go`.
 func RegisterVersionRoute(app core.App) {
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		e.Router.GET("/api/version", handleVersion)
-		return nil
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindVersionRoute(se.Router)
+		return se.Next()
 	})
 }
 
-func handleVersion(c echo.Context) error {
-	return c.JSON(http.StatusOK, version.Current())
+func bindVersionRoute(r *router.Router[*core.RequestEvent]) {
+	r.GET("/api/version", handleVersion)
+}
+
+func handleVersion(e *core.RequestEvent) error {
+	return e.JSON(http.StatusOK, version.Current())
 }

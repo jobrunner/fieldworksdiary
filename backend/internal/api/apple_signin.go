@@ -24,39 +24,46 @@ import (
 
 	"go.mett.io/fwd-backend/internal/services"
 
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/tools/router"
 )
 
 // RegisterAppleNativeSignIn wires `POST /api/auth/apple-native`.
 // Call from `main.go` with a verifier configured for the running
 // app's bundle ids.
 func RegisterAppleNativeSignIn(app core.App, verifier *services.AppleVerifier) {
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		e.Router.POST("/api/auth/apple-native", func(c echo.Context) error {
-			return handleAppleNativeSignIn(app, c, verifier)
-		})
-		return nil
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindAppleNativeSignIn(se.Router, verifier)
+		return se.Next()
 	})
 }
+
+func bindAppleNativeSignIn(r *router.Router[*core.RequestEvent], verifier *services.AppleVerifier) {
+	r.POST("/api/auth/apple-native", func(e *core.RequestEvent) error {
+		return handleAppleNativeSignIn(e, verifier)
+	})
+}
+
+// appleAuthMethod is the auth method name PocketBase records for this
+// flow (MFA bookkeeping / auth alerts).
+const appleAuthMethod = "apple-native"
 
 type appleNativeRequest struct {
 	IdentityToken string `json:"identity_token"`
 }
 
-func handleAppleNativeSignIn(app core.App, c echo.Context, verifier *services.AppleVerifier) error {
+func handleAppleNativeSignIn(e *core.RequestEvent, verifier *services.AppleVerifier) error {
+	app := e.App
 	var req appleNativeRequest
-	if err := c.Bind(&req); err != nil {
-		return apis.NewBadRequestError("Invalid request body.", err)
+	if err := bindJSON(e, &req); err != nil {
+		return err
 	}
 	if req.IdentityToken == "" {
 		return apis.NewBadRequestError("identity_token is required.", nil)
 	}
-	claims, err := verifier.Verify(c.Request().Context(), req.IdentityToken)
+	claims, err := verifier.Verify(e.Request.Context(), req.IdentityToken)
 	if err != nil {
 		// Don't leak verification internals (kid, signature reason, …)
 		// to clients; the log keeps the detail for diagnostics.
@@ -67,7 +74,7 @@ func handleAppleNativeSignIn(app core.App, c echo.Context, verifier *services.Ap
 		return apis.NewUnauthorizedError("Apple identity token is invalid.", nil)
 	}
 
-	user, created, err := upsertAppleUser(app.Dao(), claims)
+	user, created, err := upsertAppleUser(app, claims)
 	if err != nil {
 		app.Logger().Error(
 			"apple-signin: user upsert failed",
@@ -82,7 +89,7 @@ func handleAppleNativeSignIn(app core.App, c echo.Context, verifier *services.Ap
 		slog.String("apple_sub", truncate(claims.Subject)),
 		slog.Bool("created", created),
 	)
-	return apis.RecordAuthResponse(app, c, user, nil)
+	return apis.RecordAuthResponse(e, user, appleAuthMethod, nil)
 }
 
 // upsertAppleUser resolves the Apple `sub` to a PB user, creating
@@ -95,14 +102,14 @@ func handleAppleNativeSignIn(app core.App, c echo.Context, verifier *services.Ap
 //  2. if an email is in the token, match it against existing
 //     password-users and attach `apple_user_id` to that row.
 //  3. otherwise create a fresh `users` record.
-func upsertAppleUser(dao *daos.Dao, claims *services.AppleClaims) (*models.Record, bool, error) {
+func upsertAppleUser(dao core.App, claims *services.AppleClaims) (*core.Record, bool, error) {
 	if rec, err := findUserByAppleSub(dao, claims.Subject); err == nil && rec != nil {
 		return rec, false, nil
 	}
 	if claims.Email != "" {
 		if rec, _ := dao.FindAuthRecordByEmail("users", claims.Email); rec != nil {
 			rec.Set("apple_user_id", claims.Subject)
-			if err := dao.SaveRecord(rec); err != nil {
+			if err := dao.SaveNoValidate(rec); err != nil {
 				return nil, false, err
 			}
 			return rec, false, nil
@@ -124,27 +131,21 @@ func upsertAppleUser(dao *daos.Dao, claims *services.AppleClaims) (*models.Recor
 	if err != nil {
 		return nil, false, err
 	}
-	rec := models.NewRecord(coll)
-	if err := rec.SetEmail(email); err != nil {
-		return nil, false, err
-	}
-	if err := rec.SetUsername("apple_" + claims.Subject); err != nil {
-		return nil, false, err
-	}
-	if err := rec.SetPassword(pwd); err != nil {
-		return nil, false, err
-	}
-	if err := rec.SetVerified(true); err != nil {
-		return nil, false, err
-	}
+	rec := core.NewRecord(coll)
+	rec.SetEmail(email)
+	// The legacy `username` field (kept from 0.22, see migration
+	// 1700000010) is required and unique.
+	rec.Set("username", "apple_"+claims.Subject)
+	rec.SetPassword(pwd)
+	rec.SetVerified(true)
 	rec.Set("apple_user_id", claims.Subject)
-	if err := dao.SaveRecord(rec); err != nil {
+	if err := dao.SaveNoValidate(rec); err != nil {
 		return nil, false, err
 	}
 	return rec, true, nil
 }
 
-func findUserByAppleSub(dao *daos.Dao, sub string) (*models.Record, error) {
+func findUserByAppleSub(dao core.App, sub string) (*core.Record, error) {
 	if sub == "" {
 		return nil, errors.New("empty sub")
 	}

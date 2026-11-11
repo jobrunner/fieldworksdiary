@@ -20,7 +20,6 @@ import (
 	"go.mett.io/fwd-backend/internal/geoplace"
 
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
 )
 
 // Runner executes the backfill steps.
@@ -86,7 +85,7 @@ func (r *Runner) EnrichSamples(ctx context.Context) error {
 		r.log().Warn("backfill: step B skipped, no ortus client", slog.String("service", "ortus"))
 		return nil
 	}
-	recs, err := r.App.Dao().FindRecordsByFilter("samples",
+	recs, err := r.App.FindRecordsByFilter("samples",
 		"(latitude != 0 || longitude != 0) && location_status != 'manual' && location_status != 'backend_service'",
 		"created", 0, 0)
 	if err != nil {
@@ -127,7 +126,7 @@ func (r *Runner) EnrichTimezones(ctx context.Context) error {
 		r.log().Warn("backfill: step B2 skipped, no ortus client", slog.String("service", "ortus"))
 		return nil
 	}
-	recs, err := r.App.Dao().FindRecordsByFilter("samples",
+	recs, err := r.App.FindRecordsByFilter("samples",
 		"(latitude != 0 || longitude != 0) && timezone_source = 'device'", "created", 0, 0)
 	if err != nil {
 		return err
@@ -171,7 +170,7 @@ func (r *Runner) EnrichLocalities(ctx context.Context) error {
 		r.log().Warn("backfill: step B' skipped, no ortus client", slog.String("service", "ortus"))
 		return nil
 	}
-	dao := r.App.Dao()
+	dao := r.App
 	locs, err := dao.FindRecordsByFilter("localities", "latitude != 0 || longitude != 0", "created", 0, 0)
 	if err != nil {
 		return err
@@ -225,7 +224,7 @@ func (r *Runner) EnrichLocalities(ctx context.Context) error {
 // and localities to the looked-up/created placemark. Manual placemarks
 // are never touched.
 func (r *Runner) Remap(ctx context.Context) error {
-	dao := r.App.Dao()
+	dao := r.App
 	pms, err := dao.FindRecordsByFilter("placemarks",
 		"geocoding_source = 'backend_service' && country_iso != ''", "created", 0, 0)
 	if err != nil {
@@ -243,7 +242,7 @@ func (r *Runner) Remap(ctx context.Context) error {
 			continue
 		}
 		changed := 0
-		err := dao.RunInTransaction(func(tx *daos.Dao) error {
+		err := dao.RunInTransaction(func(tx core.App) error {
 			target, err := geoplace.LookupOrCreatePlacemark(tx, np, "backend_service", "")
 			if err != nil {
 				return err

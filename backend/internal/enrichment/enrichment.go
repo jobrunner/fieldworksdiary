@@ -22,8 +22,6 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
 )
 
 // location_status values of a sample.
@@ -64,12 +62,20 @@ type Enricher struct {
 // is never blocked on the upstream service. Updates only re-trigger when
 // the coordinate moved.
 func (e *Enricher) Register() {
-	e.App.OnRecordAfterCreateRequest("samples").Add(func(ev *core.RecordCreateEvent) error {
+	e.App.OnRecordCreateRequest("samples").BindFunc(func(ev *core.RecordRequestEvent) error {
+		if err := ev.Next(); err != nil {
+			return err
+		}
 		go e.runSafely(ev.Record.Id, ev.Record.GetString("fieldtrip"))
 		return nil
 	})
-	e.App.OnRecordAfterUpdateRequest("samples").Add(func(ev *core.RecordUpdateEvent) error {
-		if !coordChanged(ev.Record) {
+	e.App.OnRecordUpdateRequest("samples").BindFunc(func(ev *core.RecordRequestEvent) error {
+		// The pre-update state, captured before the save.
+		orig := ev.Record.Original()
+		if err := ev.Next(); err != nil {
+			return err
+		}
+		if !coordChanged(orig, ev.Record) {
 			return nil
 		}
 		go e.runSafely(ev.Record.Id, ev.Record.GetString("fieldtrip"))
@@ -78,9 +84,8 @@ func (e *Enricher) Register() {
 }
 
 // coordChanged reports whether latitude or longitude of rec differ from
-// its original copy by more than coordEpsilon.
-func coordChanged(rec *models.Record) bool {
-	orig := rec.OriginalCopy()
+// orig (the pre-update state) by more than coordEpsilon.
+func coordChanged(orig, rec *core.Record) bool {
 	return math.Abs(rec.GetFloat("latitude")-orig.GetFloat("latitude")) > coordEpsilon ||
 		math.Abs(rec.GetFloat("longitude")-orig.GetFloat("longitude")) > coordEpsilon
 }
@@ -138,8 +143,8 @@ func (e *Enricher) EnrichSample(ctx context.Context, sampleID string) {
 // Every write bumps the sample's version.
 func (e *Enricher) run(ctx context.Context, sampleID string) {
 	log := e.log().With(slog.String("sample_id", sampleID))
-	dao := e.App.Dao()
-	rec, err := dao.FindRecordById("samples", sampleID)
+	app := e.App
+	rec, err := app.FindRecordById("samples", sampleID)
 	if err != nil {
 		log.Warn("enrichment: sample disappeared", slog.Any("err", err))
 		return
@@ -151,7 +156,8 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 
 	resp, err := e.Ortus.Query(ctx, lat, lon)
 	if err != nil {
-		log.Warn("enrichment: ortus query failed",
+		log.Warn(
+			"enrichment: ortus query failed",
 			slog.String("service", "ortus"),
 			slog.Any("err", err),
 		)
@@ -167,7 +173,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 	// Re-read, mutate and save in one transaction (no network inside),
 	// so a client request landing in between is not clobbered.
 	var finalStatus string
-	err = dao.RunInTransaction(func(tx *daos.Dao) error {
+	err = app.RunInTransaction(func(tx core.App) error {
 		rec, err := tx.FindRecordById("samples", sampleID)
 		if err != nil {
 			return fmt.Errorf("sample disappeared: %w", err)
@@ -228,7 +234,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		// silently reverting the enrichment.
 		rec.Set("version", rec.GetInt("version")+1)
 
-		if err := tx.SaveRecord(rec); err != nil {
+		if err := tx.SaveNoValidate(rec); err != nil {
 			return fmt.Errorf("save sample: %w", err)
 		}
 		if err := geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), res.Features); err != nil {
@@ -244,7 +250,8 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		log.Warn("enrichment: write failed", slog.Any("err", err))
 		return
 	}
-	log.Info("enrichment: sample enriched",
+	log.Info(
+		"enrichment: sample enriched",
 		slog.String("service", "ortus"),
 		slog.String("location_status", finalStatus),
 		slog.Int("features", len(res.Features)),
@@ -262,7 +269,7 @@ var enrichedFields = []string{
 }
 
 // snapshot renders the enriched fields as one comparable string.
-func snapshot(rec *models.Record) string {
+func snapshot(rec *core.Record) string {
 	var b strings.Builder
 	for _, f := range enrichedFields {
 		fmt.Fprintf(&b, "%s=%v\x00", f, rec.Get(f))
@@ -290,8 +297,8 @@ func featureKey(source, layer, id string, props, license any) string {
 
 // featuresChanged reports whether the stored features of the sample
 // differ from fs.
-func featuresChanged(dao *daos.Dao, sampleID string, fs []geoplace.Feature) bool {
-	old, err := dao.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sampleID})
+func featuresChanged(app core.App, sampleID string, fs []geoplace.Feature) bool {
+	old, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sampleID})
 	if err != nil || len(old) != len(fs) {
 		return true
 	}
@@ -321,7 +328,7 @@ var errSkip = errors.New("enrichment: skip")
 // height of its own: no elevation source, or a previous DEM height
 // (backend_service), which derives from the coordinate. GPS
 // (location_service) and manual heights are never replaced.
-func applyDEMHeight(rec *models.Record, g geoplace.SampleGeo) {
+func applyDEMHeight(rec *core.Record, g geoplace.SampleGeo) {
 	if g.ElevationDEM == nil {
 		return
 	}
@@ -342,7 +349,7 @@ func applyDEMHeight(rec *models.Record, g geoplace.SampleGeo) {
 // applyTimezone stores the Ortus timezone unless the user set one by hand
 // or Ortus has none. It never touches collecting_day, fieldtrip or
 // sample_id: those stay as the app computed them.
-func applyTimezone(rec *models.Record, g geoplace.SampleGeo) {
+func applyTimezone(rec *core.Record, g geoplace.SampleGeo) {
 	if g.Timezone == "" || rec.GetString("timezone_source") == "manual" {
 		return
 	}
@@ -358,7 +365,7 @@ func applyTimezone(rec *models.Record, g geoplace.SampleGeo) {
 // its zone changes: the day is read in the old zone, the new begin is
 // that day's midnight in the new zone. end_date stays empty for all-day
 // samples. Unknown zones or an empty begin leave the record untouched.
-func resnapAllDay(rec *models.Record, oldZone, newZone string) {
+func resnapAllDay(rec *core.Record, oldZone, newZone string) {
 	begin := rec.GetDateTime("begin_date").Time()
 	if begin.IsZero() {
 		return
@@ -378,12 +385,12 @@ func resnapAllDay(rec *models.Record, oldZone, newZone string) {
 
 // currentPlacemarkHash returns the dedup hash of the sample's current
 // placemark, or "" when it has none.
-func currentPlacemarkHash(dao *daos.Dao, rec *models.Record) string {
+func currentPlacemarkHash(app core.App, rec *core.Record) string {
 	id := rec.GetString("placemark")
 	if id == "" {
 		return ""
 	}
-	pm, err := dao.FindRecordById("placemarks", id)
+	pm, err := app.FindRecordById("placemarks", id)
 	if err != nil {
 		return ""
 	}
@@ -392,7 +399,7 @@ func currentPlacemarkHash(dao *daos.Dao, rec *models.Record) string {
 
 // locationStatus returns the sample's location_status; empty counts as
 // pending.
-func locationStatus(rec *models.Record) string {
+func locationStatus(rec *core.Record) string {
 	if s := strings.TrimSpace(rec.GetString("location_status")); s != "" {
 		return s
 	}
@@ -417,8 +424,8 @@ func (e *Enricher) EnrichSampleTimezone(ctx context.Context, sampleID string) (b
 	if e.Ortus == nil {
 		return false, nil
 	}
-	dao := e.App.Dao()
-	rec, err := dao.FindRecordById("samples", sampleID)
+	app := e.App
+	rec, err := app.FindRecordById("samples", sampleID)
 	if err != nil {
 		return false, err
 	}
@@ -436,7 +443,7 @@ func (e *Enricher) EnrichSampleTimezone(ctx context.Context, sampleID string) (b
 	}
 	geo := geoplace.FromOrtus(resp, lat, lon, labels).Geo
 	saved := false
-	err = dao.RunInTransaction(func(tx *daos.Dao) error {
+	err = app.RunInTransaction(func(tx core.App) error {
 		rec, err := tx.FindRecordById("samples", sampleID)
 		if err != nil {
 			return fmt.Errorf("sample disappeared: %w", err)
@@ -452,7 +459,7 @@ func (e *Enricher) EnrichSampleTimezone(ctx context.Context, sampleID string) (b
 			return nil
 		}
 		rec.Set("version", rec.GetInt("version")+1)
-		if err := tx.SaveRecord(rec); err != nil {
+		if err := tx.SaveNoValidate(rec); err != nil {
 			return fmt.Errorf("save sample: %w", err)
 		}
 		saved = true

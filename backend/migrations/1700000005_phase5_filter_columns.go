@@ -16,50 +16,36 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("excursions")
+	m.Register(func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("excursions")
 		if err != nil {
 			return err
 		}
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "day_of_year", Type: schema.FieldTypeNumber,
-		})
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "country", Type: schema.FieldTypeText,
-		})
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "admin_area", Type: schema.FieldTypeText,
-		})
+		coll.Fields.Add(&core.NumberField{Name: "day_of_year"})
+		coll.Fields.Add(&core.TextField{Name: "country"})
+		coll.Fields.Add(&core.TextField{Name: "admin_area"})
 		coll.Indexes = append(
 			coll.Indexes,
 			"CREATE INDEX idx_excursions_doy ON excursions (day_of_year)",
 			"CREATE INDEX idx_excursions_country ON excursions (country)",
 			"CREATE INDEX idx_excursions_admin_area ON excursions (admin_area)",
 		)
-		return dao.SaveCollection(coll)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("excursions")
+		return app.Save(coll)
+	}, func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("excursions")
 		if err != nil {
 			return err
 		}
-		for _, fname := range []string{"day_of_year", "country", "admin_area"} {
-			if f := coll.Schema.GetFieldByName(fname); f != nil {
-				coll.Schema.RemoveField(f.Id)
-			}
-		}
+		removeFields(coll, "day_of_year", "country", "admin_area")
 		// Drop the indexes we appended. The migration only owns the
 		// three at the tail of the array.
-		newIndexes := make(types.JsonArray[string], 0, len(coll.Indexes))
+		newIndexes := make(types.JSONArray[string], 0, len(coll.Indexes))
 		drop := map[string]bool{
 			"CREATE INDEX idx_excursions_doy ON excursions (day_of_year)":       true,
 			"CREATE INDEX idx_excursions_country ON excursions (country)":       true,
@@ -71,6 +57,6 @@ func init() {
 			}
 		}
 		coll.Indexes = newIndexes
-		return dao.SaveCollection(coll)
+		return app.Save(coll)
 	})
 }

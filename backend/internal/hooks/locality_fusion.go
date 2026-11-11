@@ -21,10 +21,7 @@ import (
 	"go.mett.io/fwd-backend/internal/fusion"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
 )
 
 // FusionRunner is the side of the hook that touches the DB. Pulled
@@ -38,10 +35,13 @@ type FusionRunner struct {
 // RegisterLocalityFusion wires the create + update hooks on the
 // localities collection. Pass a zero-value Settings for the
 // Spec-defaults (MinRadius = 50 m).
-func RegisterLocalityFusion(app *pocketbase.PocketBase, settings fusion.Settings) {
+func RegisterLocalityFusion(app core.App, settings fusion.Settings) {
 	runner := &FusionRunner{App: app, Settings: settings}
 
-	app.OnRecordAfterCreateRequest("localities").Add(func(ev *core.RecordCreateEvent) error {
+	app.OnRecordCreateRequest("localities").BindFunc(func(ev *core.RecordRequestEvent) error {
+		if err := ev.Next(); err != nil {
+			return err
+		}
 		// Always run fusion on create — the row didn't exist
 		// before, so by definition the coordinate is "new".
 		id := ev.Record.Id
@@ -49,11 +49,15 @@ func RegisterLocalityFusion(app *pocketbase.PocketBase, settings fusion.Settings
 		return nil
 	})
 
-	app.OnRecordAfterUpdateRequest("localities").Add(func(ev *core.RecordUpdateEvent) error {
+	app.OnRecordUpdateRequest("localities").BindFunc(func(ev *core.RecordRequestEvent) error {
+		// The pre-update state, captured before the save.
+		original := ev.Record.Original()
+		if err := ev.Next(); err != nil {
+			return err
+		}
 		// Only re-fuse if the centroid actually moved past the
 		// significance threshold. Otherwise every `notes` edit
 		// would spam the hook.
-		original := ev.Record.OriginalCopy()
 		prevLat := original.GetFloat("latitude")
 		prevLon := original.GetFloat("longitude")
 		newLat := ev.Record.GetFloat("latitude")
@@ -97,8 +101,8 @@ func (r *FusionRunner) runSafely(localityID string) {
 }
 
 func (r *FusionRunner) run(localityID string) error {
-	dao := r.App.Dao()
-	loc, err := dao.FindRecordById("localities", localityID)
+	app := r.App
+	loc, err := app.FindRecordById("localities", localityID)
 	if err != nil {
 		return err
 	}
@@ -120,7 +124,7 @@ func (r *FusionRunner) run(localityID string) error {
 		return nil
 	}
 
-	candRecords, err := dao.FindRecordsByFilter(
+	candRecords, err := app.FindRecordsByFilter(
 		"localities",
 		"owner = {:o} && id != {:id}",
 		"",
@@ -150,7 +154,7 @@ func (r *FusionRunner) run(localityID string) error {
 	case fusion.KeepAsIs:
 		return r.clearReviewFlag(loc)
 	case fusion.MergeInto:
-		return r.mergeInto(dao, loc, decision.TargetID)
+		return r.mergeInto(app, loc, decision.TargetID)
 	case fusion.FlagAmbiguous:
 		return r.setReviewFlag(loc)
 	}
@@ -159,20 +163,20 @@ func (r *FusionRunner) run(localityID string) error {
 
 // clearReviewFlag drops a stale needs_human_review = true that no
 // longer applies (centroid moved out of the duplicate radius).
-func (r *FusionRunner) clearReviewFlag(loc *models.Record) error {
+func (r *FusionRunner) clearReviewFlag(loc *core.Record) error {
 	if !loc.GetBool("needs_human_review") {
 		return nil
 	}
 	loc.Set("needs_human_review", false)
-	return r.App.Dao().SaveRecord(loc)
+	return r.App.SaveNoValidate(loc)
 }
 
-func (r *FusionRunner) setReviewFlag(loc *models.Record) error {
+func (r *FusionRunner) setReviewFlag(loc *core.Record) error {
 	if loc.GetBool("needs_human_review") {
 		return nil
 	}
 	loc.Set("needs_human_review", true)
-	return r.App.Dao().SaveRecord(loc)
+	return r.App.SaveNoValidate(loc)
 }
 
 // mergeInto:
@@ -185,7 +189,7 @@ func (r *FusionRunner) setReviewFlag(loc *models.Record) error {
 //
 // Wrapped in a transaction so a partial failure doesn't leave the
 // DB with samples pointing at a deleted locality.
-func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID string) error {
+func (r *FusionRunner) mergeInto(app core.App, loc *core.Record, targetID string) error {
 	if targetID == loc.Id {
 		// Defensive: ServerFuse should already have excluded self,
 		// but a re-check costs nothing.
@@ -195,8 +199,8 @@ func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID str
 	owner := loc.GetString("owner")
 	incomingID := loc.Id
 
-	return dao.RunInTransaction(func(txDao *daos.Dao) error {
-		samples, err := txDao.FindRecordsByFilter(
+	return app.RunInTransaction(func(txApp core.App) error {
+		samples, err := txApp.FindRecordsByFilter(
 			"samples",
 			"locality = {:l}",
 			"",
@@ -209,7 +213,7 @@ func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID str
 		movedSampleIDs := make([]string, 0, len(samples))
 		for _, s := range samples {
 			s.Set("locality", targetID)
-			if err := txDao.SaveRecord(s); err != nil {
+			if err := txApp.SaveNoValidate(s); err != nil {
 				return err
 			}
 			movedSampleIDs = append(movedSampleIDs, s.Id)
@@ -218,11 +222,11 @@ func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID str
 		// Emit the remap event before the delete so a poll that
 		// races us still sees a coherent (old → new) pair plus
 		// the new target row.
-		eventColl, err := txDao.FindCollectionByNameOrId("locality_remap_events")
+		eventColl, err := txApp.FindCollectionByNameOrId("locality_remap_events")
 		if err != nil {
 			return err
 		}
-		event := models.NewRecord(eventColl)
+		event := core.NewRecord(eventColl)
 		event.Set("owner", owner)
 		event.Set("old_locality_id", incomingID)
 		event.Set("new_locality_id", targetID)
@@ -232,11 +236,11 @@ func (r *FusionRunner) mergeInto(dao *daos.Dao, loc *models.Record, targetID str
 			return err
 		}
 		event.Set("affected_sample_ids", string(idsJSON))
-		if err := txDao.SaveRecord(event); err != nil {
+		if err := txApp.SaveNoValidate(event); err != nil {
 			return err
 		}
 
 		// Finally, drop the now-empty duplicate.
-		return txDao.DeleteRecord(loc)
+		return txApp.Delete(loc)
 	})
 }

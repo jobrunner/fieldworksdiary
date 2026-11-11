@@ -6,8 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mett.io/fwd-backend/internal/adminlabels"
 	"golang.org/x/text/unicode/norm"
+
+	"go.mett.io/fwd-backend/internal/adminlabels"
 )
 
 // DedupHash identifies a place for deduplication: SHA-256 (hex) over the
