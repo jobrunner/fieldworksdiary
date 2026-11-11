@@ -101,6 +101,7 @@ jobs:
       contents: read
       packages: read           # privates Image aus ghcr ziehen
       security-events: write   # SARIF-Upload
+      actions: read            # upload-sarif liest den Workflow-Run
     steps:
       - uses: actions/checkout@v6.0.2
         with:
