@@ -91,8 +91,10 @@ jobs:
           cache-from: type=gha,scope=backend-release
           cache-to: type=gha,scope=backend-release,mode=max
 
-  # Advisory-Scan des veröffentlichten Images wie bei Ortus: Ergebnisse
-  # landen im Security-Tab, blockieren aber nichts.
+  # Advisory-Scan des veröffentlichten Images: blockiert nichts, das
+  # SARIF liegt als Artifact am Lauf. Den Security-Tab gibt es nicht,
+  # weil Code Scanning bei privaten Repos GitHub Code Security braucht
+  # (wie in security.yml).
   image-scan:
     name: Trivy-Scan (advisory)
     runs-on: ubuntu-latest
@@ -100,8 +102,6 @@ jobs:
     permissions:
       contents: read
       packages: read           # privates Image aus ghcr ziehen
-      security-events: write   # SARIF-Upload
-      actions: read            # upload-sarif liest den Workflow-Run
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -118,8 +118,11 @@ jobs:
           format: sarif
           output: trivy-results.sarif
 
-      - name: SARIF hochladen
+      - name: SARIF als Artifact hochladen
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: actions/upload-artifact@v7
         with:
-          sarif_file: trivy-results.sarif
+          name: trivy-release-image-sarif
+          path: trivy-results.sarif
+          if-no-files-found: warn
+          retention-days: 30
