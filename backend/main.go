@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -8,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/adminlabels"
 	"go.mett.io/fwd-backend/internal/api"
+	"go.mett.io/fwd-backend/internal/backfill"
 	"go.mett.io/fwd-backend/internal/enrichment"
 	"go.mett.io/fwd-backend/internal/fusion"
 	"go.mett.io/fwd-backend/internal/hooks"
@@ -19,11 +22,7 @@ import (
 	"github.com/pocketbase/pocketbase"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/plugins/migratecmd"
-)
-
-const (
-	labellocBaseURL = "https://labelloc.example.org"
-	mtbBaseURL      = "https://coordstomtb.example.org"
+	"github.com/spf13/cobra"
 )
 
 // defaultAppleAudiences are the iOS bundle ids the native Sign in
@@ -69,7 +68,8 @@ func main() {
 
 	app := pocketbase.New()
 
-	slog.Info("starting fieldworksdiary",
+	slog.Info(
+		"starting fieldworksdiary",
 		slog.String("version", version.Version),
 		slog.String("commit", version.Commit),
 	)
@@ -79,12 +79,18 @@ func main() {
 		Automigrate: true,
 	})
 
+	// PocketBase 0.22 auth tokens (`type: authRecord`) stay valid until
+	// they expire, so logged-in iOS clients survive the 0.23+ upgrade
+	// without a forced re-login (see internal/api/legacy_token.go).
+	api.RegisterLegacyAuthTokens(app)
+
 	// Public build-identity endpoint — the iOS "Status" screen shows
 	// this next to the app's own version.
 	api.RegisterVersionRoute(app)
 
 	// Phase 1: code-vergabe + auto-grouping on sample insert.
 	hooks.RegisterSampleCreate(app)
+	hooks.RegisterSampleIDUpdate(app)
 
 	// Phase 11a: fill `owner` from the authenticated user on the
 	// other user-facing collections.
@@ -95,6 +101,15 @@ func main() {
 	// get 409; happy-path writes have their `version` rewritten
 	// to the canonical post-write counter.
 	hooks.RegisterVersionConflictGuards(app)
+
+	// Phase O: samples/localities may only reference placemarks the
+	// caller can see (shared backend rows or own manual rows).
+	hooks.RegisterPlacemarkRefGuards(app)
+
+	// Phase O: a coordinate move on a backend_service sample without a
+	// client-resolved placemark resets location_status to pending, so
+	// the async enrichment re-resolves the place.
+	hooks.RegisterSampleLocationReset(app)
 
 	// Phase R6.1: server-side locality fusion. Every locality
 	// create + every centroid-shift > 100 m triggers ServerFuse;
@@ -113,6 +128,8 @@ func main() {
 	// PATCH sets a `geocoding_source = manual` placemark; DELETE
 	// clears it so the next coord tick re-runs the auto-geocoder.
 	api.RegisterPlacemarkOverrideRoutes(app)
+	api.RegisterPlacemarkResolveRoute(app)
+	api.RegisterSampleFeaturesRoute(app)
 
 	// Phase R8: native Sign in with Apple. Verifies the iOS-issued
 	// identityToken against Apple's JWKS, links the user by the
@@ -120,48 +137,116 @@ func main() {
 	// shape as the other auth endpoints.
 	api.RegisterAppleNativeSignIn(app, services.NewAppleVerifier(resolveAppleAudiences()))
 
-	// Phase 2 + R7.1: async enrichment. Sample-side fills
-	// admin_units / mtb / astro on insert; locality-side reverse-
-	// geocodes the coordinate into a Placemark row.
+	// Phase 2 + R7.1 + O: async enrichment. Sample-side queries Ortus
+	// for placemark / features / MTB / terrain on insert and coordinate
+	// change (ORTUS_BASE_URL; empty disables it) and recomputes the
+	// fieldtrip astro; locality-side reverse-geocodes the coordinate
+	// into a Placemark row.
 	//
-	// The cache lives in the `geocache` collection; we hand each
-	// enricher a function-bound dao reference because app.Dao() at
-	// startup is nil — the dao is built during app.Start().
+	// The cache lives in the `geocache` collection. The enrichers are
+	// wired on serve, after the app is bootstrapped.
 	httpClient := &http.Client{Timeout: 5 * time.Second}
 
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		cache := &services.Geocache{Dao: app.Dao()}
-		labelloc := &services.Labelloc{
-			BaseURL:    labellocBaseURL,
-			HTTPClient: httpClient,
-			Cache:      cache,
-			MaxRetries: 3,
-		}
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		cache := &services.Geocache{App: app}
 		enr := &enrichment.Enricher{
-			App:      app,
-			Labelloc: labelloc,
-			MTB: &services.MTB{
-				BaseURL:    mtbBaseURL,
+			App:     app,
+			Labels:  adminlabels.Default(),
+			Logger:  slog.Default(),
+			Timeout: 15 * time.Second,
+		}
+		if ortusBaseURL := strings.TrimSpace(os.Getenv("ORTUS_BASE_URL")); ortusBaseURL != "" {
+			enr.Ortus = &services.Ortus{
+				BaseURL:    ortusBaseURL,
 				HTTPClient: httpClient,
 				Cache:      cache,
 				MaxRetries: 3,
-			},
-			Timeout: 15 * time.Second,
+				Logger:     slog.Default(),
+			}
+		} else {
+			slog.Warn("ortus: ORTUS_BASE_URL leer, Anreicherung deaktiviert")
 		}
 		enr.Register()
 
-		// Phase R7.1: reverse-geocode any locality whose coordinate
-		// is set (and re-geocode on a > 100 m shift). Manual-source
-		// placemarks are left alone.
+		// Reverse-geocode any locality whose coordinate is set (and
+		// re-geocode on a > 100 m shift) via the same Ortus client.
+		// Manual-source placemarks are left alone; without an Ortus
+		// client the enricher does nothing.
 		pm := &enrichment.PlacemarkEnricher{
-			Labelloc: labelloc,
-			Timeout:  15 * time.Second,
+			Ortus:   enr.Ortus,
+			Labels:  adminlabels.Default(),
+			Logger:  slog.Default(),
+			Timeout: 15 * time.Second,
 		}
 		enrichment.RegisterPlacemarkEnricher(app, pm)
-		return nil
+		return se.Next()
 	})
+
+	registerBackfillCommand(app, httpClient)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// registerBackfillCommand adds `ortus-backfill [--remap-only]`: Ortus
+// enrichment of existing samples (step B) and localities (step B') and
+// the remap after a label-table change (step C, see internal/backfill).
+// The legacy manual placemark mapping runs in migration 1700000027.
+func registerBackfillCommand(app *pocketbase.PocketBase, httpClient *http.Client) {
+	var remapOnly bool
+	cmd := &cobra.Command{
+		Use:   "ortus-backfill",
+		Short: "Backfill place data via Ortus (use --remap-only after a label-table change)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := newBackfillRunner(app, httpClient, os.Getenv("ORTUS_BASE_URL"), remapOnly)
+			if err != nil {
+				return err
+			}
+			if remapOnly {
+				return r.Remap(cmd.Context())
+			}
+			return r.Run(cmd.Context())
+		},
+	}
+	cmd.Flags().BoolVar(&remapOnly, "remap-only", false, "only re-map backend placemarks with the current label table")
+	app.RootCmd.AddCommand(cmd)
+}
+
+// errNoOrtusURL is returned by the backfill without --remap-only when
+// ORTUS_BASE_URL is empty: steps B and B' would silently do nothing.
+var errNoOrtusURL = errors.New("ortus-backfill: ORTUS_BASE_URL is empty (only --remap-only works without it)")
+
+// newBackfillRunner wires the backfill runner. Without an Ortus URL only
+// the remap (--remap-only) can run; everything else is an error.
+func newBackfillRunner(app core.App, httpClient *http.Client, ortusBaseURL string, remapOnly bool) (*backfill.Runner, error) {
+	labels := adminlabels.Default()
+	r := &backfill.Runner{
+		App:    app,
+		Labels: labels,
+		Logger: slog.Default(),
+		Enricher: &enrichment.Enricher{
+			App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
+		},
+		Localities: &enrichment.PlacemarkEnricher{
+			App: app, Labels: labels, Logger: slog.Default(), Timeout: 15 * time.Second,
+		},
+	}
+	u := strings.TrimSpace(ortusBaseURL)
+	if u == "" {
+		if !remapOnly {
+			return nil, errNoOrtusURL
+		}
+		return r, nil
+	}
+	ortus := &services.Ortus{
+		BaseURL:    u,
+		HTTPClient: httpClient,
+		Cache:      &services.Geocache{App: app},
+		MaxRetries: 3,
+		Logger:     slog.Default(),
+	}
+	r.Enricher.Ortus = ortus
+	r.Localities.Ortus = ortus
+	return r, nil
 }

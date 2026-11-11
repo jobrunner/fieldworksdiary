@@ -89,10 +89,10 @@ func NewAppleVerifier(audiences []string) *AppleVerifier {
 // / sub / exp / iat ourselves against `v.now()`. A 5-minute leeway on
 // exp/iat absorbs the usual device clock skew.
 func (v *AppleVerifier) Verify(ctx context.Context, tokenString string) (*AppleClaims, error) {
-	parser := &jwt.Parser{
-		ValidMethods:         []string{"RS256"},
-		SkipClaimsValidation: true,
-	}
+	parser := jwt.NewParser(
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithoutClaimsValidation(),
+	)
 	var claims AppleClaims
 	_, err := parser.ParseWithClaims(tokenString, &claims, func(t *jwt.Token) (interface{}, error) {
 		kid, _ := t.Header["kid"].(string)

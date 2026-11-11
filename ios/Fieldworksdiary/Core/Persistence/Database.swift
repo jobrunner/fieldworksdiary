@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 import GRDB
 
@@ -46,6 +47,13 @@ final class Database {
     }
 
     private static func runMigrations(_ writer: DatabaseWriter) throws {
+        try makeMigrator().migrate(writer)
+    }
+
+    /// The full migration list. Internal (not private) so tests can
+    /// migrate a raw queue up to an intermediate version, seed legacy
+    /// rows, and then run the rest (`DatabaseMigrationV13Tests`).
+    static func makeMigrator() -> DatabaseMigrator {
         var migrator = DatabaseMigrator()
         migrator.registerMigration("v1_local_samples_and_sequences", migrate: migrateV1)
         migrator.registerMigration("v2_local_excursions", migrate: migrateV2)
@@ -59,7 +67,13 @@ final class Database {
         migrator.registerMigration("v10_spec_alignment_r3", migrate: migrateV10)
         migrator.registerMigration("v11_pending_mutations_outbox", migrate: migrateV11)
         migrator.registerMigration("v12_localities_needs_human_review", migrate: migrateV12)
-        try migrator.migrate(writer)
+        migrator.registerMigration("v13_ortus_location", migrate: migrateV13)
+        migrator.registerMigration("v14_timezone_elevation", migrate: migrateV14)
+        migrator.registerMigration("v15_drop_legacy_location", migrate: migrateV15)
+        migrator.registerMigration("v16_sample_coordinate_optional", migrate: migrateV16)
+        migrator.registerMigration("v17_locality_origins", migrate: migrateV17)
+        migrator.registerMigration("v18_sample_is_retrospective", migrate: migrateV18)
+        return migrator
     }
 
     private static func migrateV1(_ db: GRDB.Database) throws {
@@ -326,5 +340,221 @@ final class Database {
             t.add(column: "needs_human_review", .boolean).notNull().defaults(to: false)
         }
         try db.create(indexOn: "local_localities", columns: ["needs_human_review"])
+    }
+
+    /// Phase O2: Ortus location data. Mirrors the PocketBase
+    /// migrations 1700000023–1700000025 so the sync mapping stays 1:1.
+    ///
+    /// 1. `local_samples`: `elevation` (copied from the legacy
+    ///    `altitude`, which stays readable until O3), provenance +
+    ///    status, placemark relations, MTB quadrant, DEM / terrain /
+    ///    bearing columns.
+    /// 2. `local_placemarks`: flat per-tier admin columns, owner,
+    ///    backend id; `geocoding_source` renamed to `backend_service`;
+    ///    the UNIQUE index on `dedup_hash` becomes a non-unique
+    ///    composite (dedup_hash, geocoding_source) — dedup is
+    ///    `LocalPlacemarkStore.lookupOrCreate`'s job, like on the
+    ///    backend.
+    /// 3. `local_sample_features`: Ortus source features per sample.
+    private static func migrateV13(_ db: GRDB.Database) throws {
+        // 1. local_samples
+        try db.alter(table: "local_samples") { t in
+            t.add(column: "elevation", .double)
+            t.add(column: "elevation_source", .text)
+            t.add(column: "location_status", .text).notNull().defaults(to: "pending")
+            t.add(column: "placemark", .text)
+            t.add(column: "placemark_suggestion", .text)
+            t.add(column: "mtb_quadrant", .integer)
+            t.add(column: "elevation_dem", .double)
+            t.add(column: "elevation_dem_accuracy", .double)
+            t.add(column: "slope_deg", .double)
+            t.add(column: "aspect_deg", .double)
+            t.add(column: "aspect_compass", .text)
+            t.add(column: "terrain_flat", .boolean).notNull().defaults(to: false)
+            t.add(column: "bearing_label", .text)
+            t.add(column: "bearing_reference", .text)
+            t.add(column: "bearing_distance_km", .double)
+            t.add(column: "bearing_compass", .text)
+            t.add(column: "bearing_inside", .boolean).notNull().defaults(to: false)
+        }
+        try db.execute(sql: "UPDATE local_samples SET elevation = altitude")
+        try db.execute(sql: """
+            UPDATE local_samples SET elevation_source = 'location_service'
+            WHERE elevation IS NOT NULL AND elevation != 0
+        """)
+        try db.create(indexOn: "local_samples", columns: ["collecting_day", "placemark"])
+
+        // 2. local_placemarks
+        try db.alter(table: "local_placemarks") { t in
+            t.add(column: "country_iso", .text)
+            for tier in AdminTier.allCases {
+                t.add(column: tier.rawValue, .text)
+                t.add(column: "\(tier.rawValue)_level", .integer)
+                t.add(column: "\(tier.rawValue)_native", .text)
+            }
+            t.add(column: "island", .text)
+            t.add(column: "mountain_range", .text)
+            t.add(column: "mountain", .text)
+            t.add(column: "owner", .text)
+            t.add(column: "backend_id", .text)
+        }
+        try db.execute(sql: """
+            UPDATE local_placemarks SET geocoding_source = 'backend_service'
+            WHERE geocoding_source = 'backend-service'
+        """)
+        // Every pre-v13 row was pulled from the server, so its id is
+        // the backend id. Without this, `backendPlacemark` would treat
+        // such a row as unresolvable and downgrade the sample's status.
+        try db.execute(sql: "UPDATE local_placemarks SET backend_id = id WHERE backend_id IS NULL")
+        try db.drop(indexOn: "local_placemarks", columns: ["dedup_hash"])
+        try db.create(indexOn: "local_placemarks", columns: ["dedup_hash", "geocoding_source"])
+
+        // 3. local_sample_features
+        try db.create(table: "local_sample_features") { t in
+            t.column("id", .text).primaryKey()
+            t.column("sample_id", .text).notNull()
+            t.column("source_id", .text).notNull()
+            t.column("source_name", .text).notNull().defaults(to: "")
+            t.column("layer", .text).notNull().defaults(to: "")
+            t.column("feature_id", .text).notNull().defaults(to: "")
+            t.column("properties_json", .text).notNull().defaults(to: "{}")
+            t.column("license_json", .text)
+            t.column("fetched_at", .datetime).notNull()
+        }
+        try db.create(indexOn: "local_sample_features", columns: ["sample_id", "source_id"])
+    }
+
+    /// Phase Z: mirrors the PocketBase migration that renamed
+    /// `samples.time_zone` to `timezone`, added `timezone_source` and
+    /// dropped the DEM columns.
+    ///
+    /// 1. `time_zone` → `timezone` (data kept); `timezone_source` added
+    ///    and backfilled with `device` (every old zone came from the
+    ///    device).
+    /// 2. A DEM height moves into `elevation` / `vertical_accuracy`
+    ///    (source `backend_service`) when the sample has no height of
+    ///    its own; then both DEM columns are dropped.
+    private static func migrateV14(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_samples") { t in
+            t.rename(column: "time_zone", to: "timezone")
+            t.add(column: "timezone_source", .text)
+        }
+        try db.execute(sql: "UPDATE local_samples SET timezone_source = 'device'")
+        // The id the backend assigned (`backend_code`) becomes the one id;
+        // what the user typed moves to `original_code` (conflict marker).
+        try db.execute(sql: """
+            UPDATE local_samples
+            SET original_code = COALESCE(original_code, sample_id),
+                sample_id = backend_code
+            WHERE backend_code IS NOT NULL AND backend_code <> ''
+        """)
+        try db.execute(sql: """
+            UPDATE local_samples
+            SET elevation = elevation_dem,
+                vertical_accuracy = elevation_dem_accuracy,
+                elevation_source = 'backend_service'
+            WHERE elevation_source IS NULL AND elevation IS NULL AND elevation_dem IS NOT NULL
+        """)
+        try db.alter(table: "local_samples") { t in
+            t.drop(column: "elevation_dem")
+            t.drop(column: "elevation_dem_accuracy")
+        }
+    }
+
+    /// Phase O3: drops the legacy location columns, mirroring the
+    /// PocketBase migration 1700000027, plus the dead sample-code
+    /// leftovers of Phase Z (`local_sequences`, `backend_code`).
+    ///
+    /// - `local_samples`: `admin_units_locality`, `admin_units_country`,
+    ///   `backend_code`, `altitude` (replaced by `elevation` in v13)
+    /// - `local_fieldtrips`: `admin_units_json`, `mtb_json`, `country`,
+    ///   `admin_area` (and the index on `country`)
+    /// - `local_placemarks`: `country`, `administrative_area`,
+    ///   `sub_administrative_area`, `locality`, `sub_locality`,
+    ///   `postal_code`, `name`, `thoroughfare`
+    /// - table `local_sequences`
+    ///
+    /// Data of the new columns (`country_iso`, `admin_*`, `mtb_*`,
+    /// `elevation`) is untouched.
+    private static func migrateV15(_ db: GRDB.Database) throws {
+        // Indexes on dropped columns must go first (SQLite refuses to
+        // drop an indexed column). The index kept its pre-rename name.
+        try db.execute(sql: "DROP INDEX IF EXISTS index_local_excursions_on_country")
+        try db.execute(sql: "DROP INDEX IF EXISTS index_local_fieldtrips_on_country")
+        try db.alter(table: "local_samples") { t in
+            for column in ["admin_units_locality", "admin_units_country", "backend_code", "altitude"] {
+                t.drop(column: column)
+            }
+        }
+        try db.alter(table: "local_fieldtrips") { t in
+            for column in ["admin_units_json", "mtb_json", "country", "admin_area"] {
+                t.drop(column: column)
+            }
+        }
+        try db.alter(table: "local_placemarks") { t in
+            for column in [
+                "country", "administrative_area", "sub_administrative_area", "locality",
+                "sub_locality", "postal_code", "name", "thoroughfare",
+            ] {
+                t.drop(column: column)
+            }
+        }
+        try db.drop(table: "local_sequences")
+    }
+
+    /// Phase E: samples can be created before the first GPS fix, so
+    /// `latitude`/`longitude` become nullable. SQLite can't drop NOT NULL
+    /// with ALTER, so the table is rebuilt from its own DDL (all other
+    /// columns, defaults and data stay as they are) and the indexes are
+    /// recreated. GRDB runs migrations with foreign keys off, so child
+    /// rows are not cascaded away by the DROP.
+    private static func migrateV16(_ db: GRDB.Database) throws {
+        guard let ddl = try String.fetchOne(
+            db, sql: "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'local_samples'"
+        ) else { return }
+        let indexes = try String.fetchAll(
+            db,
+            sql: "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'local_samples' AND sql IS NOT NULL"
+        )
+        var newDDL = ddl
+        for column in ["latitude", "longitude"] {
+            newDDL = newDDL.replacingOccurrences(
+                of: "(\"?\(column)\"?\\s+\\w+)\\s+NOT NULL",
+                with: "$1",
+                options: .regularExpression
+            )
+        }
+        newDDL = newDDL.replacingOccurrences(
+            of: "^CREATE TABLE \"?local_samples\"?",
+            with: "CREATE TABLE \"local_samples_v16\"",
+            options: .regularExpression
+        )
+        try db.execute(sql: newDDL)
+        try db.execute(sql: "INSERT INTO local_samples_v16 SELECT * FROM local_samples")
+        try db.execute(sql: "DROP TABLE local_samples")
+        try db.execute(sql: "ALTER TABLE local_samples_v16 RENAME TO local_samples")
+        for index in indexes {
+            try db.execute(sql: index)
+        }
+    }
+
+    /// Phase E: which locality the offline fusion created for which
+    /// sample. Deleting a new sample („Sample löschen“) drops the
+    /// locality created for it when no other sample uses it, so no
+    /// empty locality is pushed. `locality_id` follows the UUID →
+    /// backend id swap of `.locality/.create`.
+    private static func migrateV17(_ db: GRDB.Database) throws {
+        try db.create(table: "locality_origins") { t in
+            t.primaryKey("locality_id", .text)
+            t.column("sample_id", .text).notNull()
+        }
+    }
+
+    /// Phase N: samples entered afterwards („Probe nachtragen“). Their
+    /// collecting day follows the begin date instead of staying fixed.
+    private static func migrateV18(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_samples") { t in
+            t.add(column: "is_retrospective", .boolean).notNull().defaults(to: false)
+        }
     }
 }

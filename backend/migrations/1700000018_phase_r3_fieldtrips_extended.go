@@ -19,16 +19,13 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		fieldtrips, err := dao.FindCollectionByNameOrId("fieldtrips")
+	m.Register(func(app core.App) error {
+		fieldtrips, err := app.FindCollectionByNameOrId("fieldtrips")
 		if err != nil {
 			return err
 		}
@@ -40,52 +37,38 @@ func init() {
 			{"ended_at", "end_date"},
 		}
 		for _, r := range renames {
-			if f := fieldtrips.Schema.GetFieldByName(r[0]); f != nil {
-				f.Name = r[1]
-			}
+			renameField(fieldtrips, r[0], r[1])
 		}
 
-		addIfMissing := func(field *schema.SchemaField) {
-			if fieldtrips.Schema.GetFieldByName(field.Name) == nil {
-				fieldtrips.Schema.AddField(field)
-			}
-		}
-		addIfMissing(&schema.SchemaField{Name: "notes", Type: schema.FieldTypeEditor})
-		addIfMissing(&schema.SchemaField{Name: "version", Type: schema.FieldTypeNumber})
+		addFieldIfMissing(fieldtrips, &core.EditorField{Name: "notes"})
+		addFieldIfMissing(fieldtrips, &core.NumberField{Name: "version"})
 
-		if err := dao.SaveCollection(fieldtrips); err != nil {
+		if err := app.Save(fieldtrips); err != nil {
 			return err
 		}
 
 		// Default version = 1 for existing rows.
-		if _, err := db.NewQuery(`
+		if _, err := app.DB().NewQuery(`
 			UPDATE fieldtrips SET version = 1
 			WHERE version IS NULL OR version = 0
 		`).Execute(); err != nil {
 			return err
 		}
 		return nil
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		fieldtrips, err := dao.FindCollectionByNameOrId("fieldtrips")
+	}, func(app core.App) error {
+		fieldtrips, err := app.FindCollectionByNameOrId("fieldtrips")
 		if err != nil {
 			return err
 		}
-		for _, name := range []string{"notes", "version"} {
-			if f := fieldtrips.Schema.GetFieldByName(name); f != nil {
-				fieldtrips.Schema.RemoveField(f.Id)
-			}
-		}
+		removeFields(fieldtrips, "notes", "version")
 		renames := [][2]string{
 			{"title", "name"},
 			{"begin_date", "started_at"},
 			{"end_date", "ended_at"},
 		}
 		for _, r := range renames {
-			if f := fieldtrips.Schema.GetFieldByName(r[0]); f != nil {
-				f.Name = r[1]
-			}
+			renameField(fieldtrips, r[0], r[1])
 		}
-		return dao.SaveCollection(fieldtrips)
+		return app.Save(fieldtrips)
 	})
 }

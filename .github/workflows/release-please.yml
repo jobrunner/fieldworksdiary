@@ -10,7 +10,7 @@
 #
 # One version for the whole monorepo (backend + iOS) — see
 # release-please-config.json (single "." package, release-type
-# "simple"). deploy-prod.yml / deploy-staging.yml read the same
+# "simple"). docker-release.yml reads the same
 # `VERSION` file at Docker-build time (build-args), so the released
 # version always matches what both components report at runtime.
 #

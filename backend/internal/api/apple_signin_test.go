@@ -14,34 +14,41 @@ import (
 	"testing"
 	"time"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	"go.mett.io/fwd-backend/internal/services"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/labstack/echo/v5"
 	"github.com/pocketbase/pocketbase/apis"
-	"github.com/pocketbase/pocketbase/models"
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
 // applesFixture: TestApp + a signing key + an echo router with the
 // route mounted against a JWKS-stub verifier. Stays alive across
 // multiple requests so post-conditions can hit the DB directly —
-// avoids ApiScenario's per-scenario Cleanup that nils out `app.Dao()`.
+// avoids ApiScenario's per-scenario Cleanup that nils out `app`.
 type applesFixture struct {
 	app  *tests.TestApp
 	priv *rsa.PrivateKey
 	kid  string
 	now  time.Time
-	echo *echo.Echo
+	mux  http.Handler
 }
 
 func newApplesFixture(t *testing.T) *applesFixture {
 	t.Helper()
-	app, err := tests.NewTestApp()
+	app := testutil.NewTestApp(t)
+	// PocketBase's test fixture DB enables MFA on `users`; production
+	// (fresh or upgraded from 0.22) has it off.
+	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
-		t.Fatalf("test-app: %v", err)
+		t.Fatalf("users collection: %v", err)
 	}
-	t.Cleanup(app.Cleanup)
+	users.MFA.Enabled = false
+	if err := app.Save(users); err != nil {
+		t.Fatalf("disable mfa: %v", err)
+	}
 
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -62,19 +69,21 @@ func newApplesFixture(t *testing.T) *applesFixture {
 	v.JWKSURL = jwks.URL
 	v.Clock = func() time.Time { return now }
 
-	// apis.InitApi gives us a fully-wired echo with PB's error handler
-	// so apis.NewBadRequestError / NewUnauthorizedError map to proper
-	// status codes (a plain echo.New() would surface them as 500).
-	e, err := apis.InitApi(app)
+	// apis.NewRouter gives us PocketBase's router with its default
+	// middlewares and error handling, so apis.NewBadRequestError /
+	// NewUnauthorizedError map to proper status codes.
+	r, err := apis.NewRouter(app)
 	if err != nil {
-		t.Fatalf("InitApi: %v", err)
+		t.Fatalf("NewRouter: %v", err)
 	}
-	e.POST("/api/auth/apple-native", func(c echo.Context) error {
-		return handleAppleNativeSignIn(app, c, v)
-	})
+	bindAppleNativeSignIn(r, v)
+	mux, err := r.BuildMux()
+	if err != nil {
+		t.Fatalf("BuildMux: %v", err)
+	}
 
 	app.ResetEventCalls()
-	return &applesFixture{app: app, priv: priv, kid: kid, now: now, echo: e}
+	return &applesFixture{app: app, priv: priv, kid: kid, now: now, mux: mux}
 }
 
 func (f *applesFixture) signToken(t *testing.T, claims jwt.MapClaims) string {
@@ -111,7 +120,7 @@ func (f *applesFixture) post(t *testing.T, body any) (int, string) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/apple-native", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	f.echo.ServeHTTP(rec, req)
+	f.mux.ServeHTTP(rec, req)
 	respBody, _ := io.ReadAll(rec.Body)
 	return rec.Code, string(respBody)
 }
@@ -132,7 +141,7 @@ func TestAppleNativeSignIn_CreatesNewUser(t *testing.T) {
 			t.Errorf("response missing %q\nbody = %s", want, body)
 		}
 	}
-	rec, err := f.app.Dao().FindAuthRecordByEmail("users", "fresh@example.com")
+	rec, err := f.app.FindAuthRecordByEmail("users", "fresh@example.com")
 	if err != nil {
 		t.Fatalf("find user: %v", err)
 	}
@@ -164,7 +173,7 @@ func TestAppleNativeSignIn_IsIdempotentOnSameSub(t *testing.T) {
 		t.Errorf("re-sign-in created a different user: %s vs %s", firstID, secondID)
 	}
 
-	all, _ := f.app.Dao().FindRecordsByFilter(
+	all, _ := f.app.FindRecordsByFilter(
 		"users", "apple_user_id = {:s}", "", 0, 0,
 		map[string]any{"s": "001234.repeat-user"},
 	)
@@ -184,7 +193,7 @@ func TestAppleNativeSignIn_LinksToExistingEmailUser(t *testing.T) {
 	if status, body := f.post(t, map[string]string{"identity_token": token}); status != http.StatusOK {
 		t.Fatalf("status = %d body = %s", status, body)
 	}
-	reloaded, err := f.app.Dao().FindRecordById("users", existing.Id)
+	reloaded, err := f.app.FindRecordById("users", existing.Id)
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
@@ -230,7 +239,7 @@ func TestAppleNativeSignIn_RejectsWrongAudience(t *testing.T) {
 
 func userIDForSub(t *testing.T, app *tests.TestApp, sub string) string {
 	t.Helper()
-	rec, err := app.Dao().FindFirstRecordByFilter("users",
+	rec, err := app.FindFirstRecordByFilter("users",
 		"apple_user_id = {:s}", map[string]any{"s": sub})
 	if err != nil {
 		t.Fatalf("find by sub: %v", err)
@@ -238,15 +247,15 @@ func userIDForSub(t *testing.T, app *tests.TestApp, sub string) string {
 	return rec.Id
 }
 
-func seedPasswordUser(t *testing.T, app *tests.TestApp, email string) *models.Record {
+func seedPasswordUser(t *testing.T, app *tests.TestApp, email string) *core.Record {
 	t.Helper()
-	coll, _ := app.Dao().FindCollectionByNameOrId("users")
-	rec := models.NewRecord(coll)
-	_ = rec.SetEmail(email)
-	_ = rec.SetUsername("pre_" + strings.ReplaceAll(t.Name(), "/", "_"))
-	_ = rec.SetPassword("test1234password")
-	_ = rec.SetVerified(true)
-	if err := app.Dao().SaveRecord(rec); err != nil {
+	coll, _ := app.FindCollectionByNameOrId("users")
+	rec := core.NewRecord(coll)
+	rec.SetEmail(email)
+	rec.Set("username", "pre_"+strings.ReplaceAll(t.Name(), "/", "_"))
+	rec.SetPassword("test1234password")
+	rec.SetVerified(true)
+	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
 	return rec

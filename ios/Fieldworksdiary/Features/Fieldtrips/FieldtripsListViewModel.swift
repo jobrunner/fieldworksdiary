@@ -1,3 +1,4 @@
+import FieldworksGeo
 import Foundation
 
 @MainActor
@@ -13,16 +14,35 @@ final class FieldtripsListViewModel: ObservableObject {
         didSet { rebuildVisible() }
     }
 
+    /// Places of the local samples per fieldtrip id (Land/Ort filter).
+    @Published private(set) var placeIndex: [String: [Place]] = [:]
+
+    /// Place line per fieldtrip id, derived from its samples.
+    @Published private(set) var placeSummaries: [String: FieldtripPlaceSummary] = [:]
+
     private let store: LocalFieldtripStore
     private let hydrator: FieldtripsHydrator
+    private let samples: LocalSampleStore?
+    private let placemarks: LocalPlacemarkStore?
     private var observationTask: Task<Void, Never>?
+    private var placesObservationTask: Task<Void, Never>?
 
-    init(store: LocalFieldtripStore, hydrator: FieldtripsHydrator) {
+    init(
+        store: LocalFieldtripStore,
+        hydrator: FieldtripsHydrator,
+        samples: LocalSampleStore? = nil,
+        placemarks: LocalPlacemarkStore? = nil
+    ) {
         self.store = store
         self.hydrator = hydrator
+        self.samples = samples
+        self.placemarks = placemarks
     }
 
-    deinit { observationTask?.cancel() }
+    deinit {
+        observationTask?.cancel()
+        placesObservationTask?.cancel()
+    }
 
     func start() {
         observationTask?.cancel()
@@ -33,6 +53,18 @@ final class FieldtripsListViewModel: ObservableObject {
                 self.rebuildVisible()
             }
         }
+        // Place lines follow every sample/placemark write, e.g. the
+        // samples hydration after a reinstall, which runs outside this
+        // screen's refresh.
+        placesObservationTask?.cancel()
+        if let samples, placemarks != nil {
+            placesObservationTask = Task { [weak self] in
+                for await snapshot in samples.observeWithPlacemarks() {
+                    guard let self else { return }
+                    self.applyPlaces(samples: snapshot.samples, placemarks: snapshot.placemarks)
+                }
+            }
+        }
         Task { await refresh() }
     }
 
@@ -41,21 +73,38 @@ final class FieldtripsListViewModel: ObservableObject {
         defer { isHydrating = false }
         await hydrator.pull()
         hydratingError = hydrator.lastError
+        reloadPlaces()
     }
 
-    /// Unique countries that appear in `all`, sorted alphabetically.
-    /// Drives the Region picker on the filter sheet.
+    /// Re-reads the samples' places (cheap: two local reads) and
+    /// re-applies the filter.
+    func reloadPlaces() {
+        guard let samples, let placemarks else {
+            rebuildVisible()
+            return
+        }
+        applyPlaces(
+            samples: (try? samples.fetchAll()) ?? [],
+            placemarks: (try? placemarks.fetchAllByID()) ?? [:]
+        )
+    }
+
+    private func applyPlaces(samples all: [LocalSample], placemarks cached: [String: LocalPlacemark]) {
+        placeIndex = FieldtripsFilter.placeIndex(
+            samples: all.map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) },
+            placemarks: cached
+        )
+        placeSummaries = FieldtripPlaceSummary.index(samples: all, placemarks: cached)
+        rebuildVisible()
+    }
+
+    /// ISO codes of the countries the local samples' places are in.
+    /// Drives the „Land“ picker on the filter sheet.
     var knownCountries: [String] {
-        Array(Set(all.compactMap { $0.country?.nilIfEmpty })).sorted()
+        FieldtripsFilter.countries(in: placeIndex)
     }
 
     private func rebuildVisible() {
-        visible = filter.isActive ? filter.apply(to: all) : all
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
+        visible = filter.isActive ? filter.apply(to: all, places: placeIndex) : all
     }
 }

@@ -1,0 +1,8 @@
+[
+  {"lat": 49.6623256519365, "lon": 10.0716428069229, "row": 63, "col": 26, "quadrant": 1},
+  {"lat": 49.681616, "lon": 10.039652, "row": 63, "col": 26, "quadrant": 1},
+  {"lat": 49.61, "lon": 10.15, "row": 63, "col": 26, "quadrant": 4},
+  {"lat": 49.69, "lon": 10.15, "row": 63, "col": 26, "quadrant": 2},
+  {"lat": 49.61, "lon": 10.01, "row": 63, "col": 26, "quadrant": 3},
+  {"lat": 40.0, "lon": 3.0, "ok": false}
+]

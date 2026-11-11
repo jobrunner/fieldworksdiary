@@ -5,43 +5,30 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "marked",
-			Type: schema.FieldTypeBool,
-		})
+		coll.Fields.Add(&core.BoolField{Name: "marked"})
 		coll.Indexes = append(coll.Indexes,
 			"CREATE INDEX idx_samples_marked ON samples (marked)",
 		)
-		return dao.SaveCollection(coll)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("samples")
+		return app.Save(coll)
+	}, func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		if f := coll.Schema.GetFieldByName("marked"); f != nil {
-			coll.Schema.RemoveField(f.Id)
-		}
-		filtered := coll.Indexes[:0]
-		for _, idx := range coll.Indexes {
-			if idx != "CREATE INDEX idx_samples_marked ON samples (marked)" {
-				filtered = append(filtered, idx)
-			}
-		}
-		coll.Indexes = filtered
-		return dao.SaveCollection(coll)
+		removeFields(coll, "marked")
+		coll.Indexes = filterIndexes(coll.Indexes, func(idx string) bool {
+			return idx != "CREATE INDEX idx_samples_marked ON samples (marked)"
+		})
+		return app.Save(coll)
 	})
 }

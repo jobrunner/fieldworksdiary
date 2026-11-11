@@ -19,17 +19,14 @@ package migrations
 import (
 	"strings"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		users, err := dao.FindCollectionByNameOrId("users")
+	m.Register(func(app core.App) error {
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
@@ -96,27 +93,22 @@ func init() {
 		}
 
 		for _, p := range plans {
-			coll, err := dao.FindCollectionByNameOrId(p.name)
+			coll, err := app.FindCollectionByNameOrId(p.name)
 			if err != nil {
 				return err
 			}
 
 			if p.addOwner {
-				coll.Schema.AddField(&schema.SchemaField{
-					Name: "owner",
-					Type: schema.FieldTypeRelation,
-					Options: &schema.RelationOptions{
-						CollectionId:  users.Id,
-						CascadeDelete: true, // user-delete cleans up
-						MinSelect:     types.Pointer(0),
-						MaxSelect:     types.Pointer(1),
-					},
+				coll.Fields.Add(&core.RelationField{
+					Name:          "owner",
+					CollectionId:  users.Id,
+					CascadeDelete: true, // user-delete cleans up
+					MinSelect:     0,
+					MaxSelect:     1,
 				})
 			}
 			if p.dropUserID {
-				if f := coll.Schema.GetFieldByName("user_id"); f != nil {
-					coll.Schema.RemoveField(f.Id)
-				}
+				removeFields(coll, "user_id")
 			}
 
 			// Index housekeeping — drop legacy ones referencing
@@ -143,34 +135,29 @@ func init() {
 				coll.DeleteRule = userScopedRule
 			}
 
-			if err := dao.SaveCollection(coll); err != nil {
+			if err := app.Save(coll); err != nil {
 				return err
 			}
 		}
 
 		return nil
-	}, func(db dbx.Builder) error {
+	}, func(app core.App) error {
 		// Down: restore the open rules + put back user_id (Text).
 		// We deliberately don't re-create the legacy indexes — they
 		// were unique and our owner-less dev data wouldn't satisfy
 		// them on rollback.
-		dao := daos.New(db)
 		open := types.Pointer("")
 		for _, name := range []string{
 			"samples", "excursions", "localities", "people",
 			"determinations", "label_pdfs", "sample_sequences",
 		} {
-			coll, err := dao.FindCollectionByNameOrId(name)
+			coll, err := app.FindCollectionByNameOrId(name)
 			if err != nil {
 				continue
 			}
-			if f := coll.Schema.GetFieldByName("owner"); f != nil {
-				coll.Schema.RemoveField(f.Id)
-			}
+			removeFields(coll, "owner")
 			if name == "samples" || name == "excursions" || name == "sample_sequences" {
-				coll.Schema.AddField(&schema.SchemaField{
-					Name: "user_id", Type: schema.FieldTypeText,
-				})
+				coll.Fields.Add(&core.TextField{Name: "user_id"})
 			}
 			coll.Indexes = filterIndexes(coll.Indexes, func(s string) bool {
 				return !strings.Contains(s, "owner")
@@ -182,7 +169,7 @@ func init() {
 				coll.UpdateRule = open
 				coll.DeleteRule = open
 			}
-			if err := dao.SaveCollection(coll); err != nil {
+			if err := app.Save(coll); err != nil {
 				return err
 			}
 		}
@@ -190,8 +177,8 @@ func init() {
 	})
 }
 
-func filterIndexes(in types.JsonArray[string], keep func(string) bool) types.JsonArray[string] {
-	out := make(types.JsonArray[string], 0, len(in))
+func filterIndexes(in types.JSONArray[string], keep func(string) bool) types.JSONArray[string] {
+	out := make(types.JSONArray[string], 0, len(in))
 	for _, s := range in {
 		if keep(s) {
 			out = append(out, s)

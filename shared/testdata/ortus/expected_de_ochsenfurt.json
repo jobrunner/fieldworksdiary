@@ -1,0 +1,51 @@
+{
+  "country_iso": "DE",
+  "admin": {
+    "admin_country": {
+      "name": "Deutschland",
+      "native": "",
+      "level": 2
+    },
+    "admin_state": {
+      "name": "Bayern",
+      "native": "",
+      "level": 4
+    },
+    "admin_region": {
+      "name": "Unterfranken",
+      "native": "",
+      "level": 5
+    },
+    "admin_county": {
+      "name": "Landkreis Würzburg",
+      "native": "",
+      "level": 6
+    },
+    "admin_municipality": {
+      "name": "Ochsenfurt",
+      "native": "",
+      "level": 8
+    }
+  },
+  "island": "",
+  "mountain_range": "",
+  "mountain": "",
+  "geo": {
+    "elevation_dem": 236.0,
+    "elevation_dem_accuracy": 4.0,
+    "slope_deg": 8.4,
+    "aspect_deg": 202.5,
+    "aspect_compass": "SSW",
+    "terrain_flat": false,
+    "bearing_label": "2 km WNW Ochsenfurt",
+    "bearing_reference": "Ochsenfurt",
+    "bearing_compass": "WNW",
+    "bearing_distance_km": 2.3,
+    "bearing_inside": false,
+    "mtb_sheet_number": "6326",
+    "mtb_sheet_name": "Ochsenfurt",
+    "mtb_quadrant": 1
+  },
+  "feature_count": 2,
+  "dedup_hash": "92ae97bbc5767de89956ba0a3822dd2ad1c3fb942f6c700587266b114de924de"
+}

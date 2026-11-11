@@ -30,6 +30,11 @@ packages:
   SnapshotTesting:
     url: https://github.com/pointfreeco/swift-snapshot-testing
     from: 1.17.0
+  FliptClient:
+    url: https://github.com/flipt-io/flipt-client-swift
+    exactVersion: 1.5.5
+  FieldworksGeo:
+    path: Packages/FieldworksGeo
 targets:
   Fieldworksdiary:
     type: application
@@ -39,6 +44,9 @@ targets:
     dependencies:
       - package: GRDB
         product: GRDB
+      - package: FieldworksGeo
+      - package: FliptClient
+        product: FliptClient
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"

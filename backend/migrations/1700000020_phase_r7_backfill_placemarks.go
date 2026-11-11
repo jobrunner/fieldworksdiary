@@ -30,9 +30,8 @@ import (
 	"strings"
 
 	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -48,9 +47,8 @@ type adminUnitsSnapshot struct {
 }
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindRecordsByFilter(
+	m.Register(func(app core.App) error {
+		samples, err := app.FindRecordsByFilter(
 			"samples",
 			"admin_units != ''",
 			"", 0, 0,
@@ -59,14 +57,14 @@ func init() {
 			return err
 		}
 		for _, s := range samples {
-			if err := backfillOnePlacemark(dao, s); err != nil {
+			if err := backfillOnePlacemark(app, s); err != nil {
 				// Keep going on per-row failures — a single bad
 				// snapshot must not block the whole backfill.
 				continue
 			}
 		}
 		return nil
-	}, func(db dbx.Builder) error {
+	}, func(core.App) error {
 		// Down: no-op. We don't reverse a data migration; if
 		// somebody really wants to undo this, they delete the
 		// placemarks collection (which the R3 migration's down
@@ -75,7 +73,7 @@ func init() {
 	})
 }
 
-func backfillOnePlacemark(dao *daos.Dao, sample *models.Record) error {
+func backfillOnePlacemark(app core.App, sample *core.Record) error {
 	raw := sample.GetString("admin_units")
 	if raw == "" {
 		return nil
@@ -90,7 +88,7 @@ func backfillOnePlacemark(dao *daos.Dao, sample *models.Record) error {
 	}
 	hash := backfillDedupHash(country, snap.AdminArea, snap.Locality, "")
 
-	pm, err := backfillLookupOrCreate(dao, hash, country, snap.AdminArea, snap.AdminArea2, snap.Locality)
+	pm, err := backfillLookupOrCreate(app, hash, country, snap.AdminArea, snap.AdminArea2, snap.Locality)
 	if err != nil {
 		return err
 	}
@@ -104,7 +102,7 @@ func backfillOnePlacemark(dao *daos.Dao, sample *models.Record) error {
 	if localityID == "" {
 		return nil
 	}
-	loc, err := dao.FindRecordById("localities", localityID)
+	loc, err := app.FindRecordById("localities", localityID)
 	if err != nil {
 		return nil // locality vanished
 	}
@@ -112,11 +110,12 @@ func backfillOnePlacemark(dao *daos.Dao, sample *models.Record) error {
 		return nil // already attached, leave it
 	}
 	loc.Set("placemark", pm.Id)
-	return dao.SaveRecord(loc)
+	// 0.22's dao.SaveRecord did not validate either.
+	return app.SaveNoValidate(loc)
 }
 
-func backfillLookupOrCreate(dao *daos.Dao, hash, country, adminArea, subAdminArea, locality string) (*models.Record, error) {
-	existing, err := dao.FindFirstRecordByFilter(
+func backfillLookupOrCreate(app core.App, hash, country, adminArea, subAdminArea, locality string) (*core.Record, error) {
+	existing, err := app.FindFirstRecordByFilter(
 		"placemarks",
 		"dedup_hash = {:h}",
 		dbx.Params{"h": hash},
@@ -124,24 +123,24 @@ func backfillLookupOrCreate(dao *daos.Dao, hash, country, adminArea, subAdminAre
 	if err == nil && existing != nil {
 		return existing, nil
 	}
-	coll, err := dao.FindCollectionByNameOrId("placemarks")
+	coll, err := app.FindCollectionByNameOrId("placemarks")
 	if err != nil {
 		return nil, err
 	}
-	rec := models.NewRecord(coll)
+	rec := core.NewRecord(coll)
 	rec.Set("country", country)
 	rec.Set("administrative_area", adminArea)
 	rec.Set("sub_administrative_area", subAdminArea)
 	rec.Set("locality", locality)
 	rec.Set("geocoding_source", "backend-service")
 	rec.Set("dedup_hash", hash)
-	if err := dao.SaveRecord(rec); err != nil {
+	if err := app.SaveNoValidate(rec); err != nil {
 		return nil, err
 	}
 	return rec, nil
 }
 
-// backfillDedupHash mirrors `enrichment.PlacemarkDedupHash` and
+// backfillDedupHash mirrors the (since removed) enrichment dedup hash and
 // `api.manualDedupHash`. We keep a third copy here because the
 // `migrations` package is the bootstrap layer — pulling in
 // `internal/enrichment` would create an import cycle through the

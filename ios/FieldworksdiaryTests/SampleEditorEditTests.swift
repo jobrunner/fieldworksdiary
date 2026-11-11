@@ -2,7 +2,8 @@
 import XCTest
 
 /// Edit-Verhalten des `SampleEditorViewModel`: Dirty-Tracking,
-/// `canSave`-Matrix, Code-Validierung, `saveEdits` → Outbox.
+/// `canSave`-Matrix, Code-Validierung, Speichern beim Zurück
+/// (`finishEditing`) bzw. ohne Dialog (`saveEdits`) → Outbox.
 @MainActor
 final class SampleEditorEditTests: XCTestCase {
     private var database: Database!
@@ -18,7 +19,7 @@ final class SampleEditorEditTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         database = try Database(inMemory: ())
-        samples = LocalSampleStore(database: database, userId: "u1", cutoffHour: 5, timeZone: berlin)
+        samples = LocalSampleStore(database: database, userId: "u1", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
         photos = LocalPhotoStore(database: database)
         fieldtrips = LocalFieldtripStore(database: database)
         localities = LocalLocalityStore(database: database)
@@ -71,15 +72,13 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertNil(vm.codeValidationError)
     }
 
-    func testRecheckCode_Malformed_FormatError() throws {
+    func testRecheckCode_AnyFormatIsAccepted() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "")
         let vm = makeVM(sampleID: seeded.id)
 
-        vm.code = "not-a-code"
+        vm.code = "JB-1001"
         vm.recheckCode()
-        XCTAssertNotNil(vm.codeValidationError)
-        XCTAssertTrue(vm.codeValidationError?.contains("Format") ?? false)
-        XCTAssertFalse(vm.canSave, "format error blocks save")
+        XCTAssertNil(vm.codeValidationError, "the sample ID belongs to the user; no format check")
     }
 
     func testRecheckCode_DuplicateOfAnotherSample_UniquenessError() throws {
@@ -106,12 +105,12 @@ final class SampleEditorEditTests: XCTestCase {
         XCTAssertNil(vm.codeValidationError)
     }
 
-    func testSaveEdits_EnqueuesUpdate_WhenBackendIdPresent() async throws {
+    func testFinishEditing_EnqueuesUpdate_WhenBackendIdPresent() throws {
         let seeded = try seedSyncedSample(code: "260605/1", notes: "before", backendID: "backend-1")
         let vm = makeVM(sampleID: seeded.id)
 
         vm.notes = "after"
-        await vm.saveEdits()
+        XCTAssertTrue(vm.finishEditing())
 
         let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
         XCTAssertEqual(updates.count, 1)
@@ -141,15 +140,236 @@ final class SampleEditorEditTests: XCTestCase {
 
     // MARK: - helpers
 
-    private func makeVM(sampleID: String?) -> SampleEditorViewModel {
+    // MARK: - Task 17: coordinate correction (`CoordinateCorrection`), suggestion, resend
+
+    func testCoordinateCorrection_ManualSample_AsksBeforeWriting() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        try samples.update(seeded)
+        let correction = makeCorrection()
+
+        let ask = correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0))
+
+        XCTAssertTrue(ask, "manual place ⇒ „Ortsangaben neu übernehmen?“")
+        XCTAssertEqual(try samples.fetchById(seeded.id)?.latitude, 49.79, "nothing written before the answer")
+        XCTAssertEqual(try mutations.count(), 0)
+
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: false) {})
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .pending, "„Übernehmen“ drops the manual place")
+        XCTAssertNil(stored.placemark)
+        XCTAssertEqual(stored.locationSource, LocationSource.user.rawValue)
+        XCTAssertNil(correction.pending)
+    }
+
+    func testCoordinateCorrection_ManualSample_KeepMyPlace() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        try samples.update(seeded)
+        let correction = makeCorrection()
+
+        XCTAssertTrue(correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0)))
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: true) {})
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .manual)
+        XCTAssertEqual(stored.placemark, "pmmanual000001")
+    }
+
+    func testCoordinateCorrection_NonManual_AppliesDirectly() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .backendService
+        seeded.placemark = "pmbackend00001"
+        try samples.update(seeded)
+        let correction = makeCorrection()
+
+        XCTAssertFalse(correction.request(sampleID: seeded.id, .init(latitude: 47.0, longitude: 11.0)))
+        XCTAssertTrue(correction.apply(sampleID: seeded.id, keepManualPlace: true) {})
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.latitude, 47.0)
+        XCTAssertEqual(stored.locationStatus, .pending)
+        XCTAssertNil(stored.placemark)
+        let queued = try XCTUnwrap(mutations.fetch(entityType: .sample).first)
+        XCTAssertTrue(SampleUpdatePayload.decode(queued.payloadJson).coordinateChanged)
+    }
+
+    func testDismissSuggestion_FromEditor() throws {
+        var seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        seeded.locationStatus = .manual
+        seeded.placemark = "pmmanual000001"
+        seeded.placemarkSuggestion = "pmsuggestion01"
+        try samples.update(seeded)
+        let vm = makeVM(sampleID: seeded.id)
+        XCTAssertTrue(vm.hasSuggestion)
+
+        vm.dismissSuggestion()
+
+        XCTAssertFalse(vm.hasSuggestion)
+        XCTAssertNil(try samples.fetchById(seeded.id)?.placemarkSuggestion)
+    }
+
+    func testResendFailed_FromEditor_RequeuesAndClearsFailedState() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "", backendID: "b1")
+        try samples.setSyncState(id: seeded.id, status: .failed, error: "Konflikt")
+        let vm = makeVM(sampleID: seeded.id)
+        XCTAssertTrue(vm.canResend)
+
+        vm.resendFailed()
+
+        XCTAssertFalse(vm.canResend)
+        XCTAssertEqual(try mutations.count(), 1)
+        XCTAssertEqual(try samples.fetchById(seeded.id)?.syncStatus, .pending)
+    }
+
+    // MARK: - time window and zone (Phase Z)
+
+    func testFinishEditing_NoChanges_EnqueuesNothing() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "backend-1")
+        let vm = makeVM(sampleID: seeded.id)
+
+        XCTAssertTrue(vm.finishEditing())
+
+        XCTAssertEqual(try mutations.count(), 0, "leaving without edits pushes nothing")
+    }
+
+    /// The editor no longer edits times (Phase N: `SampleFormView`); the
+    /// zone rule lives in `SampleTimeWindow`.
+    func testChooseZone_SetsManual_KeepsInstants_AndWrites() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let base = SampleTimeWindow(seeded)
+        var time = base
+
+        time.setTimezone("Atlantic/Canary")
+
+        XCTAssertEqual(time.timezoneSource, .manual)
+        XCTAssertEqual(time.begin, base.begin)
+        XCTAssertEqual(time.end, base.end)
+        XCTAssertNotEqual(time, base)
+
+        var row = seeded
+        time.write(into: &row, base: base)
+        XCTAssertEqual(row.timezone, "Atlantic/Canary")
+        XCTAssertEqual(row.timezoneSource, .manual)
+        XCTAssertEqual(row.beginDate, seeded.beginDate)
+    }
+
+    func testEditorShowsTimesWrittenByTheForm() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let vm = makeVM(sampleID: seeded.id)
+        var row = try XCTUnwrap(samples.fetchById(seeded.id))
+        row.timezone = "Atlantic/Canary"
+        row.beginDate = seeded.beginDate.addingTimeInterval(3600)
+        try samples.update(row)
+
+        vm.refreshDerivedFields()
+
+        XCTAssertEqual(vm.timeZone.identifier, "Atlantic/Canary")
+        XCTAssertEqual(vm.beginDate, row.beginDate)
+        vm.notes = "edited"
+        XCTAssertTrue(vm.finishEditing())
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.notes, "edited")
+        XCTAssertEqual(stored.beginDate, row.beginDate, "the editor never writes stale times back")
+        XCTAssertEqual(stored.timezone, "Atlantic/Canary")
+    }
+
+    func testTimeWindowText_SameDayNextDayAndAllDay() throws {
+        let zone = try XCTUnwrap(TimeZone(identifier: "Atlantic/Canary"))
+        let begin = Date(timeIntervalSince1970: 1_779_183_000) // 2026-05-19 09:30 UTC = 10:30 WEST
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: begin.addingTimeInterval(900),
+                                                 isAllDay: false, zone: zone),
+            "10:30 – 10:45"
+        )
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: nil, isAllDay: false, zone: zone),
+            "10:30"
+        )
+        XCTAssertEqual(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: begin.addingTimeInterval(86400),
+                                                 isAllDay: false, zone: zone),
+            "10:30 – 20.05.2026 10:30"
+        )
+        XCTAssertNil(
+            SampleEditorViewModel.timeWindowText(begin: begin, end: nil, isAllDay: true, zone: zone),
+            "all-day shows only the date"
+        )
+    }
+
+    func testNotesOnlySave_KeepsZoneSetInBackground() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        let vm = makeVM(sampleID: seeded.id)
+        var row = try XCTUnwrap(samples.fetchById(seeded.id))
+        row.timezone = "Atlantic/Canary"
+        row.timezoneSource = .locationService
+        try samples.update(row)
+
+        vm.notes = "edited"
+        XCTAssertTrue(vm.finishEditing())
+
+        let stored = try XCTUnwrap(samples.fetchById(seeded.id))
+        XCTAssertEqual(stored.notes, "edited")
+        XCTAssertEqual(stored.timezone, "Atlantic/Canary")
+        XCTAssertEqual(stored.timezoneSource, .locationService)
+    }
+
+    func testEditTimes_EndNeverBeforeBegin() throws {
+        let seeded = try seedSyncedSample(code: "260605/1", notes: "hi", backendID: "b1")
+        var time = SampleTimeWindow(seeded)
+        let newBegin = time.begin.addingTimeInterval(3600)
+
+        time.setBegin(newBegin)
+        XCTAssertEqual(time.end, newBegin, "end follows a begin moved past it")
+        time.setEnd(newBegin.addingTimeInterval(-60))
+        XCTAssertEqual(time.end, newBegin, "end is clamped to begin")
+        time.setEnd(newBegin.addingTimeInterval(1800))
+        XCTAssertEqual(time.end, newBegin.addingTimeInterval(1800))
+    }
+
+    func testUpdateBody_CarriesTimeWindow() {
+        let begin = Date(timeIntervalSince1970: 1_779_000_000)
+        let input = SampleUpdateInput(
+            code: "x", notes: nil, clientUuid: "u", clientUpdatedAt: begin, version: 2,
+            location: SampleLocationFields(
+                latitude: 1, longitude: 2, elevation: nil, elevationSource: nil,
+                locationSource: .locationService, locationStatus: .pending
+            ),
+            timezone: "Atlantic/Canary", timezoneSource: .manual, collectingDay: "2026-05-19",
+            beginDate: begin, endDate: begin.addingTimeInterval(900), isAllDay: false
+        )
+        let body = SampleClient.updateBody(input)
+        XCTAssertNotNil(body["begin_date"] as? String)
+        XCTAssertNotNil(body["end_date"] as? String)
+        XCTAssertEqual(body["is_all_day"] as? Bool, false)
+    }
+
+    func testTimeZoneCatalog_RegionsAndZonesSortedByPrefix() {
+        let ids = ["Europe/Berlin", "Atlantic/Canary", "Europe/Athens", "UTC", "America/Argentina/Buenos_Aires"]
+        XCTAssertEqual(TimeZoneCatalog.regions(ids), ["America", "Atlantic", "Europe", "Sonstige"])
+        XCTAssertEqual(TimeZoneCatalog.zones(in: "Europe", ids), ["Europe/Athens", "Europe/Berlin"])
+        XCTAssertEqual(TimeZoneCatalog.displayName("America/Argentina/Buenos_Aires"), "Argentina/Buenos Aires")
+    }
+
+    private func makeVM(sampleID: String) -> SampleEditorViewModel {
         SampleEditorViewModel(
             sampleID: sampleID,
             store: samples,
             photoStore: photos,
             fieldtripStore: fieldtrips,
-            localitiesStore: localities,
             mutationsStore: mutations,
             sync: sync
+        )
+    }
+
+    private func makeCorrection() -> CoordinateCorrection {
+        CoordinateCorrection(
+            store: samples, localitiesStore: localities, mutationsStore: mutations, resolver: nil, sync: sync
         )
     }
 

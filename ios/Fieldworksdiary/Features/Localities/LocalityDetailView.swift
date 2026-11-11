@@ -62,7 +62,7 @@ struct LocalityDetailView: View {
         try? container.placemarksStore.upsert(pm)
         try? container.localitiesStore.setPlacemark(localityID: localityID, placemarkID: pm.id)
         reload()
-        placemark = try? container.placemarksStore.fetchById(pm.id)
+        placemark = try? container.placemarksStore.fetch(backendID: pm.id)
     }
 
     /// Override cleared: detach locally. The backend's auto-geocode
@@ -169,37 +169,15 @@ struct LocalityDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func placemarkLines(_ pm: LocalPlacemark) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if let n = pm.name, !n.isEmpty {
-                Text(n).font(.body.weight(.medium))
-            }
-            if let t = pm.thoroughfare, !t.isEmpty {
-                Text(t).font(.body)
-            }
-            HStack(spacing: 6) {
-                if let pc = pm.postalCode, !pc.isEmpty {
-                    Text(pc).font(.body.monospacedDigit())
-                }
-                if let loc = pm.locality, !loc.isEmpty {
-                    Text(loc).font(.body)
+        if !pm.countryISO.isEmpty {
+            // Ortus place (Phase O2): country-specific terms per level.
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                ForEach(PlaceDisplay.fields(pm.place)) { item in
+                    PlaceFieldRow(item)
                 }
             }
-            if let sub = pm.subLocality, !sub.isEmpty {
-                Text(sub).font(.footnote).foregroundStyle(.secondary)
-            }
-            HStack(spacing: 6) {
-                Text(pm.country).font(.footnote)
-                if let admin = pm.administrativeArea, !admin.isEmpty {
-                    Text("·").font(.footnote)
-                    Text(admin).font(.footnote)
-                }
-                if let sub = pm.subAdministrativeArea, !sub.isEmpty {
-                    Text("·").font(.footnote)
-                    Text(sub).font(.footnote)
-                }
-            }
-            .foregroundStyle(.secondary)
         }
     }
 
@@ -216,7 +194,7 @@ struct LocalityDetailView: View {
             placemark = nil
             return
         }
-        if let cached = try? container.placemarksStore.fetchById(pmID) {
+        if let cached = try? container.placemarksStore.fetch(backendID: pmID) {
             placemark = cached
             return
         }
@@ -226,7 +204,7 @@ struct LocalityDetailView: View {
             let client = PlacemarkClient(endpoint: endpoint, auth: container.auth)
             let remote = try await client.fetch(id: pmID)
             try? container.placemarksStore.upsert(remote)
-            placemark = try? container.placemarksStore.fetchById(pmID)
+            placemark = try? container.placemarksStore.fetch(backendID: pmID)
         } catch {
             Log.network.error("placemark fetch failed: \(error.localizedDescription)")
         }

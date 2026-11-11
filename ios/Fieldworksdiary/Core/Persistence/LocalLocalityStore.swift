@@ -8,9 +8,11 @@ final class LocalLocalityStore {
         self.database = database
     }
 
+    /// Rows with a queued server delete are skipped: a pull between the
+    /// local delete and the SyncRunner's DELETE must not bring them back.
     func upsert(_ remote: [Locality]) throws {
         try database.writer.write { db in
-            for r in remote {
+            for r in remote where try !Self.hasQueuedDelete(db, localityID: r.id) {
                 var local = LocalLocality(from: r)
                 try local.save(db)
             }
@@ -19,9 +21,17 @@ final class LocalLocalityStore {
 
     func upsertOne(_ remote: Locality) throws {
         try database.writer.write { db in
+            guard try !Self.hasQueuedDelete(db, localityID: remote.id) else { return }
             var local = LocalLocality(from: remote)
             try local.save(db)
         }
+    }
+
+    private static func hasQueuedDelete(_ db: GRDB.Database, localityID: String) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(SELECT 1 FROM pending_mutations
+                          WHERE entity_type = 'locality' AND op = 'delete' AND entity_id = ?)
+        """, arguments: [localityID]) ?? false
     }
 
     func fetchById(_ id: String) throws -> LocalLocality? {
@@ -44,13 +54,18 @@ final class LocalLocalityStore {
     /// and re-points any samples. `centroid_*` mirror `latitude`/
     /// `longitude` so the list + detail (which still read the legacy
     /// columns) render coordinates immediately.
+    ///
+    /// `createdForSample` records that the offline fusion created this
+    /// locality for that sample (`locality_origins`), in the same
+    /// transaction.
     @discardableResult
     func createLocal(
         latitude: Double,
         longitude: Double,
         radiusM: Double = LocalityFusion.defaultRadiusM,
         locationSource: LocationSource = .locationService,
-        name: String = ""
+        name: String = "",
+        createdForSample: String? = nil
     ) throws -> LocalLocality {
         let now = Date()
         var local = LocalLocality(
@@ -76,8 +91,35 @@ final class LocalLocalityStore {
         )
         try database.writer.write { db in
             try local.insert(db)
+            if let createdForSample {
+                try db.execute(
+                    sql: "INSERT OR REPLACE INTO locality_origins (locality_id, sample_id) VALUES (?, ?)",
+                    arguments: [local.id, createdForSample]
+                )
+            }
         }
         return local
+    }
+
+    /// The sample the offline fusion created `localityID` for, if any.
+    func originSample(ofLocality localityID: String) throws -> String? {
+        try database.reader.read { db in
+            try String.fetchOne(
+                db, sql: "SELECT sample_id FROM locality_origins WHERE locality_id = ?", arguments: [localityID]
+            )
+        }
+    }
+
+    /// Carries the origin over the UUID → backend id swap of a pushed
+    /// locality.
+    func moveOrigin(from oldID: String, to newID: String) throws {
+        guard oldID != newID else { return }
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE locality_origins SET locality_id = ? WHERE locality_id = ?",
+                arguments: [newID, oldID]
+            )
+        }
     }
 
     /// AsyncSequence over the full sorted list.
@@ -110,6 +152,7 @@ final class LocalLocalityStore {
     func reset() throws {
         try database.writer.write { db in
             try db.execute(sql: "DELETE FROM local_localities")
+            try db.execute(sql: "DELETE FROM locality_origins")
         }
     }
 

@@ -36,9 +36,10 @@ struct Astro: Codable, Equatable {
 ///
 /// New: `notes` (free text) and `version` (monotone sync counter).
 ///
-/// "Carry-on" columns (centroid, mtb, astro, admin_units, permit,
-/// denormalised filter cols) stay where they are — see NEW-2 in the
-/// gap analysis.
+/// "Carry-on" columns (centroid, astro, permit, day_of_year) stay where
+/// they are — see NEW-2 in the gap analysis. The place of a fieldtrip is
+/// derived from its samples (Phase O); `admin_units`, `mtb`, `country`
+/// and `admin_area` were dropped in O3.
 struct Fieldtrip: Decodable, Identifiable, Equatable {
     let id: String
     /// User-visible title. Defaults to "Sammeltag DD.MM.YYYY" if the
@@ -50,8 +51,6 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
     let endDate: Date?
     let centroidLat: Double?
     let centroidLon: Double?
-    let adminUnits: AdminUnits?
-    let mtb: MTB?
     let astro: Astro?
     /// Locality id chosen by the user; empty string ⇒ nil.
     let locality: String?
@@ -59,8 +58,6 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
     let suggestedLocality: String?
     /// Denormalised filter columns, written by the enrichment hook.
     let dayOfYear: Int?
-    let country: String?
-    let adminArea: String?
     /// Optional research permit on the fieldtrip. Number for labels,
     /// PDF for archive.
     let permitNumber: String?
@@ -69,17 +66,15 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
     let version: Int
 
     enum CodingKeys: String, CodingKey {
-        case id, title, mtb, astro, locality, country
+        case id, title, astro, locality
         case collectingDay = "collecting_day"
         case nightFieldtrip = "night_fieldtrip"
         case beginDate = "begin_date"
         case endDate = "end_date"
         case centroidLat = "centroid_lat"
         case centroidLon = "centroid_lon"
-        case adminUnits = "admin_units"
         case suggestedLocality = "suggested_locality"
         case dayOfYear = "day_of_year"
-        case adminArea = "admin_area"
         case permitNumber = "permit_number"
         case permitPDFFile = "permit_pdf"
         case notes, version
@@ -97,8 +92,6 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
         let lon = try? c.decode(Double.self, forKey: .centroidLon)
         centroidLat = (lat == 0 ? nil : lat)
         centroidLon = (lon == 0 ? nil : lon)
-        adminUnits = try? c.decode(AdminUnits.self, forKey: .adminUnits)
-        mtb = try? c.decode(MTB.self, forKey: .mtb)
         astro = try? c.decode(Astro.self, forKey: .astro)
         let loc = (try? c.decode(String.self, forKey: .locality)) ?? ""
         locality = loc.isEmpty ? nil : loc
@@ -106,10 +99,6 @@ struct Fieldtrip: Decodable, Identifiable, Equatable {
         suggestedLocality = sug.isEmpty ? nil : sug
         let doy = try? c.decode(Int.self, forKey: .dayOfYear)
         dayOfYear = (doy == 0 ? nil : doy)
-        let ctr = (try? c.decode(String.self, forKey: .country)) ?? ""
-        country = ctr.isEmpty ? nil : ctr
-        let aa = (try? c.decode(String.self, forKey: .adminArea)) ?? ""
-        adminArea = aa.isEmpty ? nil : aa
         let pn = (try? c.decode(String.self, forKey: .permitNumber)) ?? ""
         permitNumber = pn.isEmpty ? nil : pn
         let pf = (try? c.decode(String.self, forKey: .permitPDFFile)) ?? ""

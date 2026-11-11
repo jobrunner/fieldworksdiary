@@ -13,7 +13,7 @@ final class LocalLocalityStoreRemapTests: XCTestCase {
         try super.setUpWithError()
         database = try Database(inMemory: ())
         localities = LocalLocalityStore(database: database)
-        samples = LocalSampleStore(database: database, userId: "u1", cutoffHour: 5, timeZone: berlin)
+        samples = LocalSampleStore(database: database, userId: "u1", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
 
         // Two localities; we'll merge "old" into "new".
         try database.writer.write { db in
@@ -40,7 +40,7 @@ final class LocalLocalityStoreRemapTests: XCTestCase {
                            INSERT INTO local_samples (
                                id, sample_id, user_id, collecting_day,
                                latitude, longitude, begin_date,
-                               is_all_day, time_zone, version,
+                               is_all_day, timezone, version,
                                notes, marked, locality, location_source,
                                sync_status, created_at, updated_at
                            ) VALUES (?, ?, 'u1', '2026-05-19',

@@ -23,15 +23,21 @@ final class AppContainer: ObservableObject {
     let samplesHydrator: SamplesHydrator
     let remapPuller: RemapEventsPuller
     let placemarksStore: LocalPlacemarkStore
+    let sampleFeatures: LocalSampleFeatureStore
     let photos: LocalPhotoStore
     let mutations: PendingMutationsStore
     let sync: SyncRunner
+    /// Fills in coordinates of instantly created samples (Phase E).
+    let pendingFixes: PendingFixService
+    /// Feature flags from Flipt (Phase E); `false` until loaded.
+    let featureFlags: FeatureFlags
 
     /// Tracks which user id the local stores currently hold data for,
     /// so we can detect "different user just signed in" vs. "session
     /// restored / same user" and only wipe when needed.
     private var lastSeenUserID: String?
     private var authObservation: AnyCancellable?
+    private var settingsObservation: AnyCancellable?
 
     init() {
         let config = AppConfig()
@@ -70,10 +76,15 @@ final class AppContainer: ObservableObject {
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth }
         )
+        let placemarksStore = LocalPlacemarkStore(database: database)
+        let sampleFeatures = LocalSampleFeatureStore(database: database)
         let samplesHydrator = SamplesHydrator(
             store: store,
+            placemarks: placemarksStore,
+            features: sampleFeatures,
             endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth }
+            authProvider: { [weak auth] in auth },
+            userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
         let remapPuller = RemapEventsPuller(
             localitiesStore: localitiesStore,
@@ -81,7 +92,6 @@ final class AppContainer: ObservableObject {
             authProvider: { [weak auth] in auth },
             userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
         )
-        let placemarksStore = LocalPlacemarkStore(database: database)
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
         let sync = SyncRunner(
@@ -89,6 +99,8 @@ final class AppContainer: ObservableObject {
             mutationsStore: mutations,
             photoStore: photos,
             localitiesStore: localitiesStore,
+            placemarkStore: placemarksStore,
+            featureStore: sampleFeatures,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
             onSampleSynced: { fieldtripID in
@@ -99,6 +111,34 @@ final class AppContainer: ObservableObject {
             }
         )
 
+        let pendingFixes = PendingFixService(
+            store: store,
+            mutations: mutations,
+            source: BackgroundFixSource(),
+            onCoordinateSet: { sampleID in
+                // Same pipeline as a sample created with a fix: fusion,
+                // place (online, else inherited), sync.
+                Task { @MainActor in
+                    let resolver = SampleLocationResolver(
+                        ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
+                        samples: store,
+                        placemarks: placemarksStore,
+                        features: sampleFeatures,
+                        mutations: mutations
+                    )
+                    SampleCreation.completeLateFix(
+                        sampleID: sampleID,
+                        store: store,
+                        localitiesStore: localitiesStore,
+                        mutationsStore: mutations,
+                        resolver: resolver,
+                        sync: sync
+                    )
+                }
+            }
+        )
+
+        self.featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
         self.config = config
         self.auth = auth
         self.database = database
@@ -110,9 +150,25 @@ final class AppContainer: ObservableObject {
         self.samplesHydrator = samplesHydrator
         self.remapPuller = remapPuller
         self.placemarksStore = placemarksStore
+        self.sampleFeatures = sampleFeatures
         self.photos = photos
         self.mutations = mutations
         self.sync = sync
+        self.pendingFixes = pendingFixes
+    }
+
+    /// Resolver for on-device place data. Reads the Ortus endpoint
+    /// from `config` at call time, so a changed setting applies to the
+    /// next editor; an empty endpoint yields a resolver without client
+    /// (behaves as offline).
+    func makeLocationResolver() -> SampleLocationResolver {
+        SampleLocationResolver(
+            ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
+            samples: store,
+            placemarks: placemarksStore,
+            features: sampleFeatures,
+            mutations: mutations
+        )
     }
 
     /// Run once at app start: restore the auth session if there's a
@@ -121,7 +177,9 @@ final class AppContainer: ObservableObject {
     /// container — it's our hook for "user changed → wipe + re-hydrate".
     func bootstrap() async {
         MetricsReporter.shared.register()
+        featureFlags.start(url: config.featureFlagsURL)
         startObservingAuth()
+        startObservingUserSettings()
         await auth.restoreOnLaunch()
     }
 
@@ -137,6 +195,15 @@ final class AppContainer: ObservableObject {
             .sink { [weak self] newID in
                 guard let self else { return }
                 Task { await self.handleAuthChange(to: newID) }
+            }
+    }
+
+    /// Mirrors the sample-id settings of every login / token refresh
+    /// (and of the cached user after an offline start) into `config`.
+    private func startObservingUserSettings() {
+        settingsObservation = auth.userRefreshed
+            .sink { [weak self] user in
+                self?.config.apply(user: user)
             }
     }
 
@@ -166,6 +233,9 @@ final class AppContainer: ObservableObject {
             try photos.reset()
             try mutations.reset()
             remapPuller.resetCursor()
+            samplesHydrator.resetCursor()
+            // Waiting fixes belong to the wiped rows.
+            pendingFixes.reset()
         } catch {
             // Wipe failures are non-fatal — der neue User sieht
             // maximal Stale-Rows, die der Rule-Filter ohnehin

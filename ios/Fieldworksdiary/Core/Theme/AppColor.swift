@@ -78,6 +78,11 @@ enum AppColor {
     /// Grouped-list backdrop (used by Settings, Home menu).
     static let surfaceGrouped = Color(uiColor: .systemGroupedBackground)
 
+    /// Dims the screen behind a blocking progress card (e.g. „Foto wird
+    /// gelesen …“): the grouped backdrop at 60 %, so the content stays
+    /// faintly visible in Light and Dark.
+    static let scrim = Color(uiColor: .systemGroupedBackground).opacity(0.6)
+
     // MARK: - Text
 
     /// Default body text colour. Black/white per scheme.

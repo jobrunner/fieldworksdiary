@@ -12,7 +12,7 @@ final class LocalSampleStoreTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         database = try Database(inMemory: ())
-        store = LocalSampleStore(database: database, userId: "user-a", cutoffHour: 5, timeZone: berlin)
+        store = LocalSampleStore(database: database, userId: "user-a", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
     }
 
     override func tearDownWithError() throws {
@@ -112,7 +112,7 @@ final class LocalSampleStoreTests: XCTestCase {
         XCTAssertEqual(stored.sampleID, local.sampleID, "code must not change while push in flight")
     }
 
-    func testUpsert_AppliesServerCodeReassignmentAsBackendCode() throws {
+    func testUpsert_AdoptsServerCodeReassignment() throws {
         // Lokal mit Code /1 gespeichert, dann gesynct, Server hat
         // beim Push auf /7 umgemappt.
         var local = try store.createLocal(
@@ -131,8 +131,7 @@ final class LocalSampleStoreTests: XCTestCase {
         try store.upsert([remote])
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.sampleID, "260519/1", "local code (= auf Röhrchen) bleibt erhalten")
-        XCTAssertEqual(stored.backendCode, "260519/7", "Server-Reassignment landet in backendCode")
+        XCTAssertEqual(stored.sampleID, "260519/7", "Server-ID wird übernommen")
         XCTAssertEqual(stored.originalCode, "260519/1", "Audit-Trail: was auf der Röhre stand")
     }
 
@@ -189,6 +188,53 @@ final class LocalSampleStoreTests: XCTestCase {
 
     // MARK: - helpers
 
+    // MARK: - elevation / latestPlacemarkID
+
+    func testCreateLocal_StoresElevationAndPendingLocationStatus() throws {
+        let sample = try store.createLocal(lat: 49.79, lon: 9.94, elevation: 180, collectedFrom: date(2026, 5, 19, 14))
+        let reloaded = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(reloaded.elevation, 180)
+        XCTAssertEqual(reloaded.locationStatus, .pending)
+    }
+
+    func testLatestPlacemarkID_ReturnsMostRecentPlacemarkOfDay() throws {
+        var early = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 10))
+        var late = try store.createLocal(lat: 49.80, lon: 9.95, collectedFrom: date(2026, 5, 19, 12))
+        let current = try store.createLocal(lat: 49.81, lon: 9.96, collectedFrom: date(2026, 5, 19, 14))
+        var otherDay = try store.createLocal(lat: 49.82, lon: 9.97, collectedFrom: date(2026, 5, 20, 14))
+        early.placemark = "pm-early"
+        late.placemark = "pm-late"
+        otherDay.placemark = "pm-other-day"
+        try store.update(early)
+        try store.update(late)
+        try store.update(otherDay)
+
+        XCTAssertEqual(
+            try store.latestPlacemarkID(collectingDay: current.collectingDay, excluding: current.id),
+            "pm-late"
+        )
+    }
+
+    func testLatestPlacemarkID_ExcludesGivenSampleAndSkipsRowsWithoutPlacemark() throws {
+        var withPlacemark = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 10))
+        var current = try store.createLocal(lat: 49.80, lon: 9.95, collectedFrom: date(2026, 5, 19, 12))
+        _ = try store.createLocal(lat: 49.81, lon: 9.96, collectedFrom: date(2026, 5, 19, 14))
+        withPlacemark.placemark = "pm-a"
+        current.placemark = "pm-self"
+        try store.update(withPlacemark)
+        try store.update(current)
+
+        XCTAssertEqual(
+            try store.latestPlacemarkID(collectingDay: current.collectingDay, excluding: current.id),
+            "pm-a"
+        )
+    }
+
+    func testLatestPlacemarkID_ReturnsNilWhenNoneOnDay() throws {
+        let current = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 10))
+        XCTAssertNil(try store.latestPlacemarkID(collectingDay: current.collectingDay, excluding: current.id))
+    }
+
     private func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int = 0) -> Date {
         var comps = DateComponents()
         comps.year = year
@@ -218,7 +264,7 @@ final class LocalSampleStoreTests: XCTestCase {
           "longitude": 9.94,
           "begin_date": "2026-05-19T14:00:00.000Z",
           "location_source": "location_service",
-          "time_zone": "Europe/Berlin",
+          "timezone": "Europe/Berlin",
           "version": 1,
           "client_uuid": "\(clientUuid ?? "")",
           "client_updated_at": "2026-05-19T14:00:00.000Z"

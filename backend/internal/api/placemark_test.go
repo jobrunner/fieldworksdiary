@@ -6,37 +6,20 @@ import (
 	"net/http"
 	"testing"
 
+	"go.mett.io/fwd-backend/internal/testutil"
+
 	_ "go.mett.io/fwd-backend/migrations"
 
-	"github.com/labstack/echo/v5"
-	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/models"
 	"github.com/pocketbase/pocketbase/tests"
 )
-
-// mountPlacemarkRoutes spiegelt RegisterPlacemarkOverrideRoutes für
-// den Test-Pfad (`OnBeforeServe` löst bei `tests.ApiScenario` nicht
-// aus, also direkt am echo.Router registrieren).
-func mountPlacemarkRoutes(app core.App, e *echo.Echo) {
-	requireAuth := apis.RequireRecordAuth("users")
-	e.PATCH("/api/localities/:id/placemark", func(c echo.Context) error {
-		return handleSetManualPlacemark(app, c)
-	}, requireAuth)
-	e.DELETE("/api/localities/:id/placemark/override", func(c echo.Context) error {
-		return handleClearManualPlacemark(app, c)
-	}, requireAuth)
-}
 
 // newPlacemarkScenario seeds a user + a locality, returns the app,
 // the user's token, and the locality id. Locality has lat/lon set
 // so the PATCH handler doesn't get confused.
 func newPlacemarkScenario(t *testing.T) (app *tests.TestApp, token, localityID, otherLocalityID string) {
 	t.Helper()
-	created, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
+	created := testutil.NewTestApp(t)
 	app = created
 	// (No t.Cleanup(app.Cleanup) — newLabelsScenario doesn't do it
 	// either, and an extra cleanup races the PB logger-hook
@@ -45,16 +28,16 @@ func newPlacemarkScenario(t *testing.T) (app *tests.TestApp, token, localityID, 
 	owner := makeUser(t, app, "pmuser@example.com")
 	other := makeUser(t, app, "intruder@example.com")
 
-	mkLoc := func(ownerID string) *models.Record {
-		coll, _ := app.Dao().FindCollectionByNameOrId("localities")
-		rec := models.NewRecord(coll)
+	mkLoc := func(ownerID string) *core.Record {
+		coll, _ := app.FindCollectionByNameOrId("localities")
+		rec := core.NewRecord(coll)
 		rec.Set("owner", ownerID)
 		rec.Set("name", "Test")
 		rec.Set("latitude", 49.79)
 		rec.Set("longitude", 9.94)
 		rec.Set("location_source", "user")
 		rec.Set("version", 1)
-		if err := app.Dao().SaveRecord(rec); err != nil {
+		if err := app.SaveNoValidate(rec); err != nil {
 			t.Fatalf("save locality: %v", err)
 		}
 		return rec
@@ -73,41 +56,40 @@ func newPlacemarkScenario(t *testing.T) (app *tests.TestApp, token, localityID, 
 func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 	app, token, localityID, _ := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"country":             "DE",
-		"administrative_area": "Bayern",
-		"locality":            "Würzburg",
-		"postal_code":         "97070",
-		"name":                "Sanderring",
+		"country_iso":       "DE",
+		"admin_state":       "Bayern",
+		"admin_state_level": 4,
+		"island":            "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark happy",
 		Method: http.MethodPatch,
-		Url:    "/api/localities/" + localityID + "/placemark",
+		URL:    "/api/localities/" + localityID + "/placemark",
 		Body:   bytes.NewReader(body),
-		RequestHeaders: map[string]string{
+		Headers: map[string]string{
 			"Authorization": token,
 			"Content-Type":  "application/json",
 		},
 		ExpectedStatus: http.StatusOK,
 		ExpectedContent: []string{
-			`"country":"DE"`,
+			`"country_iso":"DE"`,
 			`"geocoding_source":"manual"`,
-			`"locality":"Würzburg"`,
+			`"island":"Testinsel"`,
 		},
 		ExpectedEvents: map[string]int{
 			// One placemark create + one locality update.
-			"OnModelBeforeCreate": 1,
-			"OnModelAfterCreate":  1,
-			"OnModelBeforeUpdate": 1,
-			"OnModelAfterUpdate":  1,
+			"OnModelCreate":             1,
+			"OnModelAfterCreateSuccess": 1,
+			"OnModelUpdate":             1,
+			"OnModelAfterUpdateSuccess": 1,
 		},
-		TestAppFactory: func(_ *testing.T) *tests.TestApp { return app },
-		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
-			mountPlacemarkRoutes(app, e)
+		TestAppFactory: func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkOverrideRoutes(e.Router)
 		},
-		AfterTestFunc: func(t *testing.T, _ *tests.TestApp, _ *http.Response) {
+		AfterTestFunc: func(t testing.TB, _ *tests.TestApp, _ *http.Response) {
 			t.Helper()
-			loc, err := app.Dao().FindRecordById("localities", localityID)
+			loc, err := app.FindRecordById("localities", localityID)
 			if err != nil {
 				t.Fatalf("locality vanished: %v", err)
 			}
@@ -115,7 +97,7 @@ func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 			if pmID == "" {
 				t.Fatal("locality was not pointed at the new placemark")
 			}
-			pm, _ := app.Dao().FindRecordById("placemarks", pmID)
+			pm, _ := app.FindRecordById("placemarks", pmID)
 			if pm.GetString("geocoding_source") != "manual" {
 				t.Errorf("geocoding_source = %q, want manual", pm.GetString("geocoding_source"))
 			}
@@ -127,22 +109,22 @@ func TestSetManualPlacemark_HappyPath_AttachesAndReturns200(t *testing.T) {
 func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 	app, token, localityID, _ := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"locality": "Würzburg",
+		"island": "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark missing country",
 		Method: http.MethodPatch,
-		Url:    "/api/localities/" + localityID + "/placemark",
+		URL:    "/api/localities/" + localityID + "/placemark",
 		Body:   bytes.NewReader(body),
-		RequestHeaders: map[string]string{
+		Headers: map[string]string{
 			"Authorization": token,
 			"Content-Type":  "application/json",
 		},
 		ExpectedStatus:  http.StatusBadRequest,
-		ExpectedContent: []string{"ISO 3166-1 alpha-2"},
-		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
-		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
-			mountPlacemarkRoutes(app, e)
+		ExpectedContent: []string{"country_iso) must be exactly 2 letters"},
+		TestAppFactory:  func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkOverrideRoutes(e.Router)
 		},
 	}
 	scenario.Test(t)
@@ -151,23 +133,23 @@ func TestSetManualPlacemark_MissingCountry_Returns400(t *testing.T) {
 func TestSetManualPlacemark_ForeignLocality_Returns403(t *testing.T) {
 	app, token, _, otherLocalityID := newPlacemarkScenario(t)
 	body, _ := json.Marshal(map[string]any{
-		"country":  "DE",
-		"locality": "Würzburg",
+		"country_iso": "DE",
+		"island":      "Testinsel",
 	})
 	scenario := tests.ApiScenario{
 		Name:   "manual placemark foreign locality",
 		Method: http.MethodPatch,
-		Url:    "/api/localities/" + otherLocalityID + "/placemark",
+		URL:    "/api/localities/" + otherLocalityID + "/placemark",
 		Body:   bytes.NewReader(body),
-		RequestHeaders: map[string]string{
+		Headers: map[string]string{
 			"Authorization": token,
 			"Content-Type":  "application/json",
 		},
 		ExpectedStatus:  http.StatusForbidden,
 		ExpectedContent: []string{"does not belong"},
-		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
-		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
-			mountPlacemarkRoutes(app, e)
+		TestAppFactory:  func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkOverrideRoutes(e.Router)
 		},
 	}
 	scenario.Test(t)
@@ -175,18 +157,18 @@ func TestSetManualPlacemark_ForeignLocality_Returns403(t *testing.T) {
 
 func TestSetManualPlacemark_NoAuth_Returns401(t *testing.T) {
 	app, _, localityID, _ := newPlacemarkScenario(t)
-	body, _ := json.Marshal(map[string]any{"country": "DE", "locality": "Würzburg"})
+	body, _ := json.Marshal(map[string]any{"country_iso": "DE", "island": "Testinsel"})
 	scenario := tests.ApiScenario{
 		Name:            "manual placemark no auth",
 		Method:          http.MethodPatch,
-		Url:             "/api/localities/" + localityID + "/placemark",
+		URL:             "/api/localities/" + localityID + "/placemark",
 		Body:            bytes.NewReader(body),
-		RequestHeaders:  map[string]string{"Content-Type": "application/json"},
+		Headers:         map[string]string{"Content-Type": "application/json"},
 		ExpectedStatus:  http.StatusUnauthorized,
-		ExpectedContent: []string{`"code":401`},
-		TestAppFactory:  func(_ *testing.T) *tests.TestApp { return app },
-		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
-			mountPlacemarkRoutes(app, e)
+		ExpectedContent: []string{`"status":401`},
+		TestAppFactory:  func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkOverrideRoutes(e.Router)
 		},
 	}
 	scenario.Test(t)
@@ -196,52 +178,51 @@ func TestClearManualPlacemark_DetachesPlacemark(t *testing.T) {
 	app, token, localityID, _ := newPlacemarkScenario(t)
 
 	// Seed an attached placemark first.
-	pmColl, _ := app.Dao().FindCollectionByNameOrId("placemarks")
-	pm := models.NewRecord(pmColl)
-	pm.Set("country", "DE")
-	pm.Set("locality", "Würzburg")
+	pmColl, _ := app.FindCollectionByNameOrId("placemarks")
+	pm := core.NewRecord(pmColl)
+	pm.Set("country_iso", "DE")
+	pm.Set("admin_municipality", "Würzburg")
 	pm.Set("geocoding_source", "manual")
 	pm.Set("dedup_hash", "deadbeef0000000000000000000000000000000000000000000000000000beef")
-	if err := app.Dao().SaveRecord(pm); err != nil {
+	if err := app.SaveNoValidate(pm); err != nil {
 		t.Fatalf("seed placemark: %v", err)
 	}
-	loc, _ := app.Dao().FindRecordById("localities", localityID)
+	loc, _ := app.FindRecordById("localities", localityID)
 	loc.Set("placemark", pm.Id)
-	if err := app.Dao().SaveRecord(loc); err != nil {
+	if err := app.SaveNoValidate(loc); err != nil {
 		t.Fatalf("attach placemark: %v", err)
 	}
 
 	scenario := tests.ApiScenario{
 		Name:   "clear manual placemark",
 		Method: http.MethodDelete,
-		Url:    "/api/localities/" + localityID + "/placemark/override",
-		RequestHeaders: map[string]string{
+		URL:    "/api/localities/" + localityID + "/placemark/override",
+		Headers: map[string]string{
 			"Authorization": token,
 		},
 		ExpectedStatus:  http.StatusOK,
 		ExpectedContent: []string{`"status":"cleared"`},
 		ExpectedEvents: map[string]int{
-			// Setup writes (seeded placemark + the attach update on
-			// the locality) sit before ResetEventCalls; the actual
-			// DELETE produces one update on the locality.
-			"OnModelBeforeCreate": 1,
-			"OnModelAfterCreate":  1,
-			"OnModelBeforeUpdate": 2,
-			"OnModelAfterUpdate":  2,
+			// Setup writes are not counted (ApiScenario resets the
+			// counters after BeforeTestFunc); the DELETE produces one
+			// update on the locality and creates nothing.
+			"OnModelCreate":             0,
+			"OnModelUpdate":             1,
+			"OnModelAfterUpdateSuccess": 1,
 		},
-		TestAppFactory: func(_ *testing.T) *tests.TestApp { return app },
-		BeforeTestFunc: func(_ *testing.T, app *tests.TestApp, e *echo.Echo) {
-			mountPlacemarkRoutes(app, e)
+		TestAppFactory: func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkOverrideRoutes(e.Router)
 		},
-		AfterTestFunc: func(t *testing.T, _ *tests.TestApp, _ *http.Response) {
+		AfterTestFunc: func(t testing.TB, _ *tests.TestApp, _ *http.Response) {
 			t.Helper()
-			reloaded, _ := app.Dao().FindRecordById("localities", localityID)
+			reloaded, _ := app.FindRecordById("localities", localityID)
 			if reloaded.GetString("placemark") != "" {
 				t.Errorf("placemark still attached after clear: %q", reloaded.GetString("placemark"))
 			}
 			// The placemark record itself stays — other localities
 			// may still reference it.
-			if _, err := app.Dao().FindRecordById("placemarks", pm.Id); err != nil {
+			if _, err := app.FindRecordById("placemarks", pm.Id); err != nil {
 				t.Errorf("placemark row should NOT be deleted on clear: %v", err)
 			}
 		},
@@ -249,22 +230,86 @@ func TestClearManualPlacemark_DetachesPlacemark(t *testing.T) {
 	scenario.Test(t)
 }
 
-// TestDedupHash_MatchesEnrichmentImplementation ensures the
-// api-side and enrichment-side hash functions stay in lock-step.
-// If either drifts, this test fails — we'd accidentally fork the
-// placemark space.
-func TestDedupHash_MatchesEnrichmentImplementation(t *testing.T) {
-	// We don't import internal/enrichment from internal/api to
-	// avoid the dependency cycle; instead we cross-check with the
-	// well-known SHA-256 of the canonical input string.
-	//
-	//   normalize("DE") | normalize("Bayern") | normalize("Würzburg") | normalize("97070")
-	//   == "de|bayern|würzburg|97070"
-	//
-	// SHA-256("de|bayern|würzburg|97070") = (precomputed below)
-	const expected = "4b7015e1caea6410c452841f331eb3855010ee52d13d4c4573ca18f461c81fa7"
-	got := manualDedupHash("DE", "Bayern", "Würzburg", "97070")
-	if got != expected {
-		t.Errorf("dedup hash drift!\nwant: %s\ngot:  %s", expected, got)
+func resolveRequest(app *tests.TestApp, token string, body map[string]any, expStatus int, expContent []string, after func(t testing.TB)) tests.ApiScenario {
+	raw, _ := json.Marshal(body)
+	sc := tests.ApiScenario{
+		Name:   "resolve",
+		Method: http.MethodPost,
+		URL:    "/api/placemarks/resolve",
+		Body:   bytes.NewReader(raw),
+		Headers: map[string]string{
+			"Authorization": token,
+			"Content-Type":  "application/json",
+		},
+		ExpectedStatus:  expStatus,
+		ExpectedContent: expContent,
+		TestAppFactory:  func(testing.TB) *tests.TestApp { return app },
+		BeforeTestFunc: func(_ testing.TB, app *tests.TestApp, e *core.ServeEvent) {
+			bindPlacemarkResolveRoute(e.Router)
+		},
 	}
+	if expStatus == http.StatusOK {
+		sc.ExpectedEvents = map[string]int{"OnModelCreate": 1, "OnModelAfterCreateSuccess": 1}
+	}
+	if after != nil {
+		sc.AfterTestFunc = func(t testing.TB, _ *tests.TestApp, _ *http.Response) { after(t) }
+	}
+	return sc
+}
+
+func TestResolveEndpoint_ManualSetsOwner(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	ownerUser, err := app.FindAuthRecordByEmail("users", "pmuser@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ownerUser.Id
+	sc := resolveRequest(app, token, map[string]any{
+		"geocoding_source":  "manual",
+		"country_iso":       "ES",
+		"admin_state":       "Canarias",
+		"admin_state_level": 4,
+		"island":            "La Palma",
+	}, http.StatusOK, []string{`"id":"`, `"geocoding_source":"manual"`, `"island":"La Palma"`}, func(t testing.TB) {
+		recs, err := app.FindRecordsByFilter("placemarks", "geocoding_source = 'manual'", "", 0, 0)
+		if err != nil || len(recs) != 1 {
+			t.Fatalf("manual placemarks = %d, err %v", len(recs), err)
+		}
+		if recs[0].GetString("owner") != owner {
+			t.Errorf("owner = %q, want %q", recs[0].GetString("owner"), owner)
+		}
+	})
+	sc.Test(t)
+}
+
+func TestResolveEndpoint_BackendServiceHasNoOwner(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	sc := resolveRequest(app, token, map[string]any{
+		"geocoding_source": "backend_service",
+		"country_iso":      "ES",
+		"island":           "La Palma",
+	}, http.StatusOK, []string{`"owner":""`}, nil)
+	sc.Test(t)
+}
+
+// Each ApiScenario tears its app down, so every case gets a fresh one.
+func TestResolveEndpoint_BadSource400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	s1 := resolveRequest(app, token, map[string]any{"geocoding_source": "x", "country_iso": "ES"},
+		http.StatusBadRequest, []string{"geocoding_source"}, nil)
+	s1.Test(t)
+}
+
+func TestResolveEndpoint_MissingCountry400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	s2 := resolveRequest(app, token, map[string]any{"geocoding_source": "manual"},
+		http.StatusBadRequest, []string{"country_iso) must be exactly 2 letters"}, nil)
+	s2.Test(t)
+}
+
+func TestResolveEndpoint_InvalidCountryLength400(t *testing.T) {
+	app, token, _, _ := newPlacemarkScenario(t)
+	sc := resolveRequest(app, token, map[string]any{"geocoding_source": "manual", "country_iso": "DEU"},
+		http.StatusBadRequest, []string{"exactly 2 letters"}, nil)
+	sc.Test(t)
 }

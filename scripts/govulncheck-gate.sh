@@ -20,7 +20,17 @@ if ! command -v govulncheck >/dev/null 2>&1; then
 fi
 
 OUTPUT="$(govulncheck ./... 2>&1)"
+RC=$?
 echo "$OUTPUT"
+
+# govulncheck: 0 = sauber, 3 = Findings (die prüft die Allowlist unten),
+# alles andere = Scan gescheitert (z.B. govulncheck mit zu altem Go
+# gebaut). Das darf nicht als "keine Findings" durchgehen.
+if [ "$RC" -ne 0 ] && [ "$RC" -ne 3 ]; then
+  echo
+  echo "::error::govulncheck ist gescheitert (Exit $RC), Ergebnis unbrauchbar."
+  exit 1
+fi
 
 FOUND_IDS="$(echo "$OUTPUT" | grep -oE '^Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u)"
 ALLOWED_IDS="$(grep -vE '^\s*#|^\s*$' "$ALLOWLIST" | sort -u)"

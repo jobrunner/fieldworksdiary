@@ -1,36 +1,273 @@
 import Foundation
 
+/// Coordinate, height and place data of a sample as pushed to the
+/// server (Phase O2). Shared by create and update so both send the
+/// same set. `nil` means "not sent" — the client never blanks a server
+/// value it does not know better.
+///
+/// `placemark` / `placemarkSuggestion` / `locality` are backend ids;
+/// the SyncRunner resolves local placemark UUIDs before building this.
+struct SampleLocationFields: Codable, Equatable {
+    var latitude: Double?
+    var longitude: Double?
+    var horizontalAccuracy: Double?
+    var verticalAccuracy: Double?
+    var elevation: Double?
+    var elevationSource: ElevationSource?
+    var locationSource: LocationSource
+    var locationStatus: LocationStatus
+    var placemark: String?
+    var placemarkSuggestion: String?
+    var locality: String?
+    var mtbSheetNumber: String?
+    var mtbSheetName: String?
+    var mtbQuadrant: Int?
+    var slopeDeg: Double?
+    var aspectDeg: Double?
+    var aspectCompass: String?
+    var terrainFlat: Bool = false
+    var bearingLabel: String?
+    var bearingReference: String?
+    var bearingDistanceKm: Double?
+    var bearingCompass: String?
+    var bearingInside: Bool = false
+    /// Set for a push right after a coordinate change: columns derived
+    /// from the old point that are nil locally are sent as explicit
+    /// clears ("" / 0 / false), so the server can't keep — and later
+    /// hand back — values of the old point. Not set otherwise: a nil
+    /// usually only means "not known yet".
+    var clearsDerived = false
+    /// Set for a push after the user accepted or dismissed a backend
+    /// suggestion (or saved a manual place): a nil suggestion is sent
+    /// as an explicit `""`, so the server drops it as well.
+    var clearsSuggestion = false
+    /// Set for a push after the user typed a height: a nil
+    /// `vertical_accuracy` is sent as an explicit 0 (= cleared), so a
+    /// measured accuracy of the old height does not stay on the server.
+    var clearsVerticalAccuracy = false
+    /// Set for a push after the user cleared the horizontal error (edit
+    /// form) or moved the coordinate without one: a nil
+    /// `horizontal_accuracy` is sent as an explicit 0 (= cleared).
+    var clearsHorizontalAccuracy = false
+
+    /// Wire keys of the PocketBase `samples` record (migration
+    /// 1700000024). `elevation_source` always accompanies an
+    /// elevation (a height without stored source counts as GPS, as
+    /// the backend's create hook does); `location_status` and
+    /// `location_source` are always sent.
+    var wireBody: [String: Any] {
+        var body: [String: Any] = [
+            "location_source": locationSource.wireValue,
+            "location_status": locationStatus.rawValue
+        ]
+        if let latitude { body["latitude"] = latitude }
+        if let longitude { body["longitude"] = longitude }
+        if let horizontalAccuracy { body["horizontal_accuracy"] = horizontalAccuracy }
+        if let verticalAccuracy { body["vertical_accuracy"] = verticalAccuracy }
+        if let elevation {
+            body["elevation"] = elevation
+            body["elevation_source"] = (elevationSource ?? .locationService).rawValue
+        }
+        if let placemark, !placemark.isEmpty { body["placemark"] = placemark }
+        if let placemarkSuggestion, !placemarkSuggestion.isEmpty {
+            body["placemark_suggestion"] = placemarkSuggestion
+        }
+        if let locality, !locality.isEmpty { body["locality"] = locality }
+        if let mtbSheetNumber { body["mtb_sheet_number"] = mtbSheetNumber }
+        if let mtbSheetName { body["mtb_sheet_name"] = mtbSheetName }
+        if let mtbQuadrant { body["mtb_quadrant"] = mtbQuadrant }
+        if let slopeDeg { body["slope_deg"] = slopeDeg }
+        if let aspectDeg { body["aspect_deg"] = aspectDeg }
+        if let aspectCompass { body["aspect_compass"] = aspectCompass }
+        if let bearingLabel { body["bearing_label"] = bearingLabel }
+        if let bearingReference { body["bearing_reference"] = bearingReference }
+        if let bearingDistanceKm { body["bearing_distance_km"] = bearingDistanceKm }
+        if let bearingCompass { body["bearing_compass"] = bearingCompass }
+        // Booleans only travel with the geo set they belong to, so a
+        // never-enriched sample doesn't push `false` over server data.
+        if aspectCompass != nil || slopeDeg != nil || terrainFlat {
+            body["terrain_flat"] = terrainFlat
+        }
+        if bearingLabel != nil || bearingInside {
+            body["bearing_inside"] = bearingInside
+        }
+        if clearsDerived {
+            addClears(to: &body)
+        }
+        if clearsVerticalAccuracy, body["vertical_accuracy"] == nil {
+            body["vertical_accuracy"] = 0
+        }
+        if clearsHorizontalAccuracy, body["horizontal_accuracy"] == nil {
+            body["horizontal_accuracy"] = 0
+        }
+        if clearsSuggestion, body["placemark_suggestion"] == nil {
+            body["placemark_suggestion"] = ""
+        }
+        return body
+    }
+
+    private func addClears(to body: inout [String: Any]) {
+        let text = ["placemark", "placemark_suggestion", "mtb_sheet_number", "mtb_sheet_name",
+                    "aspect_compass", "bearing_label", "bearing_reference", "bearing_compass"]
+        let numbers = ["mtb_quadrant", "slope_deg", "aspect_deg", "bearing_distance_km"]
+        for key in text where body[key] == nil {
+            body[key] = ""
+        }
+        for key in numbers where body[key] == nil {
+            body[key] = 0
+        }
+        if body["terrain_flat"] == nil { body["terrain_flat"] = false }
+        if body["bearing_inside"] == nil { body["bearing_inside"] = false }
+        if elevation == nil {
+            // DEM height of the old point was cleared locally.
+            body["elevation"] = 0
+            body["elevation_source"] = ""
+        }
+    }
+}
+
+extension SampleLocationFields {
+    /// Location fields of a local row, with placemark references
+    /// already translated to backend ids by the caller.
+    init(_ s: LocalSample, placemark: String?, placemarkSuggestion: String?, locality: String?) {
+        latitude = s.latitude
+        longitude = s.longitude
+        horizontalAccuracy = s.horizontalAccuracy
+        verticalAccuracy = s.verticalAccuracy
+        elevation = s.elevation
+        elevationSource = s.elevation == nil ? nil : (s.elevationSource ?? .locationService)
+        locationSource = LocationSource(rawValue: s.locationSource) ?? .user
+        locationStatus = s.locationStatus
+        self.placemark = placemark
+        self.placemarkSuggestion = placemarkSuggestion
+        self.locality = locality
+        mtbSheetNumber = s.mtbSheetNumber
+        mtbSheetName = s.mtbSheetName
+        mtbQuadrant = s.mtbQuadrant
+        slopeDeg = s.slopeDeg
+        aspectDeg = s.aspectDeg
+        aspectCompass = s.aspectCompass
+        terrainFlat = s.terrainFlat
+        bearingLabel = s.bearingLabel
+        bearingReference = s.bearingReference
+        bearingDistanceKm = s.bearingDistanceKm
+        bearingCompass = s.bearingCompass
+        bearingInside = s.bearingInside
+    }
+}
+
 /// Payload-Bundle für `SamplePushClient.createSample`. Spiegelt die
 /// Felder des PocketBase-Sample-Records, die der Client beim Push
 /// schickt — `client_uuid` und `client_updated_at` sind Teil des
 /// Idempotenz-Vertrags (siehe Konfliktauflösung in CLAUDE.md).
-struct SampleCreateInput {
-    var lat: Double
-    var lon: Double
-    var accuracy: Double?
-    var altitude: Double?
+struct SampleCreateInput: Equatable {
+    var location: SampleLocationFields
     var collectedFrom: Date
     var notes: String?
     var marked: Bool
     var code: String?
     var clientUuid: String?
     var clientUpdatedAt: Date?
+    var timezone: String
+    var timezoneSource: TimezoneSource?
+    var collectingDay: String?
+    /// End of the time window (UTC); nil for legacy rows.
+    var collectedTo: Date?
+    var isAllDay = false
+    /// Entered afterwards; only honoured by the backend on create.
+    var isRetrospective = false
 }
 
-/// Payload-Bundle für `SamplePushClient.updateSample`. Nur die
-/// user-editierbaren Felder (Code, Notiz) plus Idempotenz/Versions-
-/// Trio. Andere Spalten (Koordinaten, beginDate, …) werden über ein
-/// separates Formular geändert und tragen dann ihre eigene Mutation.
+/// Payload-Bundle für `SamplePushClient.updateSample`: user-editierbare
+/// Felder (Code, Notiz), Koordinate/Höhe/Ortsdaten/Status (Phase O2)
+/// plus Idempotenz/Versions-Trio.
 ///
-/// `Codable` weil die Outbox den Snapshot beim Enqueue als JSON
-/// persistiert (`pending_mutations.payload_json`) und der SyncRunner
-/// ihn beim Replay zurücklädt.
+/// `Codable`, damit der Snapshot bei Bedarf als JSON persistiert
+/// werden kann.
 struct SampleUpdateInput: Codable, Equatable {
     var code: String
+    /// Conflict marker; "" (no conflict / ID edited) is sent as an
+    /// explicit clear.
+    var originalCode: String = ""
     var notes: String?
     var clientUuid: String
     var clientUpdatedAt: Date
     var version: Int
+    var location: SampleLocationFields
+    var timezone: String
+    var timezoneSource: TimezoneSource?
+    var collectingDay: String?
+    /// Time window (UTC); nil fields are not sent.
+    var beginDate: Date?
+    var endDate: Date?
+    var isAllDay: Bool?
+}
+
+/// Payload of a `.sample/.update` outbox row. Older rows carry an
+/// empty payload, which decodes to the defaults.
+struct SampleUpdatePayload: Codable, Equatable {
+    /// The local feature set changed (on-device resolver) or a previous
+    /// features PUT failed: replace the server's set after the PATCH.
+    var pushFeatures = false
+    /// Queued by `LocalSampleStore.updateCoordinate`: the push carries
+    /// a moved coordinate (explicit clears, `pending` allowed, poll for
+    /// the backend's re-enrichment afterwards).
+    var coordinateChanged = false
+    /// Queued by the suggestion accept/dismiss and manual-place edits:
+    /// a nil `placemark_suggestion` is sent as `""` (see
+    /// `SampleLocationFields.clearsSuggestion`).
+    var clearsSuggestion = false
+    /// Queued by `LocalSampleStore.setManualElevation`: a nil
+    /// `vertical_accuracy` is sent as a clear (see
+    /// `SampleLocationFields.clearsVerticalAccuracy`).
+    var elevationEdited = false
+    /// Queued by `LocalSampleStore.setHorizontalAccuracy` and by a
+    /// coordinate move without accuracy: a nil `horizontal_accuracy` is
+    /// sent as a clear (see `SampleLocationFields.clearsHorizontalAccuracy`).
+    var horizontalAccuracyEdited = false
+
+    init(
+        pushFeatures: Bool = false,
+        coordinateChanged: Bool = false,
+        clearsSuggestion: Bool = false,
+        elevationEdited: Bool = false,
+        horizontalAccuracyEdited: Bool = false
+    ) {
+        self.pushFeatures = pushFeatures
+        self.coordinateChanged = coordinateChanged
+        self.clearsSuggestion = clearsSuggestion
+        self.elevationEdited = elevationEdited
+        self.horizontalAccuracyEdited = horizontalAccuracyEdited
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pushFeatures = (try? c.decode(Bool.self, forKey: .pushFeatures)) ?? false
+        coordinateChanged = (try? c.decode(Bool.self, forKey: .coordinateChanged)) ?? false
+        clearsSuggestion = (try? c.decode(Bool.self, forKey: .clearsSuggestion)) ?? false
+        elevationEdited = (try? c.decode(Bool.self, forKey: .elevationEdited)) ?? false
+        horizontalAccuracyEdited = (try? c.decode(Bool.self, forKey: .horizontalAccuracyEdited)) ?? false
+    }
+
+    /// Union of the flags (a parked mutation's flags ride along with
+    /// the next update of the same sample).
+    func merged(with other: SampleUpdatePayload) -> SampleUpdatePayload {
+        SampleUpdatePayload(
+            pushFeatures: pushFeatures || other.pushFeatures,
+            coordinateChanged: coordinateChanged || other.coordinateChanged,
+            clearsSuggestion: clearsSuggestion || other.clearsSuggestion,
+            elevationEdited: elevationEdited || other.elevationEdited,
+            horizontalAccuracyEdited: horizontalAccuracyEdited || other.horizontalAccuracyEdited
+        )
+    }
+
+    static func decode(_ data: Data) -> SampleUpdatePayload {
+        (try? JSONDecoder().decode(SampleUpdatePayload.self, from: data)) ?? SampleUpdatePayload()
+    }
+
+    var encoded: Data {
+        (try? JSONEncoder().encode(self)) ?? Data()
+    }
 }
 
 /// Schnittstelle, gegen die `SyncRunner` testet. Produktiv konformt
@@ -40,6 +277,9 @@ protocol SamplePushClient {
     func createSample(_ input: SampleCreateInput) async throws -> Sample
     func updateSample(id: String, input: SampleUpdateInput) async throws -> Sample
     func fetchSample(id: String) async throws -> Sample
+    /// Deletes the sample on the server. 404 counts as success
+    /// (implementations may also just return).
+    func deleteSample(id: String) async throws
 }
 
 extension SampleClient: SamplePushClient {}
@@ -47,17 +287,24 @@ extension SampleClient: SamplePushClient {}
 /// Pushes pending local samples up to PocketBase, driven by the
 /// `pending_mutations` outbox (R5b).
 ///
-/// Push contract (Phase 3b, R3, R5):
+/// Push contract (Phase 3b, R3, R5, O2):
 ///   - Wire body uses Spec-aligned names (sample_id, latitude,
-///     longitude, begin_date, version, …).
+///     longitude, begin_date, elevation, location_status, …).
 ///   - Server honors `sample_id` if it doesn't collide. On
 ///     collision the server reassigns and stores our value in
 ///     `original_code` — the user-readable id on the tube remains
 ///     authoritative.
-///   - On any push success we set `syncStatus = .synced` on the
-///     local row, copy backend_id / fieldtrip / locality /
-///     enrichment, dequeue the outbox row, and (best-effort) push
-///     photos + poll enrichment.
+///   - Order per sample (create and update): placemark → sample →
+///     features. A locally created placemark (UUID id) is first looked
+///     up or created on the server via `POST /api/placemarks/resolve`
+///     and only its backend id is ever sent as `placemark`.
+///   - The SyncRunner never writes a row copy read before a network
+///     call back over the whole row: after every call it re-reads the
+///     row and merges only server-derived fields (backend id, version,
+///     fieldtrip, codes, enrichment where local has nothing better —
+///     see `LocalSample.mergeServerLocation`). Local edits made during
+///     the call win; if they missed the create POST, an update is
+///     queued.
 ///
 /// Retry: every 30 s a background tick re-runs the pass if anything
 /// is still in the outbox. `kick()` also runs a pass on demand
@@ -70,6 +317,12 @@ final class SyncRunner: ObservableObject {
     /// Optional — only wired when the app supports client-created
     /// localities (R8d offline-fusion). Nil in the sample-only tests.
     let localitiesStore: LocalLocalityStore?
+    /// Optional (Phase O2): placemark rows referenced by samples. Nil
+    /// in sample-only tests; then only plain backend ids are sent.
+    let placemarkStore: LocalPlacemarkStore?
+    /// Optional (Phase O2): Ortus features per sample. Nil ⇒ no
+    /// features push / hydration.
+    let featureStore: LocalSampleFeatureStore?
     let endpointProvider: () -> String
     let authProvider: () -> AuthSession?
     let onSampleSynced: (String) -> Void
@@ -84,32 +337,64 @@ final class SyncRunner: ObservableObject {
     /// Factory für den Locality-Push-Client (R8d). Analog zu
     /// `clientFactory`; Tests injizieren einen Mock.
     let localityClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient
+    /// Phase O2: placemark resolve/fetch and features replace/fetch.
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
 
     @Published private(set) var inFlight = 0
 
-    private var passTask: Task<Void, Never>?
+    private(set) var passTask: Task<Void, Never>?
     private var retryTimer: Task<Void, Never>?
 
     /// Time between automatic retry passes when the outbox isn't
     /// empty. Bumped to 5 s in tests.
     private let retryInterval: Duration
     /// Wartezeit zwischen Enrichment-Polls. 1.5 s in Prod, in Tests
-    /// auf 0 setzbar, damit `pollEnrichment` nicht künstlich blockt.
+    /// auf 0 setzbar, damit `pollPendingEnrichment` nicht künstlich blockt.
     private let enrichmentPollInterval: Duration
+    /// Upper bound for the whole enrichment poll at the end of a pass,
+    /// however many samples wait. What is left over is picked up by
+    /// the next `SamplesHydrator.pull`.
+    private let enrichmentPollBudget: Duration
+    /// Poll rounds at most (each one sleep + one GET per waiting sample).
+    static let enrichmentPollRounds = 6
+
+    /// A pushed sample whose server enrichment is still outstanding.
+    private struct EnrichmentTarget {
+        let localID: String
+        let backendID: String
+        /// Server version right after our own push; a newer one means
+        /// the enricher ran.
+        var baseVersion: Int
+    }
+
+    /// Collected during a pass, polled once after the push loop
+    /// (`pollPendingEnrichment`), so an offline day's worth of creates
+    /// doesn't wait for the enrichment sample by sample.
+    private var enrichmentTargets: [EnrichmentTarget] = []
 
     init(store: LocalSampleStore,
          mutationsStore: PendingMutationsStore,
          photoStore: LocalPhotoStore? = nil,
          localitiesStore: LocalLocalityStore? = nil,
+         placemarkStore: LocalPlacemarkStore? = nil,
+         featureStore: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthSession? = { nil },
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
+         enrichmentPollBudget: Duration = .seconds(12),
          clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
          localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(
              endpoint: $0,
              auth: $1
          ) },
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+             PlacemarkClient(endpoint: $0, auth: $1)
+         },
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+             SampleFeaturesClient(endpoint: $0, auth: $1)
+         },
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
     {
@@ -117,12 +402,17 @@ final class SyncRunner: ObservableObject {
         self.mutationsStore = mutationsStore
         self.photoStore = photoStore
         self.localitiesStore = localitiesStore
+        self.placemarkStore = placemarkStore
+        self.featureStore = featureStore
         self.endpointProvider = endpointProvider
         self.authProvider = authProvider
         self.retryInterval = retryInterval
         self.enrichmentPollInterval = enrichmentPollInterval
+        self.enrichmentPollBudget = enrichmentPollBudget
         self.clientFactory = clientFactory
         self.localityClientFactory = localityClientFactory
+        self.placemarkClientFactory = placemarkClientFactory
+        self.featuresClientFactory = featuresClientFactory
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
         startRetryLoop()
@@ -146,7 +436,7 @@ final class SyncRunner: ObservableObject {
                 guard let self else { return }
                 try? await Task.sleep(for: self.retryInterval)
                 if Task.isCancelled { return }
-                if let count = try? self.mutationsStore.count(), count > 0 {
+                if let count = try? self.mutationsStore.activeCount(), count > 0 {
                     self.kick()
                 }
             }
@@ -172,9 +462,11 @@ final class SyncRunner: ObservableObject {
         if mutations.isEmpty { return }
 
         let client = clientFactory(endpoint, authProvider())
+        enrichmentTargets = []
         for mutation in mutations {
             await execute(mutation, via: client)
         }
+        await pollPendingEnrichment(via: client)
     }
 
     /// Dispatch by (entityType, op). Sample create/update + locality
@@ -187,14 +479,43 @@ final class SyncRunner: ObservableObject {
             await executeSampleCreate(mutation, via: client)
         case (.sample, .update):
             await executeSampleUpdate(mutation, via: client)
+        case (.sample, .delete):
+            await executeSampleDelete(mutation, via: client)
         case (.locality, .create):
             await executeLocalityCreate(mutation)
+        case (.locality, .delete):
+            await executeLocalityDelete(mutation)
         default:
             // Unsupported op — record once so the row isn't silently
             // stuck forever, but don't burn the queue on it.
             let err = "unsupported mutation: \(mutation.entityType.rawValue)/\(mutation.op.rawValue)"
             Log.sync.error("\(err)")
             try? mutationsStore.recordFailure(mutation.id, error: err)
+        }
+    }
+
+    /// Server-side delete of a sample that was already pushed. The
+    /// mutation's `entityId` is the *backend* id (the local row is
+    /// gone). 404 means already deleted — done.
+    private func executeSampleDelete(_ mutation: PendingMutation, via client: SamplePushClient) async {
+        guard let backendID = mutation.entityId, !backendID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+            do {
+                try await client.deleteSample(id: backendID)
+            } catch SampleClientError.http(status: 404, _) {
+                // Already gone on the server.
+            }
+            try? mutationsStore.dequeue(mutation.id)
+            Log.sync.info("sample deleted on server \(backendID, privacy: .public)")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("sample delete failed: \(message)")
         }
     }
 
@@ -210,92 +531,139 @@ final class SyncRunner: ObservableObject {
             return
         }
 
-        var working = sample
-        working.syncStatus = .syncing
-        working.syncError = nil
-        try? store.update(working)
+        if let existing = sample.backendId, !existing.isEmpty {
+            // Already on the server (e.g. a failed update row adopted
+            // by `reconcileLegacyPending`): a second POST would
+            // duplicate it — push the row as an update instead.
+            _ = try? mutationsStore.enqueue(
+                entityType: .sample, entityId: localId, op: .update,
+                payload: SampleUpdatePayload(pushFeatures: true).encoded
+            )
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+
+        try? store.setSyncState(id: localId, status: .syncing, error: nil)
 
         do {
             inFlight += 1
             defer { inFlight -= 1 }
 
-            let created = try await client.createSample(SampleCreateInput(
-                lat: sample.latitude ?? 0,
-                lon: sample.longitude ?? 0,
-                accuracy: sample.horizontalAccuracy,
-                altitude: sample.altitude,
-                collectedFrom: sample.beginDate,
-                notes: sample.notes.isEmpty ? nil : sample.notes,
-                marked: sample.marked,
-                code: sample.sampleID,
-                clientUuid: sample.id,
-                clientUpdatedAt: sample.updatedAt
-            ))
-
-            working.backendId = created.id
-            working.fieldtrip = created.fieldtrip
-            working.locality = created.locality
-            working.version = created.version
-            working.adminUnitsLocality = created.adminUnits?.locality
-            working.adminUnitsCountry = created.adminUnits?.country
-            working.mtbSheetNumber = created.mtb?.sheetNumber
-            working.mtbSheetName = created.mtb?.sheetName
-
-            if created.sampleID != sample.sampleID {
-                // Server reassigned on conflict. The original is what
-                // the user wrote on the tube; the server's reassigned
-                // id is the authoritative database value.
-                working.backendCode = created.sampleID
-                working.originalCode = created.originalCode ?? sample.sampleID
-            } else {
-                working.backendCode = nil
-                // Server honored — but it might still return
-                // original_code from a prior conflict round. Keep
-                // whatever the server has.
-                working.originalCode = created.originalCode
+            // 1. Placemarks first (backend ids), then the input is
+            //    built from the row as it is *after* those calls.
+            guard let pushed = try await pushLocation(forLocalID: localId) else {
+                try? mutationsStore.dequeue(mutation.id)
+                return
             }
+            let (current, location) = pushed
+            let input = Self.createInput(current, location: location)
 
-            working.syncStatus = .synced
-            try store.update(working)
+            // 2. The sample itself.
+            let created = try await client.createSample(input)
+
+            // 3. Merge server-derived fields onto the row as it is now.
+            guard var fresh = try store.fetchById(localId) else {
+                // Deleted locally while the POST was in flight: the
+                // server now has a record nobody owns — delete it.
+                do {
+                    _ = try mutationsStore.enqueue(
+                        entityType: .sample, entityId: created.id, op: .delete, payload: Data()
+                    )
+                } catch {
+                    Log.sync.error("queueing delete for orphaned create failed: \(error.localizedDescription)")
+                }
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+            // Compared before merging, so server echo differences don't
+            // count as local edits.
+            let editedDuringPost = Self.createInput(fresh, location: syncLocation(fresh)) != input
+            // Place data the user (or the resolver) wrote during the
+            // POST wins over the response; the queued update pushes it.
+            let keepLocalPlace = fresh.updatedAt != current.updatedAt
+                || hasActiveQueuedMutation(localId, excluding: [mutation.id])
+            fresh.backendId = created.id
+            fresh.fieldtrip = created.fieldtrip
+            // An empty server locality must not wipe a local one.
+            fresh.locality = created.locality ?? fresh.locality
+            fresh.version = created.version
+            Self.applyCodes(created, sentCode: input.code ?? fresh.sampleID, to: &fresh)
+            if !keepLocalPlace {
+                fresh.mergeServerLocation(created, localPlacemarkID: localPlacemarkID)
+            }
+            fresh.syncStatus = .synced
+            fresh.syncError = nil
+            try store.update(fresh)
 
             // Persisted on the server — remove from outbox.
             try? mutationsStore.dequeue(mutation.id)
+
+            // Edits that landed while the POST was in flight (user, or
+            // the on-device resolver — it couldn't queue an update yet
+            // because the row had no backend id) are not on the
+            // server: push them as an update.
+            if editedDuringPost {
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: localId, op: .update,
+                    payload: SampleUpdatePayload(pushFeatures: true).encoded
+                )
+            }
 
             // Hand off the parent fieldtrip id to the container so
             // the fieldtrip-side hydration runs in parallel.
             onSampleSynced(created.fieldtrip)
 
+            // 4. Features (only when the device has some).
+            if let featureStore, ((try? featureStore.count(sampleID: localId)) ?? 0) > 0 {
+                if !(await pushFeatures(localID: localId, backendID: created.id)) {
+                    _ = try? mutationsStore.enqueue(
+                        entityType: .sample, entityId: localId, op: .update,
+                        payload: SampleUpdatePayload(pushFeatures: true).encoded
+                    )
+                }
+            }
+
             // Push any photos that were captured for this sample
             // before the sync round-trip. We have the backend id now,
             // so each photo gets its own multipart POST.
-            await pushPhotos(for: working, backendSampleID: created.id, endpoint: endpointProvider())
+            await pushPhotos(for: fresh, backendSampleID: created.id, endpoint: endpointProvider())
 
-            await pollEnrichment(id: created.id, sample: working, via: client)
+            if location.locationStatus != .backendService {
+                awaitEnrichment(localID: localId, backendID: created.id, baseVersion: created.version)
+            }
         } catch {
-            working.syncStatus = .failed
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            working.syncError = message
-            try? store.update(working)
+            try? store.setSyncState(id: localId, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample push failed: \(message)")
         }
     }
 
-    /// Pushes a user edit (code/notes) on a previously-synced sample.
+    /// Pushes a user edit (code/notes) or a place-data change on a
+    /// previously-synced sample.
     ///
     /// The outbox row carries the *local* sample id as `entityId`
-    /// (same shape as `.sample/.create`) and an empty payload. The
-    /// payload is built fresh from the current local row right before
-    /// the PATCH, so any user edits that landed in the row between
-    /// enqueue and execute are pushed automatically — no coalescing
-    /// race. After the response we re-read the row again to avoid
-    /// clobbering edits that landed during the network hop.
+    /// (same shape as `.sample/.create`) and a `SampleUpdatePayload`
+    /// (empty for plain edits). The body is built fresh from the
+    /// current local row right before the PATCH, so any edits that
+    /// landed in the row between enqueue and execute are pushed
+    /// automatically — no coalescing race. After the response we
+    /// re-read the row again to avoid clobbering edits that landed
+    /// during the network hop.
     ///
-    /// OCC: the backend's `enforceVersion` hook (versionedCollections
-    /// in version_conflict.go) rejects `incoming <= current` with 409.
-    /// We send `current + 1`; on 409 we surface the conflict as a
-    /// `.failed` status with a localised error rather than silently
-    /// dropping the user's edit.
+    /// Order: (server snapshot for weak local place data) → placemark
+    /// resolve → PATCH → features PUT (when the payload asks for it).
+    /// After a coordinate change the sample joins the enrichment poll
+    /// at the end of the pass.
+    ///
+    /// OCC: the backend's `enforceVersion` hook rejects
+    /// `incoming <= current` with 409. The backend's own enrichment
+    /// bumps the version too, so a 409 is usually not a real conflict:
+    /// we fetch the server row, adopt its version (and its place data
+    /// where ours is weaker, see `adoptServer`) and retry once with the
+    /// user's edit. A second 409 keeps the mutation queued for the next
+    /// pass; after `maxConflictAttempts` passes the row is flagged
+    /// `.failed` (edit kept locally, not overwritten by hydration).
     private func executeSampleUpdate(_ mutation: PendingMutation, via client: SamplePushClient) async {
         guard let localID = mutation.entityId, !localID.isEmpty else {
             try? mutationsStore.dequeue(mutation.id)
@@ -326,77 +694,412 @@ final class SyncRunner: ObservableObject {
             return
         }
 
-        var working = preLocal
-        working.syncStatus = .syncing
-        working.syncError = nil
-        try? store.update(working)
-
-        let input = SampleUpdateInput(
-            code: working.sampleID,
-            notes: working.notes,
-            clientUuid: working.id,
-            clientUpdatedAt: working.updatedAt,
-            version: working.version + 1
-        )
+        // Mutations parked after an earlier 409 give-up ride along:
+        // their flags join this PATCH and they are done when it lands.
+        let parked = (try? mutationsStore.parked(entityType: .sample, entityId: localID)) ?? []
+        let payload = parked.reduce(SampleUpdatePayload.decode(mutation.payloadJson)) {
+            $0.merged(with: SampleUpdatePayload.decode($1.payloadJson))
+        }
+        let absorbed = Set(parked.map(\.id))
+        try? store.setSyncState(id: localID, status: .syncing, error: nil)
 
         do {
             inFlight += 1
             defer { inFlight -= 1 }
 
-            let updated = try await client.updateSample(id: backendID, input: input)
-
-            // Re-read after the network hop: the user may have saved
-            // further edits during the await. Preserve user-owned
-            // fields (notes, sampleID) and merge only the server-
-            // derived ones in.
-            var fresh = (try? store.fetchById(localID)) ?? working
-            fresh.version = updated.version
-            fresh.adminUnitsLocality = updated.adminUnits?.locality
-            fresh.adminUnitsCountry = updated.adminUnits?.country
-            fresh.mtbSheetNumber = updated.mtb?.sheetNumber
-            fresh.mtbSheetName = updated.mtb?.sheetName
-            if updated.sampleID != input.code {
-                // Server reassigned on collision — keep the user's
-                // tube label as `originalCode` and adopt the server's
-                // authoritative id.
-                fresh.backendCode = updated.sampleID
-                fresh.originalCode = updated.originalCode ?? input.code
-            } else {
-                fresh.backendCode = nil
-                fresh.originalCode = updated.originalCode
+            let outcome: PatchOutcome?
+            do {
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
+                                              mutationID: mutation.id, absorbed: absorbed, via: client)
+            } catch let SampleClientError.conflict(serverVersion, _) {
+                Log.sync.notice(
+                    "sample update 409 (server version \(serverVersion, privacy: .public)), adopting and retrying"
+                )
+                try await adoptAfterConflict(localID: localID, backendID: backendID, via: client)
+                outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
+                                              mutationID: mutation.id, absorbed: absorbed, via: client)
             }
-            fresh.syncStatus = .synced
-            fresh.syncError = nil
-            try store.update(fresh)
+            guard let outcome else {
+                try? mutationsStore.dequeue(mutation.id)
+                absorbed.forEach { try? mutationsStore.dequeue($0) }
+                return
+            }
+
+            if payload.pushFeatures, featureStore != nil,
+               !(await pushFeatures(localID: localID, backendID: backendID))
+            {
+                // Sample is on the server; only the feature set is
+                // missing. Keep the row queued — the retry re-PATCHes
+                // (with the merged version) and re-PUTs.
+                try? mutationsStore.recordFailure(mutation.id, error: "features push failed")
+                return
+            }
             try? mutationsStore.dequeue(mutation.id)
+            absorbed.forEach { try? mutationsStore.dequeue($0) }
 
             // Pick up any photos that the edit added on top of an
             // already-synced sample (same best-effort semantics as
             // the create path).
-            await pushPhotos(for: fresh, backendSampleID: backendID, endpoint: endpointProvider())
-        } catch let SampleClientError.conflict(serverVersion, _) {
-            // Another writer beat us to the row. We intentionally do
-            // NOT overwrite local with the server's values — the
-            // user's typed code/notes stay put so they can review,
-            // retry, or discard. Just flip the row to .failed with
-            // a localised error so listing/badge UI surfaces the
-            // conflict instead of silently swallowing it.
-            Log.sync.warning(
-                "sample update 409 (server version \(serverVersion, privacy: .public))"
-            )
-            var aborted = (try? store.fetchById(localID)) ?? working
-            aborted.syncStatus = .failed
-            aborted.syncError = "Konflikt: Probe wurde auf einem anderen Gerät geändert. Bitte neu laden."
-            try? store.update(aborted)
+            await pushPhotos(for: outcome.fresh, backendSampleID: backendID, endpoint: endpointProvider())
+
+            if let snapshot = outcome.serverSnapshot {
+                await makeLocationHydration()?.hydrate([snapshot])
+            }
+            if payload.coordinateChanged {
+                // The backend re-enriches a moved sample and bumps the
+                // version; follow it so the next edit doesn't 409.
+                awaitEnrichment(localID: localID, backendID: backendID, baseVersion: outcome.fresh.version)
+            } else {
+                // Our own PATCH bumped the version: don't take that for
+                // the enrichment of a create earlier in this pass.
+                raiseEnrichmentBase(localID: localID, to: outcome.fresh.version)
+            }
+        } catch SampleClientError.conflict {
+            // Still 409 right after adopting the server version: a
+            // writer is racing us. Keep the edit queued; give up after
+            // a few passes so it can't loop forever.
+            if mutation.attempts + 1 >= Self.maxConflictAttempts {
+                Log.sync.warning("sample update gave up after repeated 409, parked")
+                try? store.setSyncState(
+                    id: localID, status: .failed,
+                    error: "Konflikt: Probe wurde auf einem anderen Gerät geändert. Deine Änderung ist nur lokal gespeichert – tippe auf „Erneut senden“, um sie zu übertragen."
+                )
+                // Park (not drop) with the union of all flags, so
+                // „Erneut senden“ replays exactly this push.
+                try? mutationsStore.updatePayload(mutation.id, payload: payload.encoded, entityId: localID)
+                absorbed.forEach { try? mutationsStore.dequeue($0) }
+                try? mutationsStore.park(mutation.id, error: "409 conflict")
+            } else {
+                try? store.setSyncState(id: localID, status: .failed,
+                                        error: "Versionskonflikt – wird erneut versucht.")
+                try? mutationsStore.recordFailure(mutation.id, error: "409 conflict")
+            }
+        } catch SampleClientError.http(status: 404, _) {
+            // The server record is gone (deleted elsewhere): the edit
+            // is moot. Drop it; the local row is not touched here (a
+            // missing row cannot be resurrected by `store.update`,
+            // GRDB throws record-not-found).
+            Log.sync.warning("sample update dropped: server record not found")
             try? mutationsStore.dequeue(mutation.id)
+            absorbed.forEach { try? mutationsStore.dequeue($0) }
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            var failed = (try? store.fetchById(localID)) ?? working
-            failed.syncStatus = .failed
-            failed.syncError = message
-            try? store.update(failed)
+            try? store.setSyncState(id: localID, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample update push failed: \(message)")
+        }
+    }
+
+    /// Passes a 409-ing update gets before the row is flagged failed.
+    static let maxConflictAttempts = 3
+
+    private struct PatchOutcome {
+        /// The row after merging the PATCH response.
+        let fresh: LocalSample
+        /// Server row fetched before the PATCH (weak local place data),
+        /// used afterwards to hydrate its placemark and features.
+        let serverSnapshot: Sample?
+    }
+
+    /// One PATCH of the current row. Nil when the row vanished.
+    private func patchOnce(
+        localID: String,
+        backendID: String,
+        payload: SampleUpdatePayload,
+        mutationID: String,
+        absorbed: Set<String>,
+        via client: SamplePushClient
+    ) async throws -> PatchOutcome? {
+        guard let row = try store.fetchById(localID) else { return nil }
+        var snapshot: Sample?
+        if !payload.coordinateChanged, row.locationStatus == .pending || row.locationStatus == .inherited {
+            // The backend may have enriched this sample meanwhile;
+            // never push weaker place data (pending/inherited) over a
+            // backend_service result — take the server's first.
+            let server = try await client.fetchSample(id: backendID)
+            guard var fresh = try store.fetchById(localID) else { return nil }
+            adoptServer(server, into: &fresh)
+            try store.update(fresh)
+            snapshot = server
+        }
+
+        guard let pushed = try await pushLocation(forLocalID: localID) else { return nil }
+        let (current, pushedLocation) = pushed
+        var location = pushedLocation
+        location.clearsDerived = payload.coordinateChanged
+        location.clearsSuggestion = payload.clearsSuggestion
+        location.clearsVerticalAccuracy = payload.elevationEdited
+        location.clearsHorizontalAccuracy = payload.horizontalAccuracyEdited
+        let input = SampleUpdateInput(
+            code: current.sampleID,
+            originalCode: current.originalCode ?? "",
+            notes: current.notes,
+            clientUuid: current.id,
+            clientUpdatedAt: current.updatedAt,
+            version: current.version + 1,
+            location: location,
+            timezone: current.timezone,
+            timezoneSource: current.timezoneSource,
+            collectingDay: current.collectingDay,
+            beginDate: current.beginDate,
+            endDate: current.endDate,
+            isAllDay: current.isAllDay
+        )
+
+        let updated = try await client.updateSample(id: backendID, input: input)
+
+        // Re-read after the network hop: the user may have saved
+        // further edits during the await. Preserve user-owned fields
+        // (notes, sampleID) and merge only the server-derived ones in.
+        guard var fresh = try store.fetchById(localID) else { return nil }
+        fresh.version = max(fresh.version, updated.version)
+        fresh.locality = updated.locality ?? fresh.locality
+        // A changed collecting day (retrospective sample) moves the
+        // sample to another fieldtrip on the server; follow it locally
+        // and pull the (possibly new) trip like the create path does.
+        let movedToTrip = !updated.fieldtrip.isEmpty && updated.fieldtrip != fresh.fieldtrip
+        if movedToTrip { fresh.fieldtrip = updated.fieldtrip }
+        Self.applyCodes(updated, sentCode: input.code, to: &fresh)
+        // Place data (placemark, suggestion, status, geo) written while
+        // the PATCH was in flight — a manual place, accept/dismiss of a
+        // suggestion, a coordinate correction — is user-owned and wins;
+        // its own queued update carries it. Same rule as `adoptServer`.
+        let changedMeanwhile = fresh.updatedAt != current.updatedAt
+            || hasActiveQueuedMutation(localID, excluding: absorbed.union([mutationID]))
+        if !changedMeanwhile {
+            fresh.mergeServerLocation(updated, localPlacemarkID: localPlacemarkID)
+        }
+        fresh.syncStatus = .synced
+        fresh.syncError = nil
+        try store.update(fresh)
+        if movedToTrip { onSampleSynced(updated.fieldtrip) }
+        return PatchOutcome(fresh: fresh, serverSnapshot: snapshot)
+    }
+
+    /// After a 409: take the server's version (and its place data where
+    /// ours is weaker); the user's own fields stay.
+    private func adoptAfterConflict(localID: String, backendID: String, via client: SamplePushClient) async throws {
+        let server = try await client.fetchSample(id: backendID)
+        guard var fresh = try store.fetchById(localID) else { return }
+        adoptServer(server, into: &fresh)
+        try store.update(fresh)
+    }
+
+    /// Adopts a server snapshot onto a fresh local row. The version
+    /// always moves forward. Place data is merged when it describes the
+    /// same coordinate and the local place state is not better: local
+    /// `pending`/`inherited`, or nothing local queued. A stronger local
+    /// state (resolved, manual) with a queued update wins on purpose,
+    /// as does a moved coordinate (its push re-triggers enrichment).
+    private func adoptServer(_ s: Sample, into fresh: inout LocalSample) {
+        fresh.version = max(fresh.version, s.version)
+        // The server's zone (location service / manual) beats a device
+        // zone we may still hold from before the enrichment ran.
+        fresh.adoptServerZone(s)
+        guard Self.sameCoordinate(fresh, s) else { return }
+        let weak = fresh.locationStatus == .pending || fresh.locationStatus == .inherited
+        if weak || !hasQueuedMutation(fresh.id) {
+            fresh.mergeServerLocation(s, localPlacemarkID: localPlacemarkID)
+        }
+    }
+
+    private static func sameCoordinate(_ l: LocalSample, _ r: Sample) -> Bool {
+        func same(_ a: Double?, _ b: Double?) -> Bool {
+            switch (a, b) {
+            case (nil, nil): true
+            case let (x?, y?): abs(x - y) < 1e-7
+            default: false
+            }
+        }
+        return same(l.latitude, r.latitude) && same(l.longitude, r.longitude)
+    }
+
+    // MARK: - Phase O2 place data
+
+    /// Outcome of mapping a local placemark reference to the server.
+    private enum PlacemarkRef: Equatable {
+        case none
+        case backend(String)
+        /// Cannot be referenced on the server (no local row for a
+        /// UUID, incomplete place, or the server rejected it).
+        case unresolvable
+
+        var backendID: String? {
+            if case let .backend(id) = self { return id }
+            return nil
+        }
+    }
+
+    /// Resolves the row's placemark references to backend ids (network
+    /// for locally created placemarks), then re-reads the row and
+    /// builds the location fields from that fresh row. Retries when a
+    /// reference changed during the calls. Nil when the row vanished.
+    private func pushLocation(forLocalID id: String) async throws -> (LocalSample, SampleLocationFields)? {
+        for _ in 0 ..< 3 {
+            guard let row = try store.fetchById(id) else { return nil }
+            let placemark = try await backendPlacemark(row.placemark)
+            let suggestion = try await backendPlacemark(row.placemarkSuggestion)
+            guard let fresh = try store.fetchById(id) else { return nil }
+            if fresh.placemark == row.placemark, fresh.placemarkSuggestion == row.placemarkSuggestion {
+                return (fresh, location(fresh, placemark: placemark, suggestion: suggestion))
+            }
+        }
+        // References keep changing under us: send what is already
+        // resolvable without the network; the editor's change queues
+        // its own update.
+        guard let fresh = try store.fetchById(id) else { return nil }
+        return (fresh, syncLocation(fresh))
+    }
+
+    /// Location fields with placemark refs mapped without network
+    /// calls (unknown ⇒ unresolvable). Used to detect edits that
+    /// landed during a create POST.
+    private func syncLocation(_ s: LocalSample) -> SampleLocationFields {
+        location(s, placemark: knownBackendPlacemark(s.placemark),
+                 suggestion: knownBackendPlacemark(s.placemarkSuggestion))
+    }
+
+    private func location(_ s: LocalSample, placemark: PlacemarkRef, suggestion: PlacemarkRef) -> SampleLocationFields {
+        var fields = SampleLocationFields(
+            s,
+            placemark: placemark.backendID,
+            placemarkSuggestion: suggestion.backendID,
+            locality: pushableLocality(s.locality)
+        )
+        if placemark == .unresolvable, fields.locationStatus != .pending {
+            // Without its placemark the status would lie; `pending`
+            // lets the backend enrich the sample itself.
+            fields.locationStatus = .pending
+        }
+        return fields
+    }
+
+    /// A locality id may only be sent once it is a backend id (a
+    /// client-created locality's UUID is swapped by the locality
+    /// push, which then queues a sample update).
+    private func pushableLocality(_ id: String?) -> String? {
+        guard let id, PlacemarkClient.isRecordID(id) else { return nil }
+        return id
+    }
+
+    private func knownBackendPlacemark(_ localID: String?) -> PlacemarkRef {
+        guard let localID, !localID.isEmpty else { return .none }
+        guard let placemarkStore, let row = try? placemarkStore.fetchById(localID) else {
+            return PlacemarkClient.isRecordID(localID) ? .backend(localID) : .unresolvable
+        }
+        if let backendID = row.backendId, !backendID.isEmpty { return .backend(backendID) }
+        return .unresolvable
+    }
+
+    /// Backend id for a local placemark reference. A locally created
+    /// row without `backend_id` is looked up or created on the server
+    /// (`backend_service` rows shared, `manual` rows owned by the
+    /// user) and the id is remembered on the row. Network/auth/5xx
+    /// errors throw (the push retries); a 4xx rejection of the place
+    /// itself yields `.unresolvable`, so the sample is not blocked.
+    private func backendPlacemark(_ localID: String?) async throws -> PlacemarkRef {
+        guard let localID, !localID.isEmpty else { return .none }
+        guard let placemarkStore, let row = try placemarkStore.fetchById(localID) else {
+            if PlacemarkClient.isRecordID(localID) { return .backend(localID) }
+            Log.sync.warning("placemark \(localID, privacy: .public) unknown locally, not sent")
+            return .unresolvable
+        }
+        if let backendID = row.backendId, !backendID.isEmpty { return .backend(backendID) }
+        guard row.countryISO.count == 2 else {
+            Log.sync.warning("placemark \(localID, privacy: .public) has no country, not sent")
+            return .unresolvable
+        }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        let client = placemarkClientFactory(endpoint, authProvider())
+        let source = Placemark.GeocodingSource(wire: row.geocodingSource)
+        do {
+            let remote = try await client.resolve(place: row.place, source: source)
+            try placemarkStore.setBackend(localID: localID, backendID: remote.id, owner: remote.owner)
+            Log.sync.info("placemark \(localID, privacy: .public) resolved to \(remote.id, privacy: .public)")
+            return .backend(remote.id)
+        } catch let SampleClientError.http(status, _) where status == 400 || status == 422 {
+            Log.sync.warning("placemark \(localID, privacy: .public) rejected (\(status, privacy: .public)), not sent")
+            return .unresolvable
+        }
+    }
+
+    private func localPlacemarkID(_ backendID: String) -> String {
+        ((try? placemarkStore?.localID(forBackendID: backendID)) ?? nil) ?? backendID
+    }
+
+    /// PUTs the complete local feature set of the sample. Returns
+    /// false on any failure (logged).
+    private func pushFeatures(localID: String, backendID: String) async -> Bool {
+        guard let featureStore else { return true }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return false }
+        let client = featuresClientFactory(endpoint, authProvider())
+        do {
+            let rows = try featureStore.all(sampleID: localID)
+            try await client.replaceFeatures(sampleBackendID: backendID, features: rows)
+            Log.sync.info("pushed \(rows.count, privacy: .public) features for sample \(backendID, privacy: .public)")
+            return true
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            Log.sync.warning("features push failed for sample \(backendID, privacy: .public): \(message)")
+            return false
+        }
+    }
+
+    private func makeLocationHydration() -> SampleLocationHydration? {
+        guard let placemarkStore, let featureStore else { return nil }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return nil }
+        let auth = authProvider()
+        return SampleLocationHydration(
+            samples: store,
+            placemarks: placemarkStore,
+            features: featureStore,
+            placemarkClient: placemarkClientFactory(endpoint, auth),
+            featuresClient: featuresClientFactory(endpoint, auth)
+        )
+    }
+
+    /// Another active (not parked) sample mutation for `localID`,
+    /// ignoring the ids in `excluding`.
+    private func hasActiveQueuedMutation(_ localID: String, excluding: Set<String>) -> Bool {
+        ((try? mutationsStore.fetch(entityType: .sample)) ?? []).contains {
+            $0.entityId == localID && !$0.isParked && !excluding.contains($0.id)
+        }
+    }
+
+    private func hasQueuedMutation(_ localID: String) -> Bool {
+        ((try? mutationsStore.fetch(entityType: .sample)) ?? []).contains { $0.entityId == localID }
+    }
+
+    static func createInput(_ s: LocalSample, location: SampleLocationFields) -> SampleCreateInput {
+        SampleCreateInput(
+            location: location,
+            collectedFrom: s.beginDate,
+            notes: s.notes.isEmpty ? nil : s.notes,
+            marked: s.marked,
+            code: s.sampleID,
+            clientUuid: s.id,
+            clientUpdatedAt: s.updatedAt,
+            timezone: s.timezone,
+            timezoneSource: s.timezoneSource,
+            collectingDay: s.collectingDay,
+            collectedTo: s.endDate,
+            isAllDay: s.isAllDay,
+            isRetrospective: s.isRetrospective
+        )
+    }
+
+    /// Server appended a conflict suffix → adopt its id as `sampleID`
+    /// and keep the sent id as `originalCode` (drives the hint). A
+    /// user edit of the ID while the request was in flight wins.
+    static func applyCodes(_ remote: Sample, sentCode: String, to row: inout LocalSample) {
+        guard row.sampleID == sentCode else { return }
+        if remote.sampleID != sentCode, !remote.sampleID.isEmpty {
+            row.sampleID = remote.sampleID
+            row.originalCode = remote.originalCode ?? sentCode
+        } else {
+            row.originalCode = remote.originalCode
         }
     }
 
@@ -407,6 +1110,35 @@ final class SyncRunner: ObservableObject {
     /// server-side fusion hook (R6.1) may merge this locality into an
     /// existing one afterwards — that's reconciled later via the
     /// remap-event stream.
+    /// Server-side delete of a locality the offline fusion created for
+    /// a new sample that was deleted again (`entityId` = backend id).
+    /// Waits while a sample delete is queued: localities dispatch
+    /// before samples, and the server sample must go first so deleting
+    /// the locality doesn't rewrite a still-existing sample. 404 = done.
+    private func executeLocalityDelete(_ mutation: PendingMutation) async {
+        guard let backendID = mutation.entityId, !backendID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+        let sampleDeleteQueued = ((try? mutationsStore.fetch(entityType: .sample)) ?? [])
+            .contains { $0.op == .delete && !$0.isParked }
+        guard !sampleDeleteQueued else { return }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !endpoint.isEmpty else { return }
+        let client = localityClientFactory(endpoint, authProvider())
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+            try await client.delete(id: backendID)
+            try? mutationsStore.dequeue(mutation.id)
+            Log.sync.info("locality deleted on server \(backendID, privacy: .public)")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("locality delete failed: \(message)")
+        }
+    }
+
     private func executeLocalityCreate(_ mutation: PendingMutation) async {
         guard let localitiesStore,
               let localId = mutation.entityId,
@@ -438,10 +1170,35 @@ final class SyncRunner: ObservableObject {
                 clientUpdatedAt: local.clientUpdatedAt
             ))
 
+            // Deleted locally while the POST was in flight (its new
+            // sample was deleted): the server now has a locality nobody
+            // owns — delete it there too.
+            guard (try? localitiesStore.fetchById(local.id)) != nil else {
+                do {
+                    _ = try mutationsStore.enqueue(
+                        entityType: .locality, entityId: created.id, op: .delete, payload: Data()
+                    )
+                } catch {
+                    Log.sync.error("queueing delete for orphaned locality failed: \(error.localizedDescription)")
+                }
+                try? mutationsStore.dequeue(mutation.id)
+                return
+            }
+
             // Reconcile UUID → backend id: insert the backend row,
-            // re-point samples, delete the UUID row.
+            // re-point samples, delete the UUID row. Samples that were
+            // already pushed went out without this locality (a local
+            // UUID can't be referenced) — queue an update for them.
+            let pushedSamples = ((try? store.fetchByLocality(local.id)) ?? [])
+                .filter { !($0.backendId ?? "").isEmpty }
             try localitiesStore.upsertOne(created)
             try localitiesStore.applyRemap(oldID: local.id, newID: created.id)
+            try localitiesStore.moveOrigin(from: local.id, to: created.id)
+            for sample in pushedSamples {
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: sample.id, op: .update, payload: Data()
+                )
+            }
             try? mutationsStore.dequeue(mutation.id)
             onLocalityChanged()
         } catch {
@@ -474,7 +1231,9 @@ final class SyncRunner: ObservableObject {
             Log.sync.error("outbox scan failed: \(error.localizedDescription)")
             return
         }
-        for sample in pending where !outboxed.contains(sample.id) {
+        // Rows with a backend id are on the server; their changes travel
+        // as updates (a failed update keeps its own outbox row).
+        for sample in pending where !outboxed.contains(sample.id) && (sample.backendId ?? "").isEmpty {
             do {
                 _ = try mutationsStore.enqueue(
                     entityType: .sample,
@@ -541,22 +1300,67 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    private func pollEnrichment(id: String, sample: LocalSample, via client: SamplePushClient) async {
-        var working = sample
-        for _ in 0 ..< 6 {
-            try? await Task.sleep(for: enrichmentPollInterval)
-            if let s = try? await client.fetchSample(id: id) {
-                let locality = s.adminUnits?.locality
-                let mtbSheet = s.mtb?.sheetNumber
-                if locality != nil || mtbSheet != nil {
-                    working.adminUnitsLocality = locality
-                    working.adminUnitsCountry = s.adminUnits?.country
-                    working.mtbSheetNumber = mtbSheet
-                    working.mtbSheetName = s.mtb?.sheetName
-                    try? store.update(working)
-                    return
-                }
-            }
+    /// Registers a sample for the enrichment poll at the end of the
+    /// pass (pushed with status ≠ backend_service, or after a
+    /// coordinate change).
+    private func awaitEnrichment(localID: String, backendID: String, baseVersion: Int) {
+        if let index = enrichmentTargets.firstIndex(where: { $0.localID == localID }) {
+            enrichmentTargets[index] = EnrichmentTarget(
+                localID: localID, backendID: backendID,
+                baseVersion: max(enrichmentTargets[index].baseVersion, baseVersion)
+            )
+        } else {
+            enrichmentTargets.append(EnrichmentTarget(localID: localID, backendID: backendID,
+                                                      baseVersion: baseVersion))
         }
+    }
+
+    private func raiseEnrichmentBase(localID: String, to version: Int) {
+        guard let index = enrichmentTargets.firstIndex(where: { $0.localID == localID }) else { return }
+        enrichmentTargets[index].baseVersion = max(enrichmentTargets[index].baseVersion, version)
+    }
+
+    /// Waits for the backend enrichment of every sample registered in
+    /// this pass, in one loop: up to `enrichmentPollRounds` rounds of
+    /// one sleep plus one GET per sample still waiting, and never
+    /// longer than `enrichmentPollBudget` in total. Samples still
+    /// unenriched afterwards are left to the next hydration pull.
+    private func pollPendingEnrichment(via client: SamplePushClient) async {
+        var waiting = enrichmentTargets
+        enrichmentTargets = []
+        guard !waiting.isEmpty else { return }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: enrichmentPollBudget)
+        for _ in 0 ..< Self.enrichmentPollRounds {
+            guard !waiting.isEmpty, clock.now < deadline else { break }
+            try? await Task.sleep(for: enrichmentPollInterval)
+            var next: [EnrichmentTarget] = []
+            for target in waiting {
+                if clock.now < deadline, await adoptEnrichment(target, via: client) { continue }
+                next.append(target)
+            }
+            waiting = next
+        }
+        if !waiting.isEmpty {
+            Log.sync.info("enrichment poll ended with \(waiting.count, privacy: .public) samples pending, left to hydration")
+        }
+    }
+
+    /// One poll of one sample. Done (true) when the server reports
+    /// `backend_service` or a newer version (the enricher bumps it), or
+    /// when the local row is gone or points elsewhere. Adopts the
+    /// snapshot via `adoptServer` onto the row as it is now (version
+    /// only forward; place data unless the local state is better),
+    /// then pulls placemark and features.
+    private func adoptEnrichment(_ target: EnrichmentTarget, via client: SamplePushClient) async -> Bool {
+        guard let s = try? await client.fetchSample(id: target.backendID) else { return false }
+        guard s.locationStatus == .backendService || s.version > target.baseVersion else { return false }
+        guard var fresh = try? store.fetchById(target.localID), fresh.backendId == target.backendID else {
+            return true
+        }
+        adoptServer(s, into: &fresh)
+        try? store.update(fresh)
+        await makeLocationHydration()?.hydrate([s])
+        return true
     }
 }

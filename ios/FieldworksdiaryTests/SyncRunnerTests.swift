@@ -15,7 +15,7 @@ final class SyncRunnerTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         database = try Database(inMemory: ())
-        store = LocalSampleStore(database: database, userId: "user-a", cutoffHour: 5, timeZone: berlin)
+        store = LocalSampleStore(database: database, userId: "user-a", timeZone: berlin, settings: { SampleIDSettings(cutoffHour: 5) })
         mutations = PendingMutationsStore(database: database)
     }
 
@@ -37,8 +37,7 @@ final class SyncRunnerTests: XCTestCase {
         mock.createResponse = remoteSample(
             id: "backend-1",
             code: local.sampleID,
-            fieldtrip: "ft-1",
-            locality: "Würzburg"
+            fieldtrip: "ft-1"
         )
 
         let onSyncedExpectation = expectation(description: "onSampleSynced fired")
@@ -55,7 +54,6 @@ final class SyncRunnerTests: XCTestCase {
         XCTAssertEqual(stored.syncStatus, .synced)
         XCTAssertEqual(stored.backendId, "backend-1")
         XCTAssertEqual(stored.fieldtrip, "ft-1")
-        XCTAssertEqual(stored.adminUnitsLocality, "Würzburg")
         XCTAssertEqual(notifiedFieldtripID, "ft-1")
     }
 
@@ -79,13 +77,13 @@ final class SyncRunnerTests: XCTestCase {
         await runUntilQuiescent(runner)
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.sampleID, "260519/1", "Lokaler Code (= auf Röhrchen) bleibt")
-        XCTAssertEqual(stored.backendCode, "260519/7", "Server-Code separat festgehalten")
+        XCTAssertEqual(stored.sampleID, "260519/7", "Server-ID wird übernommen")
         XCTAssertEqual(stored.originalCode, "260519/1", "originalCode dokumentiert den Konflikt")
+        XCTAssertTrue(stored.hasIdConflict)
         XCTAssertEqual(stored.syncStatus, .synced)
     }
 
-    func testPush_ServerHonorsCode_DoesNotSetBackendCode() async throws {
+    func testPush_ServerHonorsCode_NoConflict() async throws {
         let local = try store.createLocal(
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
@@ -101,7 +99,7 @@ final class SyncRunnerTests: XCTestCase {
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
         XCTAssertEqual(stored.sampleID, local.sampleID)
-        XCTAssertNil(stored.backendCode, "Bei Honorierung kein backendCode")
+        XCTAssertFalse(stored.hasIdConflict)
     }
 
     // MARK: - Failure
@@ -126,7 +124,7 @@ final class SyncRunnerTests: XCTestCase {
 
     // MARK: - Enrichment-Poll
 
-    func testPollEnrichment_AppliesLocalityWhenServerReturnsIt() async throws {
+    func testPollEnrichment_AppliesFlatMTBWhenServerEnriched() async throws {
         let local = try store.createLocal(
             lat: 49.79, lon: 9.94,
             collectedFrom: date(2026, 5, 19, 14)
@@ -137,8 +135,9 @@ final class SyncRunnerTests: XCTestCase {
             id: "backend-1",
             code: local.sampleID,
             fieldtrip: "ft-1",
-            locality: "Würzburg",
-            mtbSheet: "6225"
+            mtbSheet: "6225",
+            locationStatus: "backend_service",
+            version: 2
         )
         let runner = makeRunner(mock: mock)
         await runUntilQuiescent(runner)
@@ -147,8 +146,92 @@ final class SyncRunnerTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
 
         let stored = try XCTUnwrap(store.fetchById(local.id))
-        XCTAssertEqual(stored.adminUnitsLocality, "Würzburg")
         XCTAssertEqual(stored.mtbSheetNumber, "6225")
+        XCTAssertEqual(stored.mtbSheetName, "Test")
+        XCTAssertEqual(stored.mtbQuadrant, 1)
+        XCTAssertEqual(stored.locationStatus, .backendService)
+        XCTAssertEqual(stored.version, 2, "enrichment bumps version; local follows so the next PATCH doesn't 409")
+    }
+
+    func testPush_SendsElevationAndRealLocationSource() async throws {
+        let local = try store.createLocal(
+            lat: 49.79, lon: 9.94, elevation: 312,
+            collectedFrom: date(2026, 5, 19, 14),
+            locationSource: .user
+        )
+        let mock = MockClient()
+        mock.createResponse = remoteSample(id: "backend-1", code: local.sampleID, fieldtrip: "ft-1")
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        let sent = try XCTUnwrap(mock.lastCreateInput)
+        XCTAssertEqual(sent.location.elevation, 312)
+        XCTAssertEqual(sent.location.elevationSource, .locationService)
+        XCTAssertEqual(sent.location.locationSource, .user, "manual coordinate goes out as `user`")
+        XCTAssertEqual(sent.location.locationStatus, .pending)
+        let body = sent.location.wireBody
+        XCTAssertEqual(body["elevation"] as? Double, 312)
+        XCTAssertNil(body["altitude"], "samples use `elevation` since Phase O")
+        XCTAssertEqual(body["elevation_source"] as? String, "location_service")
+        XCTAssertEqual(body["location_source"] as? String, "user")
+        XCTAssertEqual(body["location_status"] as? String, "pending")
+    }
+
+    func testDecode_ServerSampleWithoutEnrichment_HasNoGeo() throws {
+        let sample = remoteSample(id: "b", code: "260519/1", fieldtrip: "ft")
+        XCTAssertNil(sample.geo, "PocketBase zeros must not count as enrichment")
+        XCTAssertNil(sample.elevation)
+        XCTAssertNil(sample.locationStatus)
+    }
+
+    // MARK: - Delete
+
+    func testDelete_PushedSample_RunnerCallsDeleteAndDequeues() async throws {
+        var local = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
+        local.backendId = "backend-1"
+        local.syncStatus = .synced
+        try store.update(local)
+        try store.deleteSample(id: local.id, mutationsStore: mutations)
+
+        let mock = MockClient()
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertEqual(mock.deletedIDs, ["backend-1"])
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
+    func testDelete_404CountsAsDone() async throws {
+        _ = try mutations.enqueue(entityType: .sample, entityId: "gone-1", op: .delete, payload: Data())
+        let mock = MockClient()
+        mock.deleteError = SampleClientError.http(status: 404, body: "")
+
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertEqual(mock.deletedIDs, ["gone-1"])
+        XCTAssertEqual(try mutations.count(), 0)
+    }
+
+    func testDelete_ServerError_KeepsMutationForRetry() async throws {
+        _ = try mutations.enqueue(entityType: .sample, entityId: "b-2", op: .delete, payload: Data())
+        let mock = MockClient()
+        mock.deleteError = SampleClientError.http(status: 500, body: "")
+
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        let queued = try mutations.fetchAllOrdered()
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertEqual(queued.first?.attempts, 1)
+    }
+
+    func testDelete_LocalOnlySample_NothingReachesServer() async throws {
+        let local = try store.createLocal(lat: 49.79, lon: 9.94, collectedFrom: date(2026, 5, 19, 14))
+        _ = try mutations.enqueue(entityType: .sample, entityId: local.id, op: .create, payload: Data())
+        try store.deleteSample(id: local.id, mutationsStore: mutations)
+
+        let mock = MockClient()
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertNil(mock.lastCreateInput, "no ghost create")
+        XCTAssertTrue(mock.deletedIDs.isEmpty)
     }
 
     // MARK: - helpers
@@ -204,7 +287,9 @@ final class SyncRunnerTests: XCTestCase {
         originalCode: String? = nil,
         fieldtrip: String,
         locality: String? = nil,
-        mtbSheet: String? = nil
+        mtbSheet: String? = nil,
+        locationStatus: String? = nil,
+        version: Int = 1
     ) -> Sample {
         var dict: [String: Any] = [
             "id": id,
@@ -215,16 +300,23 @@ final class SyncRunnerTests: XCTestCase {
             "begin_date": "2026-05-19T14:00:00.000Z",
             "client_updated_at": "2026-05-19T14:00:00.000Z",
             "location_source": "location_service",
-            "time_zone": "Europe/Berlin",
-            "version": 1
+            "timezone": "Europe/Berlin",
+            "version": version,
+            // PocketBase returns unset columns as zero values.
+            "elevation": 0,
+            "elevation_source": "",
+            "location_status": locationStatus ?? "",
+            "placemark": "",
+            "mtb_sheet_number": mtbSheet ?? "",
+            "mtb_sheet_name": mtbSheet == nil ? "" : "Test",
+            "mtb_quadrant": mtbSheet == nil ? 0 : 1,
+            "slope_deg": 0,
+            "aspect_deg": 0,
+            "terrain_flat": false,
+            "bearing_inside": false
         ]
         if let originalCode { dict["original_code"] = originalCode }
-        if let locality {
-            dict["admin_units"] = ["locality": locality, "country": "DE"]
-        }
-        if let mtbSheet {
-            dict["mtb"] = ["sheet_number": mtbSheet, "sheet_name": "Test", "quadrant": 1, "found": true]
-        }
+        if let locality { dict["locality"] = locality }
         // swiftlint:disable:next force_try
         let data = try! JSONSerialization.data(withJSONObject: dict)
         // swiftlint:disable:next force_try
@@ -241,8 +333,10 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
     var createError: Error?
     var updateResponse: Sample?
     var updateError: Error?
+    var lastCreateInput: SampleCreateInput?
 
-    func createSample(_: SampleCreateInput) async throws -> Sample {
+    func createSample(_ input: SampleCreateInput) async throws -> Sample {
+        lastCreateInput = input
         if let createError { throw createError }
         // swiftlint:disable:next force_unwrapping
         return createResponse!
@@ -258,13 +352,22 @@ private final class MockClient: SamplePushClient, @unchecked Sendable {
         // swiftlint:disable:next force_unwrapping
         return fetchResponse ?? createResponse!
     }
+
+    var deletedIDs: [String] = []
+    var deleteError: Error?
+
+    func deleteSample(id: String) async throws {
+        deletedIDs.append(id)
+        if let deleteError { throw deleteError }
+    }
 }
 
 // Test-Hook: erlaubt zu prüfen, ob ein laufender Pass abgeschlossen
-// ist, ohne private Internals offenzulegen.
+// ist. `inFlight` allein reicht nicht: zwischen den Runden des
+// Enrichment-Polls läuft kein HTTP-Call, der Pass ist aber noch aktiv.
 @MainActor
 extension SyncRunner {
     var isIdleForTest: Bool {
-        inFlight == 0
+        inFlight == 0 && passTask == nil
     }
 }

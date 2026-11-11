@@ -13,6 +13,7 @@ struct MarkedSamplesView: View {
 struct MarkedSamplesScreen: View {
     @EnvironmentObject var container: AppContainer
     @State private var samples: [LocalSample] = []
+    @State private var placemarks: [String: LocalPlacemark] = [:]
 
     var body: some View {
         Group {
@@ -38,31 +39,17 @@ struct MarkedSamplesScreen: View {
     }
 
     private func row(for sample: LocalSample) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "star.fill")
-                .foregroundStyle(.yellow)
-                .accessibilityHidden(true)
-            Text(sample.backendCode ?? sample.sampleID)
-                .font(.body.monospaced().weight(.semibold))
-            VStack(alignment: .leading, spacing: 2) {
-                if let locality = sample.adminUnitsLocality {
-                    Text(locality).font(.subheadline)
-                }
-                if !sample.notes.isEmpty {
-                    Text(sample.notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Markierte Probe \(sample.backendCode ?? sample.sampleID)")
+        SampleListRow(
+            code: sample.sampleID,
+            placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place),
+            notes: sample.notes,
+            isMarked: true,
+            hasIdConflict: sample.hasIdConflict
+        )
     }
 
     private func reload() {
         samples = (try? container.store.fetchMarked()) ?? []
+        placemarks = (try? container.placemarksStore.fetchAllByID()) ?? [:]
     }
 }

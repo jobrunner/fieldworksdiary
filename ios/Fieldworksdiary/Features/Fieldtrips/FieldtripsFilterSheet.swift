@@ -3,7 +3,8 @@ import SwiftUI
 struct FieldtripsFilterSheet: View {
     @Binding var filter: FieldtripsFilter
 
-    let countries: [String] // known set from local data
+    /// ISO codes of the countries the local samples are in.
+    let countries: [String]
     @Environment(\.dismiss) private var dismiss
 
     @State private var dateModeTag: DateModeTag = .off
@@ -14,9 +15,12 @@ struct FieldtripsFilterSheet: View {
     @State private var seasonalToMonth = 5
     @State private var seasonalToDay = 15
     @State private var country: String = ""
+    @State private var placeQuery: String = ""
     @State private var requireNotes = false
     @State private var requireCoordinate = false
     @State private var fieldtripID: String = ""
+    /// Label column of the seasonal month/day rows.
+    @ScaledMetric(relativeTo: .body) private var monthDayLabelWidth: CGFloat = 40
 
     enum DateModeTag: String, CaseIterable, Identifiable {
         case off = "Aus"
@@ -43,7 +47,7 @@ struct FieldtripsFilterSheet: View {
                         DatePicker("Von", selection: $absoluteFrom, displayedComponents: .date)
                         DatePicker("Bis", selection: $absoluteTo, displayedComponents: .date)
                     case .seasonal:
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
                             monthDayRow("Von", month: $seasonalFromMonth, day: $seasonalFromDay)
                             monthDayRow("Bis", month: $seasonalToMonth, day: $seasonalToDay)
                             Text(
@@ -57,18 +61,26 @@ struct FieldtripsFilterSheet: View {
                         }
                     }
                 }
-                Section("Region") {
+                Section {
                     if countries.isEmpty {
-                        Text("Keine Länder im lokalen Datenbestand.")
+                        Text("Keine Länder in den Ortsangaben der Proben.")
                             .foregroundStyle(.secondary)
                     } else {
                         Picker("Land", selection: $country) {
                             Text("Alle").tag("")
-                            ForEach(countries, id: \.self) { c in
-                                Text(c).tag(c)
+                            ForEach(countries, id: \.self) { iso in
+                                Text(PlaceDisplay.countryName(iso)).tag(iso)
                             }
                         }
                     }
+                    TextField("Ort", text: $placeQuery, prompt: Text("Ort enthält …"))
+                        .autocorrectionDisabled()
+                        .accessibilityLabel("Ort")
+                        .accessibilityHint("Sucht in allen Ortsangaben der Proben, z. B. Gemeinde, Kreis oder Insel.")
+                } header: {
+                    Text("Region")
+                } footer: {
+                    Text("Eine Exkursion passt, wenn eine ihrer Proben passt.")
                 }
                 Section("Eigenschaften") {
                     Toggle("Nur mit Notizen", isOn: $requireNotes)
@@ -102,7 +114,7 @@ struct FieldtripsFilterSheet: View {
     private func monthDayRow(_ label: String, month: Binding<Int>, day: Binding<Int>) -> some View {
         HStack {
             Text(label)
-                .frame(width: 40, alignment: .leading)
+                .frame(minWidth: monthDayLabelWidth, alignment: .leading)
             Picker("Monat", selection: month) {
                 ForEach(1 ... 12, id: \.self) { Text(germanMonth($0)).tag($0) }
             }
@@ -138,6 +150,7 @@ struct FieldtripsFilterSheet: View {
             seasonalToDay = td
         }
         country = filter.country ?? ""
+        placeQuery = filter.placeQuery ?? ""
         requireNotes = filter.requireNotes
         requireCoordinate = filter.requireCoordinate
         fieldtripID = filter.fieldtripID ?? ""
@@ -155,6 +168,8 @@ struct FieldtripsFilterSheet: View {
             filter.date = .seasonal(fromDOY: fromDOY, toDOY: toDOY)
         }
         filter.country = country.isEmpty ? nil : country
+        let trimmedQuery = placeQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        filter.placeQuery = trimmedQuery.isEmpty ? nil : trimmedQuery
         filter.requireNotes = requireNotes
         filter.requireCoordinate = requireCoordinate
         let trimmedID = fieldtripID.trimmingCharacters(in: .whitespacesAndNewlines)

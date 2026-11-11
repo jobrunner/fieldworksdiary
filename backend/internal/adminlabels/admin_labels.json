@@ -1,0 +1,2451 @@
+{
+  "version": 1,
+  "countries": {
+    "AD": {
+      "name": "Andorra",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "País"
+        },
+        "7": {
+          "column": "admin_parish",
+          "term": "Parròquia"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipi"
+        }
+      }
+    },
+    "AE": {
+      "name": "United Arab Emirates",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Imarah"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Mintaqah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Wilayah"
+        },
+        "7": {
+          "column": "admin_other",
+          "term": "Mintaqah fariyah"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Baladiyah"
+        }
+      }
+    },
+    "AL": {
+      "name": "Albania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Lagje"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Shtet"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Rajon statistikor"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Qark"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Bashki"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Njësi administrative"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Njësi bashkiake"
+        }
+      }
+    },
+    "AM": {
+      "name": "Armenia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Bnakavayr"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Petutyun"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Marz"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Hamaynk"
+        },
+        "6": {
+          "column": null,
+          "term": "Kaghak"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Gyugh"
+        },
+        "8": {
+          "column": null,
+          "term": "Tagh"
+        }
+      }
+    },
+    "AT": {
+      "name": "Austria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Katastralgemeinde"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Staat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Bundesland"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Bezirk"
+        },
+        "7": {
+          "column": null,
+          "term": "Expositur"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Gemeindebezirk"
+        }
+      }
+    },
+    "AX": {
+      "name": "Åland Islands",
+      "reviewed": false,
+      "levels": {
+        "3": {
+          "column": "admin_region",
+          "term": "Självstyrt område"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Landskap"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Ekonomisk region"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Kommun"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Stadsdel"
+        }
+      }
+    },
+    "AZ": {
+      "name": "Azerbaijan",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dövlət"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "İqtisadi rayon"
+        },
+        "5": {
+          "column": "admin_state",
+          "term": "Rayon"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Rayon"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Bələdiyyə"
+        }
+      }
+    },
+    "BA": {
+      "name": "Bosnia and Herzegovina",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mjesna zajednica"
+        },
+        "11": {
+          "column": null,
+          "term": "Mjesna zajednica"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Entitet"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Kanton"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Grad"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Općina"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Mjesna zajednica"
+        },
+        "9": {
+          "column": null,
+          "term": "Naselje"
+        }
+      }
+    },
+    "BE": {
+      "name": "Belgium",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Wijk"
+        },
+        "11": {
+          "column": null,
+          "term": "Buurt"
+        },
+        "12": {
+          "column": null,
+          "term": "Statistische sector"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Staat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Gewest"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provincie"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Arrondissement"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeente"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Deelgemeente"
+        }
+      }
+    },
+    "BG": {
+      "name": "Bulgaria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mahala"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Darzhava"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Oblast"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Obshtina"
+        },
+        "6": {
+          "column": "admin_borough",
+          "term": "Rayon"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Kmetstvo"
+        },
+        "8": {
+          "column": "admin_other",
+          "term": "Zemlishte"
+        },
+        "9": {
+          "column": null,
+          "term": "Kvartal"
+        }
+      }
+    },
+    "BH": {
+      "name": "Bahrain",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mujamma"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Baladiyah"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        }
+      }
+    },
+    "BY": {
+      "name": "Belarus",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Naselyonny punkt"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Gosudarstvo"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Oblast"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Rayon"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Selsovet"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Rayon goroda"
+        }
+      }
+    },
+    "CH": {
+      "name": "Switzerland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Quartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Staat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Kanton"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Verwaltungsregion"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Bezirk"
+        },
+        "7": {
+          "column": null,
+          "term": "Kreis"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadtkreis"
+        }
+      }
+    },
+    "CY": {
+      "name": "Cyprus",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Oikismos"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Kratos"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Periochi"
+        },
+        "4": {
+          "column": null,
+          "term": "Eparchia"
+        },
+        "5": {
+          "column": "admin_state",
+          "term": "Eparchia"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Dimos"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Dimotiko diamerisma"
+        },
+        "8": {
+          "column": null,
+          "term": "Koinotita"
+        },
+        "9": {
+          "column": null,
+          "term": "Enoria"
+        }
+      }
+    },
+    "CZ": {
+      "name": "Czechia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Místní výbor"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stát"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Region soudržnosti"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Kraj"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Okres"
+        },
+        "6": {
+          "column": null,
+          "term": "Správní obvod ORP"
+        },
+        "7": {
+          "column": null,
+          "term": "Správní obvod POÚ"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Obec"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Městská část"
+        }
+      }
+    },
+    "DE": {
+      "name": "Germany",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Ortsteil"
+        },
+        "11": {
+          "column": null,
+          "term": "Flur"
+        },
+        "12": {
+          "column": null,
+          "term": "Baublock"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Staat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Bundesland"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Regierungsbezirk"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Landkreis"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Verwaltungsgemeinschaft"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadtbezirk"
+        }
+      }
+    },
+    "DK": {
+      "name": "Denmark",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Bydel"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Region"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommune"
+        },
+        "8": {
+          "column": null,
+          "term": "Kommune"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Statsadministreret område"
+        }
+      }
+    },
+    "DZ": {
+      "name": "Algeria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        },
+        "11": {
+          "column": null,
+          "term": "Mahalla"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Wilaya"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Daïra"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "EE": {
+      "name": "Estonia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Asum"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Riik"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Maakond"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Vald"
+        },
+        "8": {
+          "column": null,
+          "term": "Linn"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Asustusüksus"
+        }
+      }
+    },
+    "EG": {
+      "name": "Egypt",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Hayy"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Markaz"
+        },
+        "7": {
+          "column": null,
+          "term": "Qism"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Madinah"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Qaryah"
+        }
+      }
+    },
+    "EH": {
+      "name": "Western Sahara",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Territoire"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Province"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Cercle"
+        },
+        "7": {
+          "column": null,
+          "term": "Caïdat"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "ES": {
+      "name": "Spain",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Barrio"
+        },
+        "11": {
+          "column": null,
+          "term": "Entidad singular"
+        },
+        "12": {
+          "column": "admin_other",
+          "term": "Paraje"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "País"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Agrupación de comunidades"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Comunidad autónoma"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provincia"
+        },
+        "7": {
+          "column": "admin_county",
+          "term": "Comarca"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Municipio"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Distrito"
+        }
+      }
+    },
+    "FI": {
+      "name": "Finland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Kaupunginosa"
+        },
+        "11": {
+          "column": null,
+          "term": "Osa-alue"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Valtio"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Suuralue"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Maakunta"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Seutukunta"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Kunta"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Kylä"
+        }
+      }
+    },
+    "FO": {
+      "name": "Faroe Islands",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Land"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Sýsla"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommuna"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Bygd"
+        }
+      }
+    },
+    "FR": {
+      "name": "France",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Quartier"
+        },
+        "11": {
+          "column": null,
+          "term": "Sous-quartier"
+        },
+        "12": {
+          "column": null,
+          "term": "Lieu-dit"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Territoire"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Région"
+        },
+        "5": {
+          "column": null,
+          "term": "Circonscription départementale"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Département"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Arrondissement"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Commune déléguée"
+        }
+      }
+    },
+    "GB": {
+      "name": "United Kingdom",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_parish",
+          "term": "Civil parish"
+        },
+        "11": {
+          "column": null,
+          "term": "Parish ward"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Sovereign state"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Country"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Combined authority"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "County"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "District"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "District"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Electoral division"
+        }
+      }
+    },
+    "GE": {
+      "name": "Georgia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Raioni"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Sakhelmtsipo"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Teritoria"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Mkhare"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Munitsipaliteti"
+        },
+        "7": {
+          "column": null,
+          "term": "Dasakhleba"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Kalaki"
+        }
+      }
+    },
+    "GG": {
+      "name": "Guernsey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Canton"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Bailiwick"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Island"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parish"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Vingtaine"
+        }
+      }
+    },
+    "GI": {
+      "name": "Gibraltar",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Territory"
+        },
+        "4": {
+          "column": "admin_other",
+          "term": "City"
+        }
+      }
+    },
+    "GR": {
+      "name": "Greece",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Oikismos"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Kratos"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Aftonomi politeia"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Apokentromeni dioikisi"
+        },
+        "5": {
+          "column": "admin_state",
+          "term": "Perifereia"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Perifereiaki enotita"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Dimos"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Dimotiki enotita"
+        },
+        "9": {
+          "column": null,
+          "term": "Koinotita"
+        }
+      }
+    },
+    "HR": {
+      "name": "Croatia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mjesni odbor"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Županija"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Općina"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Naselje"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Mjesni odbor"
+        }
+      }
+    },
+    "HU": {
+      "name": "Hungary",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Városrész"
+        },
+        "11": {
+          "column": null,
+          "term": "Lakótelep"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ország"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Országrész"
+        },
+        "5": {
+          "column": null,
+          "term": "Régió"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Megye"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Járás"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Település"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Kerület"
+        }
+      }
+    },
+    "IE": {
+      "name": "Ireland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Townland"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "State"
+        },
+        "4": {
+          "column": null,
+          "term": "Jurisdiction"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Province"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "County"
+        },
+        "7": {
+          "column": null,
+          "term": "Local authority"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Town"
+        },
+        "9": {
+          "column": "admin_district",
+          "term": "Electoral division"
+        }
+      }
+    },
+    "IL": {
+      "name": "Israel",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Shkhuna"
+        },
+        "11": {
+          "column": null,
+          "term": "Tat-shkhuna"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Medina"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Mahoz"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Nafa"
+        },
+        "6": {
+          "column": "admin_region",
+          "term": "Ezor tiv'i"
+        },
+        "7": {
+          "column": null,
+          "term": "Metropolin"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Rashut mekomit"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Rova"
+        }
+      }
+    },
+    "IM": {
+      "name": "Isle of Man",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Crown dependency"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Sheading"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parish"
+        }
+      }
+    },
+    "IQ": {
+      "name": "Iraq",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Iqlim"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "5": {
+          "column": "admin_other",
+          "term": "Amanah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Qada"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Nahiyah"
+        },
+        "8": {
+          "column": "admin_borough",
+          "term": "Hayy"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Mahalla"
+        }
+      }
+    },
+    "IR": {
+      "name": "Iran",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Nahiye"
+        },
+        "11": {
+          "column": null,
+          "term": "Mahalle"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Keshvar"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Ostan"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Shahrestan"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Bakhsh"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Dehestan"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Rusta"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Mantaqe"
+        }
+      }
+    },
+    "IS": {
+      "name": "Iceland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Hverfishluti"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Ríki"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Landshluti"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Sveitarfélag"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Byggðarlag"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Hverfi"
+        }
+      }
+    },
+    "IT": {
+      "name": "Italy",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Circoscrizione"
+        },
+        "11": {
+          "column": "admin_submunicipality",
+          "term": "Frazione"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stato"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Regione"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Provincia"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Unione di comuni"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Comune"
+        },
+        "9": {
+          "column": null,
+          "term": "Zona"
+        }
+      }
+    },
+    "JE": {
+      "name": "Jersey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Canton"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Bailiwick"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Parish"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Vingtaine"
+        }
+      }
+    },
+    "JO": {
+      "name": "Jordan",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Liwa"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Qada"
+        },
+        "7": {
+          "column": null,
+          "term": "Nahiyah"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Baladiyah"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Hayy"
+        }
+      }
+    },
+    "KW": {
+      "name": "Kuwait",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Mintaqah"
+        },
+        "7": {
+          "column": "admin_submunicipality",
+          "term": "Qit'a"
+        }
+      }
+    },
+    "LI": {
+      "name": "Liechtenstein",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Staat"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Wahlkreis"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeinde"
+        }
+      }
+    },
+    "LT": {
+      "name": "Lithuania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Miesto dalis"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Valstybė"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Apskritis"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Savivaldybė"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Seniūnija"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Kaimas"
+        }
+      }
+    },
+    "LU": {
+      "name": "Luxembourg",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Quartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Canton"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Section"
+        }
+      }
+    },
+    "LV": {
+      "name": "Latvia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Priekšpilsēta"
+        },
+        "11": {
+          "column": null,
+          "term": "Ciems"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Valsts"
+        },
+        "5": {
+          "column": "admin_municipality",
+          "term": "Novads"
+        },
+        "7": {
+          "column": null,
+          "term": "Pilsēta"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Pagasts"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Ciems"
+        }
+      }
+    },
+    "LY": {
+      "name": "Libya",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Shabiyah"
+        }
+      }
+    },
+    "MA": {
+      "name": "Morocco",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Arrondissement"
+        },
+        "11": {
+          "column": "admin_submunicipality",
+          "term": "Quartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Région"
+        },
+        "5": {
+          "column": "admin_province",
+          "term": "Province"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Cercle"
+        },
+        "7": {
+          "column": null,
+          "term": "Caïdat"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        },
+        "9": {
+          "column": null,
+          "term": "Préfecture d'arrondissements"
+        }
+      }
+    },
+    "MC": {
+      "name": "Monaco",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Quartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Principauté"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "MD": {
+      "name": "Moldova",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Cartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Teritoriu"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Raion"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Raion"
+        },
+        "6": {
+          "column": null,
+          "term": "Municipiu"
+        },
+        "7": {
+          "column": "admin_borough",
+          "term": "Sector"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Comună"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Localitate"
+        }
+      }
+    },
+    "ME": {
+      "name": "Montenegro",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Opština"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Naselje"
+        },
+        "9": {
+          "column": null,
+          "term": "Mjesna zajednica"
+        }
+      }
+    },
+    "MK": {
+      "name": "North Macedonia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Maalo"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Statistički region"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Grad"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Opština"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Naseleno mesto"
+        },
+        "9": {
+          "column": null,
+          "term": "Naselba"
+        }
+      }
+    },
+    "MT": {
+      "name": "Malta",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Żona"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "6": {
+          "column": "admin_region",
+          "term": "Gżira"
+        },
+        "7": {
+          "column": "admin_state",
+          "term": "Reġjun"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Lokalità"
+        }
+      }
+    },
+    "NE": {
+      "name": "Niger",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Région"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Département"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Commune"
+        }
+      }
+    },
+    "NL": {
+      "name": "Netherlands",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Woonplaats"
+        },
+        "12": {
+          "column": null,
+          "term": "Buurt"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Koninkrijk"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Land"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Provincie"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Gemeente"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Enclave"
+        }
+      }
+    },
+    "NO": {
+      "name": "Norway",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Fylke"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommune"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Bydel"
+        }
+      }
+    },
+    "OM": {
+      "name": "Oman",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Mujamma"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Wilayah"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Qaryah"
+        }
+      }
+    },
+    "PL": {
+      "name": "Poland",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Przysiółek"
+        },
+        "11": {
+          "column": null,
+          "term": "Osiedle"
+        },
+        "12": {
+          "column": null,
+          "term": "Osiedle"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Państwo"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Województwo"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Metropolia"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Powiat"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Gmina"
+        },
+        "8": {
+          "column": null,
+          "term": "Miejscowość"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Dzielnica"
+        }
+      }
+    },
+    "PS": {
+      "name": "Palestinian Territory",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Mintaqah"
+        },
+        "6": {
+          "column": null,
+          "term": "Qada"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Baladiyah"
+        },
+        "9": {
+          "column": null,
+          "term": "Majlis qarawi"
+        }
+      }
+    },
+    "PT": {
+      "name": "Portugal",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "País"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Região autónoma"
+        },
+        "6": {
+          "column": "admin_state",
+          "term": "Distrito"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Município"
+        },
+        "8": {
+          "column": "admin_parish",
+          "term": "Freguesia"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Localidade"
+        }
+      }
+    },
+    "QA": {
+      "name": "Qatar",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Mintaqah"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Baladiyah"
+        }
+      }
+    },
+    "RO": {
+      "name": "Romania",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Cartier"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Județ"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Regiune de dezvoltare"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Zonă metropolitană"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Comună"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Sat"
+        }
+      }
+    },
+    "RS": {
+      "name": "Serbia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mesna zajednica"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Pokrajina"
+        },
+        "5": {
+          "column": "admin_region",
+          "term": "Region"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Okrug"
+        },
+        "7": {
+          "column": null,
+          "term": "Grad"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Opština"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Naselje"
+        }
+      }
+    },
+    "RU": {
+      "name": "Russia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Naselyonny punkt"
+        },
+        "11": {
+          "column": null,
+          "term": "Okrug"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Gosudarstvo"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Federalny okrug"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Oblast"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Okrug"
+        },
+        "6": {
+          "column": "admin_county",
+          "term": "Rayon"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Poseleniye"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Rayon goroda"
+        }
+      }
+    },
+    "SA": {
+      "name": "Saudi Arabia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        },
+        "11": {
+          "column": null,
+          "term": "Mahalla"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "3": {
+          "column": "admin_other",
+          "term": "Haram"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Mintaqah"
+        },
+        "6": {
+          "column": "admin_province",
+          "term": "Muhafazah"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Markaz"
+        },
+        "8": {
+          "column": null,
+          "term": "Tajammu"
+        },
+        "9": {
+          "column": "admin_municipality",
+          "term": "Baladiyah"
+        }
+      }
+    },
+    "SE": {
+      "name": "Sweden",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Stadsdel"
+        },
+        "11": {
+          "column": null,
+          "term": "Delområde"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Stat"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Län"
+        },
+        "6": {
+          "column": "admin_other",
+          "term": "Sameby"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Kommun"
+        },
+        "8": {
+          "column": "admin_district",
+          "term": "Distrikt"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Stadsdelsområde"
+        }
+      }
+    },
+    "SI": {
+      "name": "Slovenia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Naselje"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Država"
+        },
+        "4": {
+          "column": "admin_region",
+          "term": "Pokrajina"
+        },
+        "7": {
+          "column": "admin_district",
+          "term": "Upravna enota"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Občina"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Krajevna skupnost"
+        }
+      }
+    },
+    "SJ": {
+      "name": "Svalbard and Jan Mayen",
+      "reviewed": false,
+      "levels": {
+        "4": {
+          "column": "admin_state",
+          "term": "Område"
+        }
+      }
+    },
+    "SK": {
+      "name": "Slovakia",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Výbor mestskej časti"
+        },
+        "11": {
+          "column": null,
+          "term": "Lokalita"
+        },
+        "12": {
+          "column": null,
+          "term": "Sídlisko"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Štát"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Oblasť"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Kraj"
+        },
+        "5": {
+          "column": null,
+          "term": "Mesto"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Okres"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Obec"
+        },
+        "9": {
+          "column": "admin_borough",
+          "term": "Mestská časť"
+        }
+      }
+    },
+    "SM": {
+      "name": "San Marino",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Stato"
+        },
+        "6": {
+          "column": null,
+          "term": "Provincia"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Castello"
+        }
+      }
+    },
+    "SY": {
+      "name": "Syria",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_submunicipality",
+          "term": "Hayy"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "5": {
+          "column": "admin_county",
+          "term": "Mintaqah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Nahiyah"
+        },
+        "8": {
+          "column": "admin_municipality",
+          "term": "Qaryah"
+        }
+      }
+    },
+    "TN": {
+      "name": "Tunisia",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Pays"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Gouvernorat"
+        },
+        "5": {
+          "column": "admin_district",
+          "term": "Délégation"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Imada"
+        }
+      }
+    },
+    "TR": {
+      "name": "Turkey",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": null,
+          "term": "Mevkii"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Devlet"
+        },
+        "3": {
+          "column": "admin_region",
+          "term": "Bölge"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "İl"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "İlçe"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Belde"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Mahalle"
+        },
+        "9": {
+          "column": "admin_other",
+          "term": "Mezra"
+        }
+      }
+    },
+    "UA": {
+      "name": "Ukraine",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Rayon u misti"
+        },
+        "11": {
+          "column": null,
+          "term": "Mikrorayon"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Derzhava"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Oblast"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Rayon"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Hromada"
+        },
+        "8": {
+          "column": null,
+          "term": "Rada"
+        },
+        "9": {
+          "column": "admin_submunicipality",
+          "term": "Naselenyi punkt"
+        }
+      }
+    },
+    "VA": {
+      "name": "Vatican City",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Stato"
+        }
+      }
+    },
+    "XK": {
+      "name": "Kosovo",
+      "reviewed": false,
+      "levels": {
+        "10": {
+          "column": "admin_borough",
+          "term": "Lagje"
+        },
+        "2": {
+          "column": "admin_country",
+          "term": "Shtet"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Rajon"
+        },
+        "5": {
+          "column": null,
+          "term": "Rajon"
+        },
+        "6": {
+          "column": "admin_municipality",
+          "term": "Komunë"
+        },
+        "8": {
+          "column": "admin_submunicipality",
+          "term": "Vendbanim"
+        },
+        "9": {
+          "column": null,
+          "term": "Zonë kadastrale"
+        }
+      }
+    },
+    "YE": {
+      "name": "Yemen",
+      "reviewed": false,
+      "levels": {
+        "2": {
+          "column": "admin_country",
+          "term": "Dawla"
+        },
+        "4": {
+          "column": "admin_state",
+          "term": "Muhafazah"
+        },
+        "5": {
+          "column": "admin_other",
+          "term": "Madinah"
+        },
+        "6": {
+          "column": "admin_district",
+          "term": "Mudiriyah"
+        },
+        "7": {
+          "column": "admin_municipality",
+          "term": "Qaryah"
+        }
+      }
+    }
+  }
+}

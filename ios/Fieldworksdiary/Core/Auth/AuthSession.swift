@@ -14,6 +14,12 @@ final class AuthSession: ObservableObject {
     @Published private(set) var currentUser: AuthUser?
     @Published var signInError: String?
 
+    /// Fires for every user record that came from the server by login,
+    /// token refresh or the offline cache restore - not for the response
+    /// of a settings PATCH, so a late response never overwrites newer
+    /// local edits.
+    let userRefreshed = PassthroughSubject<AuthUser, Never>()
+
     private let keychain: KeychainStore
     private let endpointProvider: () -> String
 
@@ -75,6 +81,7 @@ final class AuthSession: ObservableObject {
             return
         }
         currentUser = user
+        userRefreshed.send(user)
     }
 
     func signInWithPassword(email: String, password: String) async throws {
@@ -123,9 +130,31 @@ final class AuthSession: ObservableObject {
         clearLocal()
     }
 
+    /// Best-effort push of the sample-id settings to the users record.
+    /// Offline / signed out: no-op (the local value still applies).
+    /// Failures are only logged.
+    func pushUserSettings(format: String, prefix: String, offset: Int, dayCutoffHour: Int) async {
+        guard let user = currentUser, let token = currentToken else { return }
+        do {
+            let updated = try await AuthClient(endpoint: endpointProvider()).updateUserSettings(
+                userID: user.id,
+                token: token,
+                body: [
+                    "sample_id_format": format,
+                    "sample_id_prefix": prefix,
+                    "sample_id_offset": offset,
+                    "day_cutoff_hour": dayCutoffHour
+                ]
+            )
+            persist(token: token, user: updated, announce: false)
+        } catch {
+            Log.auth.warning("user settings push failed for user \(user.id, privacy: .public): \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - private
 
-    private func persist(token: String, user: AuthUser) {
+    private func persist(token: String, user: AuthUser, announce: Bool = true) {
         keychain.setString(token, forKey: KeychainStore.Keys.token)
         keychain.setString(user.id, forKey: KeychainStore.Keys.userId)
         keychain.setString(user.email, forKey: KeychainStore.Keys.email)
@@ -136,6 +165,7 @@ final class AuthSession: ObservableObject {
         }
         currentUser = user
         signInError = nil
+        if announce { userRefreshed.send(user) }
     }
 
     private func clearLocal() {

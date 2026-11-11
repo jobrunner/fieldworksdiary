@@ -16,6 +16,7 @@ struct SamplesListView: View {
 struct SamplesListScreen: View {
     @EnvironmentObject var container: AppContainer
     @State private var samples: [LocalSample] = []
+    @State private var placemarks: [String: LocalPlacemark] = [:]
 
     var body: some View {
         Group {
@@ -55,54 +56,21 @@ struct SamplesListScreen: View {
     }
 
     private func row(for sample: LocalSample) -> some View {
-        HStack(spacing: 12) {
-            Text(sample.backendCode ?? sample.sampleID)
-                .font(.body.monospaced().weight(.semibold))
-            VStack(alignment: .leading, spacing: 2) {
-                if let locality = sample.adminUnitsLocality {
-                    Text(locality)
-                        .font(.subheadline)
-                } else {
-                    Text("(noch nicht angereichert)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                if !sample.notes.isEmpty {
-                    Text(sample.notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer()
-            syncBadge(for: sample.syncStatus)
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-    }
-
-    @ViewBuilder
-    private func syncBadge(for status: SyncStatus) -> some View {
-        switch status {
-        case .synced:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .accessibilityLabel("Synchronisiert")
-        case .pending, .syncing:
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Wartet auf Sync")
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Sync fehlgeschlagen")
-        }
+        SampleListRow(
+            code: sample.sampleID,
+            placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place),
+            pendingPlaceText: "Ortsangaben ausstehend",
+            notes: sample.notes,
+            hasIdConflict: sample.hasIdConflict,
+            syncStatus: sample.syncStatus
+        )
     }
 
     // MARK: - data
 
     private func reload() {
         samples = (try? container.store.fetchAll()) ?? []
+        placemarks = (try? container.placemarksStore.fetchAllByID()) ?? [:]
     }
 
     private struct DayGroup {

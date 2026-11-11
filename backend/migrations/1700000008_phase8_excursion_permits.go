@@ -6,43 +6,30 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models/schema"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("excursions")
+	m.Register(func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("excursions")
 		if err != nil {
 			return err
 		}
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "permit_number", Type: schema.FieldTypeText,
+		coll.Fields.Add(&core.TextField{Name: "permit_number"})
+		coll.Fields.Add(&core.FileField{
+			Name:      "permit_pdf",
+			MaxSelect: 1,
+			MaxSize:   20 * 1024 * 1024, // 20 MiB
+			MimeTypes: []string{"application/pdf"},
 		})
-		coll.Schema.AddField(&schema.SchemaField{
-			Name: "permit_pdf",
-			Type: schema.FieldTypeFile,
-			Options: &schema.FileOptions{
-				MaxSelect: 1,
-				MaxSize:   20 * 1024 * 1024, // 20 MiB
-				MimeTypes: []string{"application/pdf"},
-			},
-		})
-		return dao.SaveCollection(coll)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		coll, err := dao.FindCollectionByNameOrId("excursions")
+		return app.Save(coll)
+	}, func(app core.App) error {
+		coll, err := app.FindCollectionByNameOrId("excursions")
 		if err != nil {
 			return err
 		}
-		for _, fname := range []string{"permit_number", "permit_pdf"} {
-			if f := coll.Schema.GetFieldByName(fname); f != nil {
-				coll.Schema.RemoveField(f.Id)
-			}
-		}
-		return dao.SaveCollection(coll)
+		removeFields(coll, "permit_number", "permit_pdf")
+		return app.Save(coll)
 	})
 }

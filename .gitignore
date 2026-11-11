@@ -39,3 +39,4 @@ ios/**/*.xcuserstate
 
 # Build artifacts (SBOM, license reports)
 dist/
+ios/Packages/*/.build/

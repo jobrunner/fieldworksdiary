@@ -5,6 +5,7 @@ struct FieldtripDetailView: View {
 
     @EnvironmentObject var container: AppContainer
     @State private var local: LocalFieldtrip?
+    @State private var placeSummary: FieldtripPlaceSummary?
     @State private var loadingError: String?
     @State private var localityActionError: String?
     @State private var localityActionBusy = false
@@ -58,6 +59,7 @@ struct FieldtripDetailView: View {
         .navigationTitle(local.map(displayName) ?? "Exkursion")
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }
+        .task(id: fieldtripID) { await observePlaceSummary() }
         .refreshable { await reload() }
     }
 
@@ -338,20 +340,27 @@ struct FieldtripDetailView: View {
     private func sampleRow(_ sample: LocalSample) -> some View {
         HStack {
             Text(sample.sampleID)
-                .font(.system(.body, design: .monospaced).weight(.medium))
+                .font(AppFont.code.weight(.medium))
+            if let place = PlaceDisplay.shortName(
+                sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }?.place
+            ) {
+                Text(place)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
-            if sample.adminUnitsLocality == nil && sample.syncStatus != .synced {
+            if sample.locationStatus == .pending {
                 Image(systemName: "clock")
                     .foregroundStyle(.secondary)
                     .imageScale(.small)
-                    .accessibilityLabel("Anreicherung läuft")
+                    .accessibilityLabel("Ortsangaben ausstehend")
             }
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, AppSpacing.xs)
         .contentShape(Rectangle())
     }
 
@@ -361,7 +370,7 @@ struct FieldtripDetailView: View {
     }
 
     private func header(_ current: LocalFieldtrip) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             HStack {
                 Text(current.collectingDay)
                     .font(.title3.monospacedDigit())
@@ -376,21 +385,21 @@ struct FieldtripDetailView: View {
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            if let admin = current.adminUnits, let locality = admin.locality {
-                Text(locality)
+            if let name = placeSummary?.name {
+                Text(name)
                     .font(.body.weight(.medium))
-                if let area = admin.adminArea, let country = admin.country {
-                    Text("\(country), \(area)")
+                if let region = placeSummary?.region {
+                    Text(region)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
-            if let mtb = current.mtb, let sheetNumber = mtb.sheetNumber, let sheetName = mtb.sheetName {
-                HStack(spacing: 6) {
+            if let mtb = placeSummary?.mtb {
+                HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "square.grid.2x2")
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
-                    Text("MTB \(sheetNumber) — \(sheetName)")
+                    Text(mtb)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -468,6 +477,19 @@ struct FieldtripDetailView: View {
         formatter.timeZone = berlin
         formatter.dateFormat = "dd.MM. HH:mm"
         return formatter.string(from: date)
+    }
+
+    /// Keeps the header's place line in step with the fieldtrip's
+    /// samples and their cached places (edits, hydration, enrichment).
+    private func observePlaceSummary() async {
+        for await snapshot in container.store.observeWithPlacemarks(fieldtrip: fieldtripID) {
+            placeSummary = FieldtripPlaceSummary.summarize(snapshot.samples.map {
+                FieldtripPlaceSummary.Sample(
+                    place: $0.placemark.flatMap { snapshot.placemarks[$0] }?.place,
+                    mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName
+                )
+            })
+        }
     }
 
     private func reload() async {

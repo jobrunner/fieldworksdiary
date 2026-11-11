@@ -28,9 +28,8 @@ scan:
 # - Advisory-Scans (security.yml): nutzen diesen broader Filter,
 #   damit MEDIUM-Severity-Vulns mit realem Impact (z. B. auth-bypass
 #   ~ CVSS 6.x) sichtbar bleiben.
-# - Deploy-Gate-Scans (deploy-prod.yml, deploy-staging.yml):
-#   überschreiben am Step auf HIGH,CRITICAL — Mediums sollen Deploys
-#   nicht hart-blocken, nur Awareness erzeugen.
+# - Der Image-Scan in docker-release.yml nutzt denselben Filter,
+#   ebenfalls advisory (SARIF in den Security-Tab).
 severity:
   - MEDIUM
   - HIGH

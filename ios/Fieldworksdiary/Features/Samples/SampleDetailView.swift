@@ -1,3 +1,4 @@
+import FieldworksGeo
 import SwiftUI
 
 struct SampleDetailView: View {
@@ -65,14 +66,6 @@ struct SampleDetailView: View {
                             .accessibilityLabel(sample.marked ? "Markierung entfernen" : "Probe markieren")
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink {
-                        SampleEditorView(sampleID: nil)
-                    } label: {
-                        Image(systemName: "plus")
-                            .accessibilityLabel("Neue Probe anlegen")
-                    }
-                }
             }
         }
         .task {
@@ -107,11 +100,9 @@ struct SampleDetailView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 6) {
                 Text(sample.sampleID)
-                    .font(.system(size: 40, weight: .bold, design: .monospaced))
-                if let backendCode = sample.backendCode, backendCode != sample.sampleID {
-                    Text("Server: \(backendCode) — Original \(sample.sampleID)")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    .font(AppFont.codeLarge)
+                if sample.hasIdConflict {
+                    IdConflictHint()
                 }
             }
         }
@@ -131,14 +122,23 @@ struct SampleDetailView: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                Label(formatDateTime(sample.beginDate), systemImage: "calendar")
-                    .font(.footnote)
-                if let locality = sample.adminUnitsLocality {
-                    Label(locality, systemImage: "globe.europe.africa")
+                VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                    Label(timeWindowText(for: sample), systemImage: "calendar")
+                        .font(.footnote)
+                    Text(SampleTime.timezoneLabel(sampleZone(sample), at: sample.beginDate))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+                let placemark = sample.placemark.flatMap { try? container.placemarksStore.fetchById($0) }
+                if let line = PlaceDisplay.gazetteerLine(placemark?.place) {
+                    Text(line)
                         .font(.footnote)
                 }
-                if let mtb = sample.mtbSheetNumber, !mtb.isEmpty {
-                    Label("MTB \(mtb)", systemImage: "square.grid.2x2")
+                if let mtb = PlaceDisplay.mtbText(number: sample.mtbSheetNumber, name: sample.mtbSheetName,
+                                                  quadrant: sample.mtbQuadrant, countryISO: placemark?.countryISO)
+                {
+                    Label(mtb, systemImage: "square.grid.2x2")
                         .font(.footnote)
                 }
             }
@@ -251,11 +251,27 @@ struct SampleDetailView: View {
 
     // MARK: - Helpers
 
-    private func formatDateTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = berlin
-        formatter.dateFormat = "dd.MM.yyyy HH:mm"
-        return formatter.string(from: date)
+    private func sampleZone(_ sample: LocalSample) -> TimeZone {
+        TimeZone(identifier: sample.timezone) ?? berlin
+    }
+
+    /// „19.05.2026 12:00 – 12:15“ in the sample's zone; the end carries
+    /// its date when it falls on another local day.
+    private func timeWindowText(for sample: LocalSample) -> String {
+        let zone = sampleZone(sample)
+        let full = DateFormatter()
+        full.timeZone = zone
+        full.dateFormat = "dd.MM.yyyy HH:mm"
+        let begin = full.string(from: sample.beginDate)
+        guard let end = sample.endDate, end != sample.beginDate else { return begin }
+        let sameDay = full.string(from: end).prefix(10) == begin.prefix(10)
+        if sameDay {
+            let timeOnly = DateFormatter()
+            timeOnly.timeZone = zone
+            timeOnly.dateFormat = "HH:mm"
+            return "\(begin) – \(timeOnly.string(from: end))"
+        }
+        return "\(begin) – \(full.string(from: end))"
     }
 
     private func shortDate(_ date: Date) -> String {

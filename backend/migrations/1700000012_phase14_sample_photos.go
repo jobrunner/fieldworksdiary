@@ -12,22 +12,18 @@
 package migrations
 
 import (
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/daos"
+	"github.com/pocketbase/pocketbase/core"
 	m "github.com/pocketbase/pocketbase/migrations"
-	"github.com/pocketbase/pocketbase/models"
-	"github.com/pocketbase/pocketbase/models/schema"
 	"github.com/pocketbase/pocketbase/tools/types"
 )
 
 func init() {
-	m.Register(func(db dbx.Builder) error {
-		dao := daos.New(db)
-		samples, err := dao.FindCollectionByNameOrId("samples")
+	m.Register(func(app core.App) error {
+		samples, err := app.FindCollectionByNameOrId("samples")
 		if err != nil {
 			return err
 		}
-		users, err := dao.FindCollectionByNameOrId("users")
+		users, err := app.FindCollectionByNameOrId("users")
 		if err != nil {
 			return err
 		}
@@ -37,69 +33,51 @@ func init() {
 		)
 		authedCreateRule := types.Pointer("@request.auth.id != ''")
 
-		samplePhotos := &models.Collection{
-			Name: "sample_photos",
-			Type: models.CollectionTypeBase,
-			Schema: schema.NewSchema(
-				&schema.SchemaField{
-					Name:     "sample",
-					Type:     schema.FieldTypeRelation,
-					Required: true,
-					Options: &schema.RelationOptions{
-						CollectionId:  samples.Id,
-						CascadeDelete: true, // sample-delete drops its photos
-						MinSelect:     types.Pointer(1),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{
-					Name:     "photo_file",
-					Type:     schema.FieldTypeFile,
-					Required: true,
-					Options: &schema.FileOptions{
-						MaxSelect: 1,
-						MaxSize:   10 * 1024 * 1024,
-						MimeTypes: []string{
-							"image/jpeg",
-							"image/png",
-							"image/heic",
-							"image/heif",
-						},
-					},
-				},
-				// Owner is filled by the create-hook (RegisterOwnerSetters).
-				// Not marked Required — PocketBase validation runs before
-				// the hook, same pattern as `samples.code`.
-				&schema.SchemaField{
-					Name: "owner",
-					Type: schema.FieldTypeRelation,
-					Options: &schema.RelationOptions{
-						CollectionId:  users.Id,
-						CascadeDelete: true,
-						MinSelect:     types.Pointer(0),
-						MaxSelect:     types.Pointer(1),
-					},
-				},
-				&schema.SchemaField{Name: "client_uuid", Type: schema.FieldTypeText},
-				&schema.SchemaField{Name: "client_updated_at", Type: schema.FieldTypeDate},
-			),
-			Indexes: types.JsonArray[string]{
-				"CREATE INDEX idx_sample_photos_sample ON sample_photos (sample)",
-				"CREATE INDEX idx_sample_photos_owner ON sample_photos (owner)",
-				"CREATE INDEX idx_sample_photos_client_uuid ON sample_photos (client_uuid)",
+		samplePhotos := newBaseCollection("sample_photos",
+			&core.RelationField{
+				Name:          "sample",
+				Required:      true,
+				CollectionId:  samples.Id,
+				CascadeDelete: true, // sample-delete drops its photos
+				MinSelect:     1,
+				MaxSelect:     1,
 			},
-			ListRule:   userScopedRule,
-			ViewRule:   userScopedRule,
-			CreateRule: authedCreateRule,
-			UpdateRule: userScopedRule,
-			DeleteRule: userScopedRule,
+			&core.FileField{
+				Name:      "photo_file",
+				Required:  true,
+				MaxSelect: 1,
+				MaxSize:   10 * 1024 * 1024,
+				MimeTypes: []string{
+					"image/jpeg",
+					"image/png",
+					"image/heic",
+					"image/heif",
+				},
+			},
+			// Owner is filled by the create-hook (RegisterOwnerSetters).
+			// Not marked Required — same pattern as `samples.code`.
+			&core.RelationField{
+				Name:          "owner",
+				CollectionId:  users.Id,
+				CascadeDelete: true,
+				MinSelect:     0,
+				MaxSelect:     1,
+			},
+			&core.TextField{Name: "client_uuid"},
+			&core.DateField{Name: "client_updated_at"},
+		)
+		samplePhotos.Indexes = types.JSONArray[string]{
+			"CREATE INDEX idx_sample_photos_sample ON sample_photos (sample)",
+			"CREATE INDEX idx_sample_photos_owner ON sample_photos (owner)",
+			"CREATE INDEX idx_sample_photos_client_uuid ON sample_photos (client_uuid)",
 		}
-		return dao.SaveCollection(samplePhotos)
-	}, func(db dbx.Builder) error {
-		dao := daos.New(db)
-		if c, err := dao.FindCollectionByNameOrId("sample_photos"); err == nil {
-			return dao.DeleteCollection(c)
-		}
-		return nil
+		samplePhotos.ListRule = userScopedRule
+		samplePhotos.ViewRule = userScopedRule
+		samplePhotos.CreateRule = authedCreateRule
+		samplePhotos.UpdateRule = userScopedRule
+		samplePhotos.DeleteRule = userScopedRule
+		return app.Save(samplePhotos)
+	}, func(app core.App) error {
+		return deleteCollectionIfExists(app, "sample_photos")
 	})
 }

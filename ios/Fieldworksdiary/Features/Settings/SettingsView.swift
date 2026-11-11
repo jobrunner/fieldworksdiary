@@ -1,3 +1,4 @@
+import FieldworksGeo
 import SwiftUI
 
 struct SettingsView: View {
@@ -12,11 +13,15 @@ struct SettingsView: View {
 struct SettingsScreen: View {
     @EnvironmentObject var config: AppConfig
     @EnvironmentObject var auth: AuthSession
+    @EnvironmentObject var featureFlags: FeatureFlags
     @State private var draft: String = ""
     @State private var savedHint: Bool = false
+    @State private var ortusDraft: String = ""
+    @State private var ortusSavedHint: Bool = false
     @State private var confirmSignOut: Bool = false
     @State private var showDeleteSheet: Bool = false
     @State private var exportState: ExportState = .idle
+    @State private var pushTask: Task<Void, Never>?
 
     private enum ExportState: Equatable {
         case idle
@@ -29,9 +34,15 @@ struct SettingsScreen: View {
         Form {
             accountSection
             dataSection
-            sampleCodeSection
+            sampleIDSection
+            rolloverSection
+            coordinateFormatSection
             endpointSection
+            ortusEndpointSection
             aboutSection
+            #if DEBUG
+                featureFlagsSection
+            #endif
         }
         .navigationTitle("Einstellungen")
         .toolbar {
@@ -39,8 +50,16 @@ struct SettingsScreen: View {
                 EnvBadge(environment: config.environment)
             }
         }
-        .onAppear { draft = config.endpointURL }
+        .onAppear {
+            draft = config.endpointURL
+            ortusDraft = config.ortusEndpointURL
+        }
         .onChange(of: draft) { _, _ in savedHint = false }
+        .onChange(of: ortusDraft) { _, _ in ortusSavedHint = false }
+        .onChange(of: config.sampleIDFormat) { _, _ in pushUserSettings() }
+        .onChange(of: config.sampleIDPrefix) { _, _ in pushUserSettings() }
+        .onChange(of: config.sampleIDOffset) { _, _ in pushUserSettings() }
+        .onChange(of: config.dayCutoffHour) { _, _ in pushUserSettings() }
         .confirmationDialog("Wirklich abmelden?",
                             isPresented: $confirmSignOut,
                             titleVisibility: .visible)
@@ -125,32 +144,117 @@ struct SettingsScreen: View {
         }
     }
 
-    private var sampleCodeSection: some View {
+    private var sampleIDSection: some View {
         Section {
-            Picker("Format", selection: $config.sampleCodeTemplate) {
-                ForEach(SampleCodeTemplate.presets, id: \.raw) { preset in
-                    Text(preset.raw).monospaced().tag(preset.raw)
+            Picker("Format", selection: $config.sampleIDFormat) {
+                ForEach(SampleIDTemplate.presets, id: \.raw) { preset in
+                    Text(Self.presetLabel(preset)).monospaced().tag(preset.raw)
+                }
+            }
+            TextField("Präfix", text: $config.sampleIDPrefix)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            if currentTemplate.counter == .running {
+                // Typed directly: an offset like 1000 must not need 1000 taps.
+                // `AppConfig.sampleIDOffset` clamps negative input to 0.
+                LabeledContent("Offset") {
+                    TextField("Offset", value: $config.sampleIDOffset, format: .number.grouping(.never))
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                        .accessibilityLabel("Offset")
                 }
             }
             LabeledContent("Beispiel") {
-                Text(sampleCodePreview)
+                Text(sampleIDPreview)
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
             }
         } header: {
-            Text("Sample-ID-Format")
+            Text("Sample-ID")
         } footer: {
             Text(
-                "Provisorisches Format für neue Proben. Tokens: <YY>/<YYYY>, <MM>, <DD>, <seq>. Das Backend kann die ID beim Sync neu vergeben."
+                "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist."
             )
         }
     }
 
-    /// Renders today's first sample id under the selected template, so
-    /// the user sees the effect before creating a sample.
-    private var sampleCodePreview: String {
-        SampleCodeTemplate(raw: config.sampleCodeTemplate)
-            .format(day: Date(), sequence: 1, timeZone: TimeZone(identifier: "Europe/Berlin") ?? .current)
+    private var rolloverSection: some View {
+        Section {
+            Picker("Tagesrollover", selection: $config.dayCutoffHour) {
+                ForEach(0 ..< 24, id: \.self) { hour in
+                    Text("\(hour):00").tag(hour)
+                }
+            }
+        } footer: {
+            Text("Gilt in der Ortszeit des Samples.")
+        }
+    }
+
+    private var coordinateFormatSection: some View {
+        Section {
+            Picker("Koordinatenformat", selection: $config.coordinateDisplayFormat) {
+                ForEach(CoordinateDisplayFormat.allCases, id: \.self) { format in
+                    Text(format.title).tag(format)
+                }
+            }
+            LabeledContent("Beispiel") {
+                Text(coordinateFormatExample)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+        } footer: {
+            Text("Gespeichert wird immer WGS 84 (Dezimalgrad). Das Format betrifft nur die Anzeige.")
+        }
+    }
+
+    private var coordinateFormatExample: String {
+        CoordinateConverter.format(lat: 49.681230, lon: 10.031340, as: config.coordinateDisplayFormat) ?? "–"
+    }
+
+    private var currentTemplate: SampleIDTemplate {
+        SampleIDTemplate(raw: config.sampleIDFormat)
+    }
+
+    private static func presetLabel(_ preset: SampleIDTemplate) -> String {
+        preset == .empty ? "– (leer lassen)" : preset.raw
+    }
+
+    /// Next suggestion for today's collecting day, so the user sees the
+    /// effect of format, prefix and offset before creating a sample.
+    private var sampleIDPreview: String {
+        let day = SampleTime.collectingDay(Date(), cutoffHour: config.dayCutoffHour, in: .current)
+        let suggestion = SampleIDTemplate.nextSuggestion(
+            template: currentTemplate,
+            prefix: config.sampleIDPrefix,
+            day: day,
+            existingIDs: [],
+            lastRunning: config.lastRunningNumber,
+            offset: config.sampleIDOffset
+        )
+        return suggestion.id.isEmpty ? "–" : suggestion.id
+    }
+
+    /// Best-effort sync to the users record. Skipped when the record
+    /// already holds these values (e.g. after taking them from it).
+    private func pushUserSettings() {
+        pushTask?.cancel()
+        let format = config.sampleIDFormat
+        let prefix = config.sampleIDPrefix
+        let offset = config.sampleIDOffset
+        let cutoff = config.dayCutoffHour
+        if let user = auth.currentUser,
+           (user.sampleIDFormat ?? SampleIDTemplate.default.raw) == format,
+           (user.sampleIDPrefix ?? "") == prefix,
+           (user.sampleIDOffset ?? 0) == offset,
+           user.dayCutoffHour == cutoff
+        { return }
+        // Debounced: typing a prefix must not send one PATCH per key.
+        pushTask = Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            await auth.pushUserSettings(format: format, prefix: prefix, offset: offset, dayCutoffHour: cutoff)
+        }
     }
 
     private var endpointSection: some View {
@@ -177,6 +281,33 @@ struct SettingsScreen: View {
         }
     }
 
+    /// Ortus is queried directly from the device after a sample is
+    /// saved; an empty value switches that off.
+    private var ortusEndpointSection: some View {
+        Section {
+            TextField("Ortus-Endpoint", text: $ortusDraft,
+                      prompt: Text(AppConfig.defaultOrtusEndpointURL))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+            Button("Speichern") {
+                let trimmed = ortusDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                config.ortusEndpointURL = trimmed
+                ortusDraft = trimmed
+                ortusSavedHint = true
+            }
+            .disabled(ortusDraft.trimmingCharacters(in: .whitespacesAndNewlines) == config.ortusEndpointURL)
+        } header: {
+            Text("Ortus-Endpoint")
+        } footer: {
+            if ortusSavedHint {
+                Text("Gespeichert.")
+            } else {
+                Text("Geodienst für Ort, Höhe und MTB direkt beim Anlegen einer Probe. Leer lassen, um die Abfrage auf dem Gerät abzuschalten – das Backend ergänzt die Daten dann nach dem Sync.")
+            }
+        }
+    }
+
     private var aboutSection: some View {
         Section {
             Link(destination: config.privacyPolicyURL) {
@@ -193,6 +324,29 @@ struct SettingsScreen: View {
             Text("Rechtliches")
         }
     }
+
+    #if DEBUG
+        /// Debug only: loaded flag keys with their evaluated value.
+        private var featureFlagsSection: some View {
+            Section {
+                let flags = featureFlags.debugSnapshot()
+                if flags.isEmpty {
+                    Text("Keine Flags geladen")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(flags, id: \.key) { flag in
+                        LabeledContent(flag.key) {
+                            Label(flag.enabled ? "An" : "Aus",
+                                  systemImage: flag.enabled ? "checkmark.circle" : "xmark.circle")
+                        }
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            } header: {
+                Text("Feature-Flags")
+            }
+        }
+    #endif
 
     private func runExport() async {
         exportState = .downloading

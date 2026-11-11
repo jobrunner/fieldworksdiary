@@ -12,6 +12,9 @@
 //     update tick re-runs the auto-geocode hook (placemark is
 //     empty → fusion-style "needs re-fuse" branch fires).
 //
+// The PATCH body carries the same flat place fields as
+// `POST /api/placemarks/resolve` (without `geocoding_source`).
+//
 // Both routes are owner-scoped: the locality has to belong to the
 // authenticated user, otherwise the call gets a 403. We could rely on
 // PocketBase's owner-scoped viewRule (require an authenticated
@@ -20,71 +23,86 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/labstack/echo/v5"
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/daos"
-	"github.com/pocketbase/pocketbase/models"
-	"golang.org/x/text/unicode/norm"
+	"github.com/pocketbase/pocketbase/tools/router"
+
+	"go.mett.io/fwd-backend/internal/adminlabels"
+	"go.mett.io/fwd-backend/internal/geoplace"
 )
 
 // RegisterPlacemarkOverrideRoutes wires the two manual-override
 // endpoints. Call from `main.go`.
 func RegisterPlacemarkOverrideRoutes(app core.App) {
-	app.OnBeforeServe().Add(func(e *core.ServeEvent) error {
-		requireAuth := apis.RequireRecordAuth("users")
-		e.Router.PATCH("/api/localities/:id/placemark", func(c echo.Context) error {
-			return handleSetManualPlacemark(app, c)
-		}, requireAuth)
-		e.Router.DELETE("/api/localities/:id/placemark/override", func(c echo.Context) error {
-			return handleClearManualPlacemark(app, c)
-		}, requireAuth)
-		return nil
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindPlacemarkOverrideRoutes(se.Router)
+		return se.Next()
 	})
 }
 
-// manualPlacemarkRequest is the payload for PATCH. All fields are
-// optional except `country` (Placemark schema requires ISO-2).
-type manualPlacemarkRequest struct {
-	Country               string `json:"country"`
-	AdministrativeArea    string `json:"administrative_area"`
-	SubAdministrativeArea string `json:"sub_administrative_area"`
-	Locality              string `json:"locality"`
-	SubLocality           string `json:"sub_locality"`
-	PostalCode            string `json:"postal_code"`
-	Name                  string `json:"name"`
-	Thoroughfare          string `json:"thoroughfare"`
+func bindPlacemarkOverrideRoutes(r *router.Router[*core.RequestEvent]) {
+	r.PATCH("/api/localities/{id}/placemark", handleSetManualPlacemark).
+		Bind(apis.RequireAuth("users"))
+	r.DELETE("/api/localities/{id}/placemark/override", handleClearManualPlacemark).
+		Bind(apis.RequireAuth("users"))
 }
 
-func handleSetManualPlacemark(app core.App, c echo.Context) error {
-	ownerID, err := authOwnerID(c)
+// placeFromBody builds a Place from the flat placemark body shared by
+// `/api/placemarks/resolve` and the manual override. Unknown keys are
+// ignored; an empty `country_iso` is an error.
+func placeFromBody(body map[string]any) (geoplace.Place, error) {
+	str := func(k string) string {
+		v, _ := body[k].(string)
+		return strings.TrimSpace(v)
+	}
+	iso := strings.ToUpper(str("country_iso"))
+	if len(iso) != 2 || !isASCIILetters(iso) {
+		return geoplace.Place{}, apis.NewBadRequestError("Country code (country_iso) must be exactly 2 letters.", nil)
+	}
+	p := geoplace.Place{
+		CountryISO:    iso,
+		Admin:         map[adminlabels.Tier]geoplace.AdminValue{},
+		Island:        str("island"),
+		MountainRange: str("mountain_range"),
+		Mountain:      str("mountain"),
+	}
+	for _, t := range adminlabels.Tiers {
+		k := string(t)
+		v := geoplace.AdminValue{Name: str(k), Native: str(k + "_native")}
+		if lvl, ok := body[k+"_level"].(float64); ok {
+			v.Level = int(lvl)
+		}
+		if v != (geoplace.AdminValue{}) {
+			p.Admin[t] = v
+		}
+	}
+	return p, nil
+}
+
+func handleSetManualPlacemark(e *core.RequestEvent) error {
+	ownerID, err := authOwnerID(e)
 	if err != nil {
 		return err
 	}
-	localityID := c.PathParam("id")
+	localityID := e.Request.PathValue("id")
 	if localityID == "" {
 		return apis.NewBadRequestError("missing locality id", nil)
 	}
 
-	var req manualPlacemarkRequest
-	if err := c.Bind(&req); err != nil {
-		return apis.NewBadRequestError("Invalid request body.", err)
+	body, err := decodeJSONMap(e)
+	if err != nil {
+		return err
 	}
-	country := strings.ToUpper(strings.TrimSpace(req.Country))
-	if len(country) != 2 {
-		return apis.NewBadRequestError("country must be an ISO 3166-1 alpha-2 code", nil)
+	place, err := placeFromBody(body)
+	if err != nil {
+		return err
 	}
 
-	dao := app.Dao()
-	loc, err := dao.FindRecordById("localities", localityID)
+	app := e.App
+	loc, err := app.FindRecordById("localities", localityID)
 	if err != nil {
 		return apis.NewNotFoundError("locality not found", err)
 	}
@@ -92,45 +110,32 @@ func handleSetManualPlacemark(app core.App, c echo.Context) error {
 		return apis.NewForbiddenError("locality does not belong to authenticated user", nil)
 	}
 
-	hash := manualDedupHash(country, req.AdministrativeArea, req.Locality, req.PostalCode)
-
-	// Lookup-or-create with `geocoding_source = manual` so the
-	// auto-geocoder hook (R7.1) won't try to overwrite it.
-	pm, err := lookupOrCreateManualPlacemark(dao, hash, req)
+	// Manual rows are scoped per owner, so the auto-geocoder never
+	// overwrites them and other users never see them.
+	pm, err := geoplace.LookupOrCreatePlacemark(app, place, "manual", ownerID)
 	if err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "could not persist placemark", err)
 	}
 
-	// Promote to manual if we matched an existing backend-service row.
-	// (Same coords + fields a future labelloc roll-out might produce —
-	// without this flip a re-geocode would overwrite the user's call.)
-	if pm.GetString("geocoding_source") != "manual" {
-		pm.Set("geocoding_source", "manual")
-		pm.Set("geocoding_date", time.Now())
-		if err := dao.SaveRecord(pm); err != nil {
-			return apis.NewApiError(http.StatusInternalServerError, "could not promote placemark to manual", err)
-		}
-	}
-
 	loc.Set("placemark", pm.Id)
-	if err := dao.SaveRecord(loc); err != nil {
+	if err := app.SaveNoValidate(loc); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "could not attach placemark", err)
 	}
-	return c.JSON(http.StatusOK, pm)
+	return e.JSON(http.StatusOK, pm)
 }
 
-func handleClearManualPlacemark(app core.App, c echo.Context) error {
-	ownerID, err := authOwnerID(c)
+func handleClearManualPlacemark(e *core.RequestEvent) error {
+	ownerID, err := authOwnerID(e)
 	if err != nil {
 		return err
 	}
-	localityID := c.PathParam("id")
+	localityID := e.Request.PathValue("id")
 	if localityID == "" {
 		return apis.NewBadRequestError("missing locality id", nil)
 	}
 
-	dao := app.Dao()
-	loc, err := dao.FindRecordById("localities", localityID)
+	app := e.App
+	loc, err := app.FindRecordById("localities", localityID)
 	if err != nil {
 		return apis.NewNotFoundError("locality not found", err)
 	}
@@ -143,72 +148,85 @@ func handleClearManualPlacemark(app core.App, c echo.Context) error {
 	// auto-geocode tick will repopulate (R7.1 hook fires because
 	// `placemark` is now empty).
 	if loc.GetString("placemark") == "" {
-		return c.JSON(http.StatusOK, map[string]any{"status": "no-op"})
+		return e.JSON(http.StatusOK, map[string]any{"status": "no-op"})
 	}
 	loc.Set("placemark", "")
-	if err := dao.SaveRecord(loc); err != nil {
+	if err := app.SaveNoValidate(loc); err != nil {
 		return apis.NewApiError(http.StatusInternalServerError, "could not clear placemark", err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"status": "cleared"})
+	return e.JSON(http.StatusOK, map[string]any{"status": "cleared"})
 }
 
-// lookupOrCreateManualPlacemark mirrors `enrichment.lookupOrCreatePlacemark`
-// but writes `geocoding_source = "manual"` on create and persists
-// every field the request supplied (including the ones the
-// auto-path doesn't bother to fill, like postal_code).
-func lookupOrCreateManualPlacemark(dao *daos.Dao, hash string, req manualPlacemarkRequest) (*models.Record, error) {
-	existing, err := dao.FindFirstRecordByFilter(
-		"placemarks",
-		"dedup_hash = {:h}",
-		dbx.Params{"h": hash},
-	)
-	if err == nil && existing != nil {
-		return existing, nil
+func isASCIILetters(s string) bool {
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
 	}
-	coll, err := dao.FindCollectionByNameOrId("placemarks")
+	return true
+}
+
+// decodeJSONMap reads the request body as a JSON object; an empty or
+// malformed body is a 400.
+func decodeJSONMap(e *core.RequestEvent) (map[string]any, error) {
+	var body map[string]any
+	if err := e.BindBody(&body); err != nil || body == nil {
+		return nil, apis.NewBadRequestError("Invalid request body.", err)
+	}
+	return body, nil
+}
+
+// bindJSON reads the request body into dst via PocketBase's BindBody
+// (which keeps the body re-readable for RequestInfo). Like echo's c.Bind
+// in PocketBase 0.22, an empty body leaves dst untouched (the handler's
+// own required-field checks answer), a malformed one is a 400.
+func bindJSON(e *core.RequestEvent, dst any) error {
+	if err := e.BindBody(dst); err != nil {
+		return apis.NewBadRequestError("Invalid request body.", err)
+	}
+	return nil
+}
+
+// RegisterPlacemarkResolveRoute wires `POST /api/placemarks/resolve`.
+func RegisterPlacemarkResolveRoute(app core.App) {
+	app.OnServe().BindFunc(func(se *core.ServeEvent) error {
+		bindPlacemarkResolveRoute(se.Router)
+		return se.Next()
+	})
+}
+
+func bindPlacemarkResolveRoute(r *router.Router[*core.RequestEvent]) {
+	r.POST("/api/placemarks/resolve", handleResolvePlacemark).
+		Bind(apis.RequireAuth("users"))
+}
+
+// handleResolvePlacemark looks up or creates the placemark for the flat
+// place fields. `manual` rows are owned by the caller; `backend_service`
+// rows are shared and carry no owner.
+func handleResolvePlacemark(e *core.RequestEvent) error {
+	ownerID, err := authOwnerID(e)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	rec := models.NewRecord(coll)
-	rec.Set("country", strings.ToUpper(strings.TrimSpace(req.Country)))
-	rec.Set("administrative_area", req.AdministrativeArea)
-	rec.Set("sub_administrative_area", req.SubAdministrativeArea)
-	rec.Set("locality", req.Locality)
-	rec.Set("sub_locality", req.SubLocality)
-	rec.Set("postal_code", req.PostalCode)
-	rec.Set("name", req.Name)
-	rec.Set("thoroughfare", req.Thoroughfare)
-	rec.Set("geocoding_source", "manual")
-	rec.Set("geocoding_date", time.Now())
-	rec.Set("dedup_hash", hash)
-	if err := dao.SaveRecord(rec); err != nil {
-		return nil, err
+	body, err := decodeJSONMap(e)
+	if err != nil {
+		return err
 	}
-	return rec, nil
-}
-
-// manualDedupHash mirrors `enrichment.PlacemarkDedupHash`. Kept as
-// a local copy because the api package shouldn't import enrichment;
-// the canonical algorithm is documented in `enrichment/placemark.go`
-// and the two implementations are kept in sync by unit tests on
-// both sides (any drift surfaces as failing equality assertions).
-func manualDedupHash(country, administrativeArea, locality, postalCode string) string {
-	parts := []string{
-		manualNormalize(country),
-		manualNormalize(administrativeArea),
-		manualNormalize(locality),
-		manualNormalize(postalCode),
+	source, _ := body["geocoding_source"].(string)
+	if source != "backend_service" && source != "manual" {
+		return apis.NewBadRequestError("The geocoding_source must be backend_service or manual.", nil)
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "|")))
-	return hex.EncodeToString(sum[:])
+	place, err := placeFromBody(body)
+	if err != nil {
+		return err
+	}
+	owner := ""
+	if source == "manual" {
+		owner = ownerID
+	}
+	pm, err := geoplace.LookupOrCreatePlacemark(e.App, place, source, owner)
+	if err != nil {
+		return apis.NewApiError(http.StatusInternalServerError, "could not persist placemark", err)
+	}
+	return e.JSON(http.StatusOK, pm)
 }
-
-func manualNormalize(s string) string {
-	return strings.ToLower(norm.NFC.String(strings.TrimSpace(s)))
-}
-
-// Used only as a compile-time placeholder to keep the json import
-// honest when this file lives alone — see `c.Bind` above already
-// reaches into encoding/json transitively, but the linter doesn't
-// always agree.
-var _ = json.RawMessage{}

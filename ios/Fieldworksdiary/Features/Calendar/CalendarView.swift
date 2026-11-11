@@ -131,7 +131,7 @@ private struct MonthGrid: View {
     private func cell(_ cell: DayCell) -> some View {
         switch cell {
         case .empty:
-            Color.clear.frame(height: cellSize)
+            Color.clear.frame(minHeight: cellSize)
         case let .day(date, key, count):
             if count > 0 {
                 NavigationLink {
@@ -158,18 +158,17 @@ private struct MonthGrid: View {
             // a hint without needing to tap in.
             if count > 1 {
                 Text("\(count)")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(highlighted ? AppColor.brandOnPrimary : .secondary)
             }
         }
-        .frame(height: cellSize)
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: cellSize)
         .background(
             highlighted
                 ? AnyShapeStyle(AppColor.brandPrimary)
                 : AnyShapeStyle(Color.clear)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
     /// All cells for the month, padded at the start with `.empty` so
@@ -216,6 +215,7 @@ private struct DaySamplesScreen: View {
 
     @EnvironmentObject var container: AppContainer
     @State private var samples: [LocalSample] = []
+    @State private var placemarks: [String: LocalPlacemark] = [:]
 
     var body: some View {
         Group {
@@ -226,16 +226,11 @@ private struct DaySamplesScreen: View {
                     NavigationLink {
                         SampleEditorView(sampleID: sample.id)
                     } label: {
-                        HStack(spacing: 12) {
-                            Text(sample.backendCode ?? sample.sampleID)
-                                .font(.body.monospaced().weight(.semibold))
-                            if let locality = sample.adminUnitsLocality {
-                                Text(locality)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                        }
+                        SampleListRow(
+                            code: sample.sampleID,
+                            placeName: PlaceDisplay.shortName(sample.placemark.flatMap { placemarks[$0] }?.place),
+                            hasIdConflict: sample.hasIdConflict
+                        )
                     }
                 }
                 .listStyle(.plain)
@@ -249,5 +244,6 @@ private struct DaySamplesScreen: View {
     private func reload() {
         let all = (try? container.store.fetchAll()) ?? []
         samples = all.filter { $0.collectingDay == dayKey }
+        placemarks = (try? container.placemarksStore.fetchAllByID()) ?? [:]
     }
 }

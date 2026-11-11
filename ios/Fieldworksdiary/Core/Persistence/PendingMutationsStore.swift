@@ -42,11 +42,14 @@ final class PendingMutationsStore {
         return mutation
     }
 
-    /// Read the queue in FK-safe order — Placemark first, Sample last
-    /// — and within each bucket by `created_at` ascending.
+    /// Read the active queue in FK-safe order — Placemark first,
+    /// Sample last — and within each bucket by `created_at` ascending.
+    /// Parked mutations (see `PendingMutation.parkedAttempts`) are left
+    /// out, so they neither retry nor hold up other rows.
     func fetchAllOrdered() throws -> [PendingMutation] {
         try database.reader.read { db in
             try PendingMutation
+                .filter(Column("attempts") >= 0)
                 .order(Column("entity_type"), Column("created_at"))
                 .fetchAll(db)
                 .sorted { lhs, rhs in
@@ -111,9 +114,57 @@ final class PendingMutationsStore {
         }
     }
 
+    /// All rows, parked ones included.
     func count() throws -> Int {
         try database.reader.read { db in
             try PendingMutation.fetchCount(db)
+        }
+    }
+
+    /// Rows a sync pass would work on (parked ones excluded). Drives
+    /// the retry loop.
+    func activeCount() throws -> Int {
+        try database.reader.read { db in
+            try PendingMutation.filter(Column("attempts") >= 0).fetchCount(db)
+        }
+    }
+
+    /// Parks a mutation instead of dropping it: it keeps its payload
+    /// but is skipped by every pass until `revive` is called.
+    func park(_ id: String, error: String) throws {
+        try database.writer.write { db in
+            try db.execute(
+                sql: "UPDATE pending_mutations SET attempts = ?, last_attempt_at = ?, last_error = ? WHERE id = ?",
+                arguments: [PendingMutation.parkedAttempts, Date(), error, id]
+            )
+        }
+    }
+
+    /// Parked mutations of one entity, oldest first.
+    func parked(entityType: PendingMutation.EntityType, entityId: String) throws -> [PendingMutation] {
+        try database.reader.read { db in
+            try PendingMutation
+                .filter(Column("entity_type") == entityType.rawValue)
+                .filter(Column("entity_id") == entityId)
+                .filter(Column("attempts") < 0)
+                .order(Column("created_at"))
+                .fetchAll(db)
+        }
+    }
+
+    /// Re-activates the parked mutations of one entity (attempts back
+    /// to 0). Returns how many were revived.
+    @discardableResult
+    func revive(entityType: PendingMutation.EntityType, entityId: String) throws -> Int {
+        try database.writer.write { db in
+            try db.execute(
+                sql: """
+                UPDATE pending_mutations SET attempts = 0, last_error = NULL
+                WHERE entity_type = ? AND entity_id = ? AND attempts < 0
+                """,
+                arguments: [entityType.rawValue, entityId]
+            )
+            return db.changesCount
         }
     }
 

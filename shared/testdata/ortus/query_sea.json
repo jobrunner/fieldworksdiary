@@ -1,0 +1,19 @@
+{
+  "coordinate": {"x": -25.0, "y": 40.0, "srid": 4326},
+  "wgs84": {"lon": -25.0, "lat": 40.0},
+  "results": [],
+  "total_features": 0,
+  "processing_time_ms": 3,
+  "gazetteer": {
+    "wgs84": {"lon": -25.0, "lat": 40.0},
+    "admin": null,
+    "islands": null,
+    "mountains": null,
+    "bearing": null,
+    "exposure": null,
+    "elevation": null,
+    "available": {"islands": true, "mountains": true, "exposure": true, "elevation": true},
+    "sources": [],
+    "license": {"name": "ODbL-1.0", "url": "https://opendatacommons.org/licenses/odbl/1-0/", "attribution": "© OpenStreetMap contributors (ODbL 1.0); Natural Earth (public domain); GeoNames (CC BY 4.0); NGA GNS (public domain)"}
+  }
+}

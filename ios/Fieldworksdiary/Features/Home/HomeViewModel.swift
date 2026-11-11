@@ -1,4 +1,5 @@
 import Combine
+import FieldworksGeo
 import Foundation
 
 /// Aggregates the data the home dashboard renders: the active
@@ -7,8 +8,11 @@ import Foundation
 ///
 /// Doesn't drive a live `ValueObservation` — refresh is cheap (small
 /// SELECTs / counts) and the view kicks it on `.task` and when the
-/// add-sample sheet dismisses, which covers every state change the
-/// user can trigger.
+/// editor of a new sample is popped, which covers every state change
+/// the user can trigger.
+///
+/// `createSample()` is the instant creation of Phase E: the sample
+/// exists before the editor opens.
 @MainActor
 final class HomeViewModel: ObservableObject {
     struct ActiveFieldtrip: Equatable {
@@ -31,31 +35,60 @@ final class HomeViewModel: ObservableObject {
     @Published var fieldtripCount: Int = 0
     @Published var localityCount: Int = 0
     @Published var photoCount: Int = 0
+    /// The instantly created sample whose editor is pushed; nil once
+    /// it is popped. While set, further taps create nothing (double tap).
+    @Published var newSample: InstantSampleCreator.Created?
+    /// Set when the instant creation failed; drives an alert.
+    @Published var createError: String?
 
     private let auth: AuthSession
     private let samples: LocalSampleStore
     private let fieldtrips: LocalFieldtripStore
     private let localities: LocalLocalityStore
     private let photos: LocalPhotoStore
+    private let placemarks: LocalPlacemarkStore?
+    /// nil → `createSample()` is unavailable (previews).
+    private let creator: InstantSampleCreator?
 
-    /// Cutoff hour drives "what is today's collecting day". 5h matches
-    /// the backend default (and the per-user override that will land
-    /// with Phase 14b's settings UI).
-    private let cutoffHour: Int = 5
-    private let timeZone: TimeZone = .init(identifier: "Europe/Berlin") ?? .current
+    /// The rollover hour comes from the user's settings (read fresh);
+    /// "today" is the day in the device zone.
+    private var timeZone: TimeZone { TimeZone.current }
 
     init(
         auth: AuthSession,
         samples: LocalSampleStore,
         fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
-        photos: LocalPhotoStore
+        photos: LocalPhotoStore,
+        placemarks: LocalPlacemarkStore? = nil,
+        creator: InstantSampleCreator? = nil
     ) {
         self.auth = auth
         self.samples = samples
         self.fieldtrips = fieldtrips
         self.localities = localities
         self.photos = photos
+        self.placemarks = placemarks
+        self.creator = creator
+    }
+
+    /// „Sample anlegen“: creates the sample locally right away, queues
+    /// its create, kicks the sync and sets `newSample` (pushes the
+    /// editor). Returns it, or nil when an editor is already being
+    /// pushed or the insert failed (then with `createError` set).
+    @discardableResult
+    func createSample(now: Date = Date()) -> InstantSampleCreator.Created? {
+        guard let creator, newSample == nil else { return nil }
+        do {
+            let created = try creator.create(now: now)
+            newSample = created
+            refresh()
+            return created
+        } catch {
+            Log.persistence.error("instant sample creation failed: \(error.localizedDescription)")
+            createError = "Die Probe konnte nicht angelegt werden."
+            return nil
+        }
     }
 
     func refresh() {
@@ -80,8 +113,9 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func loadActiveFieldtrip() -> ActiveFieldtrip? {
-        let today = Codes.collectingDay(Date(), cutoffHour: cutoffHour, timeZone: timeZone)
-        let key = Codes.collectingDayKey(today, timeZone: timeZone)
+        let key = SampleTime.collectingDay(
+            Date(), cutoffHour: SampleIDSettings.current().cutoffHour, in: timeZone
+        )
         guard let ft = try? fieldtrips.fetchByCollectingDay(key) else { return nil }
         let title = ft.title.isEmpty
             ? "Sammeltag \(formattedShort(ft.collectingDay))"
@@ -94,9 +128,15 @@ final class HomeViewModel: ObservableObject {
         guard let sample = try? samples.mostRecent() else { return nil }
         return RecentSample(
             id: sample.id,
-            code: sample.backendCode ?? sample.sampleID,
-            locality: sample.adminUnitsLocality
+            code: sample.sampleID,
+            locality: placeName(for: sample)
         )
+    }
+
+    /// Municipality (or next higher filled level) of the sample's place.
+    private func placeName(for sample: LocalSample) -> String? {
+        guard let placemarks, let id = sample.placemark, !id.isEmpty else { return nil }
+        return PlaceDisplay.shortName((try? placemarks.fetchById(id))?.place)
     }
 
     private func localityName(for id: String?) -> String? {

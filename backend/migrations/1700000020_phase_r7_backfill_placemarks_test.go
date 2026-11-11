@@ -3,7 +3,9 @@ package migrations
 import (
 	"testing"
 
-	"github.com/pocketbase/pocketbase/models"
+	"go.mett.io/fwd-backend/internal/testutil"
+
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 )
 
@@ -14,11 +16,7 @@ import (
 
 func setupTestApp(t *testing.T) *tests.TestApp {
 	t.Helper()
-	app, err := tests.NewTestApp()
-	if err != nil {
-		t.Fatalf("test-app: %v", err)
-	}
-	t.Cleanup(app.Cleanup)
+	app := testutil.NewTestApp(t)
 	return app
 }
 
@@ -44,33 +42,33 @@ func TestBackfillDedupHash_LockedConstant(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_CreatesAndAttaches(t *testing.T) {
-	app := setupTestApp(t)
-	dao := app.Dao()
+	app := setupLegacyLocationTestApp(t)
+	dao := app
 
 	// Seed an owner + locality (no placemark yet).
 	userColl, _ := dao.FindCollectionByNameOrId("users")
-	owner := models.NewRecord(userColl)
-	_ = owner.SetEmail("backfill@example.com")
-	_ = owner.SetUsername("backfilluser")
-	_ = owner.SetPassword("test1234password")
-	if err := dao.SaveRecord(owner); err != nil {
+	owner := core.NewRecord(userColl)
+	owner.SetEmail("backfill@example.com")
+	owner.Set("username", "backfilluser")
+	owner.SetPassword("test1234password")
+	if err := dao.SaveNoValidate(owner); err != nil {
 		t.Fatalf("save owner: %v", err)
 	}
 
 	locColl, _ := dao.FindCollectionByNameOrId("localities")
-	loc := models.NewRecord(locColl)
+	loc := core.NewRecord(locColl)
 	loc.Set("owner", owner.Id)
 	loc.Set("name", "Test")
 	loc.Set("location_source", "user")
 	loc.Set("version", 1)
-	if err := dao.SaveRecord(loc); err != nil {
+	if err := dao.SaveNoValidate(loc); err != nil {
 		t.Fatalf("save locality: %v", err)
 	}
 
 	// Seed a sample with a legacy admin_units JSON snapshot, pointed
 	// at the locality.
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
-	sample := models.NewRecord(samColl)
+	sample := core.NewRecord(samColl)
 	sample.Set("owner", owner.Id)
 	sample.Set("sample_id", "260519/1")
 	sample.Set("latitude", 49.79)
@@ -81,7 +79,7 @@ func TestBackfillOnePlacemark_CreatesAndAttaches(t *testing.T) {
 	sample.Set("version", 1)
 	sample.Set("locality", loc.Id)
 	sample.Set("admin_units", `{"country":"Deutschland","countryIso":"DE","adminArea":"Bayern","adminArea2":"Unterfranken","locality":"Würzburg"}`)
-	if err := dao.SaveRecord(sample); err != nil {
+	if err := dao.SaveNoValidate(sample); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 
@@ -114,30 +112,30 @@ func TestBackfillOnePlacemark_CreatesAndAttaches(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_IdempotentOnRerun(t *testing.T) {
-	app := setupTestApp(t)
-	dao := app.Dao()
+	app := setupLegacyLocationTestApp(t)
+	dao := app
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")
-	owner := models.NewRecord(userColl)
-	_ = owner.SetEmail("idemp@example.com")
-	_ = owner.SetUsername("idempuser")
-	_ = owner.SetPassword("test1234password")
-	if err := dao.SaveRecord(owner); err != nil {
+	owner := core.NewRecord(userColl)
+	owner.SetEmail("idemp@example.com")
+	owner.Set("username", "idempuser")
+	owner.SetPassword("test1234password")
+	if err := dao.SaveNoValidate(owner); err != nil {
 		t.Fatalf("save owner: %v", err)
 	}
 
 	locColl, _ := dao.FindCollectionByNameOrId("localities")
-	loc := models.NewRecord(locColl)
+	loc := core.NewRecord(locColl)
 	loc.Set("owner", owner.Id)
 	loc.Set("name", "Test")
 	loc.Set("location_source", "user")
 	loc.Set("version", 1)
-	if err := dao.SaveRecord(loc); err != nil {
+	if err := dao.SaveNoValidate(loc); err != nil {
 		t.Fatalf("save locality: %v", err)
 	}
 
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
-	sample := models.NewRecord(samColl)
+	sample := core.NewRecord(samColl)
 	sample.Set("owner", owner.Id)
 	sample.Set("sample_id", "260519/1")
 	sample.Set("latitude", 49.79)
@@ -148,7 +146,7 @@ func TestBackfillOnePlacemark_IdempotentOnRerun(t *testing.T) {
 	sample.Set("version", 1)
 	sample.Set("locality", loc.Id)
 	sample.Set("admin_units", `{"countryIso":"DE","adminArea":"Bayern","locality":"Würzburg"}`)
-	if err := dao.SaveRecord(sample); err != nil {
+	if err := dao.SaveNoValidate(sample); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 
@@ -169,43 +167,43 @@ func TestBackfillOnePlacemark_IdempotentOnRerun(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_SkipsManualOverride(t *testing.T) {
-	app := setupTestApp(t)
-	dao := app.Dao()
+	app := setupLegacyLocationTestApp(t)
+	dao := app
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")
-	owner := models.NewRecord(userColl)
-	_ = owner.SetEmail("manual@example.com")
-	_ = owner.SetUsername("manualuser")
-	_ = owner.SetPassword("test1234password")
-	if err := dao.SaveRecord(owner); err != nil {
+	owner := core.NewRecord(userColl)
+	owner.SetEmail("manual@example.com")
+	owner.Set("username", "manualuser")
+	owner.SetPassword("test1234password")
+	if err := dao.SaveNoValidate(owner); err != nil {
 		t.Fatalf("save owner: %v", err)
 	}
 
 	// Locality already has a hand-edited placemark — backfill must
 	// not overwrite it.
 	pmColl, _ := dao.FindCollectionByNameOrId("placemarks")
-	manual := models.NewRecord(pmColl)
+	manual := core.NewRecord(pmColl)
 	manual.Set("country", "FR")
 	manual.Set("locality", "Paris")
 	manual.Set("geocoding_source", "manual")
 	manual.Set("dedup_hash", "deadbeef")
-	if err := dao.SaveRecord(manual); err != nil {
+	if err := dao.SaveNoValidate(manual); err != nil {
 		t.Fatalf("save manual placemark: %v", err)
 	}
 
 	locColl, _ := dao.FindCollectionByNameOrId("localities")
-	loc := models.NewRecord(locColl)
+	loc := core.NewRecord(locColl)
 	loc.Set("owner", owner.Id)
 	loc.Set("name", "Test")
 	loc.Set("location_source", "user")
 	loc.Set("version", 1)
 	loc.Set("placemark", manual.Id)
-	if err := dao.SaveRecord(loc); err != nil {
+	if err := dao.SaveNoValidate(loc); err != nil {
 		t.Fatalf("save locality: %v", err)
 	}
 
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
-	sample := models.NewRecord(samColl)
+	sample := core.NewRecord(samColl)
 	sample.Set("owner", owner.Id)
 	sample.Set("sample_id", "260519/1")
 	sample.Set("latitude", 49.79)
@@ -216,7 +214,7 @@ func TestBackfillOnePlacemark_SkipsManualOverride(t *testing.T) {
 	sample.Set("version", 1)
 	sample.Set("locality", loc.Id)
 	sample.Set("admin_units", `{"countryIso":"DE","adminArea":"Bayern","locality":"Würzburg"}`)
-	if err := dao.SaveRecord(sample); err != nil {
+	if err := dao.SaveNoValidate(sample); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 
@@ -232,19 +230,19 @@ func TestBackfillOnePlacemark_SkipsManualOverride(t *testing.T) {
 }
 
 func TestBackfillOnePlacemark_TolerantOfMalformedJSON(t *testing.T) {
-	app := setupTestApp(t)
-	dao := app.Dao()
+	app := setupLegacyLocationTestApp(t)
+	dao := app
 
 	userColl, _ := dao.FindCollectionByNameOrId("users")
-	owner := models.NewRecord(userColl)
-	_ = owner.SetEmail("mal@example.com")
-	_ = owner.SetUsername("maluser")
-	_ = owner.SetPassword("test1234password")
-	if err := dao.SaveRecord(owner); err != nil {
+	owner := core.NewRecord(userColl)
+	owner.SetEmail("mal@example.com")
+	owner.Set("username", "maluser")
+	owner.SetPassword("test1234password")
+	if err := dao.SaveNoValidate(owner); err != nil {
 		t.Fatalf("save owner: %v", err)
 	}
 	samColl, _ := dao.FindCollectionByNameOrId("samples")
-	sample := models.NewRecord(samColl)
+	sample := core.NewRecord(samColl)
 	sample.Set("owner", owner.Id)
 	sample.Set("sample_id", "260519/1")
 	sample.Set("latitude", 49.79)
@@ -254,7 +252,7 @@ func TestBackfillOnePlacemark_TolerantOfMalformedJSON(t *testing.T) {
 	sample.Set("time_zone", "Europe/Berlin")
 	sample.Set("version", 1)
 	sample.Set("admin_units", `{not-json`)
-	if err := dao.SaveRecord(sample); err != nil {
+	if err := dao.SaveNoValidate(sample); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
 

@@ -3,9 +3,11 @@ import SwiftUI
 /// Root dashboard the user lands on after sign-in. Replaces the
 /// previous 5-tab bar.
 ///
-/// The new sample flow opens as a sheet so the dashboard's at-a-glance
-/// context stays visible behind it. Other destinations push onto the
-/// stack via `NavigationLink` and reuse the existing list screens.
+/// „Sample anlegen“ creates the sample instantly (Phase E) and pushes
+/// its editor onto the stack. „Probe nachtragen“ offers „Mit
+/// Koordinate“ and „Aus Foto“ (Phase N); the sample created there is
+/// pushed the same way. Other destinations push via `NavigationLink`
+/// and reuse the existing list screens.
 struct HomeView: View {
     @EnvironmentObject var container: AppContainer
     @EnvironmentObject var auth: AuthSession
@@ -17,16 +19,31 @@ struct HomeView: View {
             fieldtrips: container.fieldtrips,
             localities: container.localitiesStore,
             photos: container.photos,
-            sync: container.sync
+            placemarks: container.placemarksStore,
+            sync: container.sync,
+            creator: InstantSampleCreator(
+                store: container.store,
+                localitiesStore: container.localitiesStore,
+                mutationsStore: container.mutations,
+                sync: container.sync,
+                pendingFixes: container.pendingFixes,
+                locationResolver: container.makeLocationResolver(),
+                currentFix: { LocationProvider.recentFix() }
+            )
         )
     }
 }
 
 private struct HomeContent: View {
     @StateObject private var viewModel: HomeViewModel
-    @State private var presentingNewSample = false
 
     private let sync: SyncRunner
+    @State private var showingRetrospective = false
+
+    /// Divider inset that lines up with the row titles: row padding +
+    /// icon + icon spacing; grows with the icon under Dynamic Type.
+    @ScaledMetric(relativeTo: .body) private var dividerInset: CGFloat =
+        AppSpacing.lg + HomeMenuRow.baseIconSize + AppSpacing.lg
 
     init(
         auth: AuthSession,
@@ -34,14 +51,18 @@ private struct HomeContent: View {
         fieldtrips: LocalFieldtripStore,
         localities: LocalLocalityStore,
         photos: LocalPhotoStore,
-        sync: SyncRunner
+        placemarks: LocalPlacemarkStore,
+        sync: SyncRunner,
+        creator: InstantSampleCreator
     ) {
         _viewModel = StateObject(wrappedValue: HomeViewModel(
             auth: auth,
             samples: samples,
             fieldtrips: fieldtrips,
             localities: localities,
-            photos: photos
+            photos: photos,
+            placemarks: placemarks,
+            creator: creator
         ))
         self.sync = sync
     }
@@ -54,7 +75,7 @@ private struct HomeContent: View {
                         collectorName: viewModel.collectorName,
                         activeFieldtrip: viewModel.activeFieldtrip,
                         recentSample: viewModel.recentSample,
-                        onAddSample: { presentingNewSample = true }
+                        onAddSample: { viewModel.createSample() }
                     )
                     menuList
                 }
@@ -63,14 +84,31 @@ private struct HomeContent: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { viewModel.refresh() }
             .onChange(of: sync.inFlight) { _, _ in viewModel.refresh() }
-            .onChange(of: presentingNewSample) { _, isPresented in
-                // Refresh once the sheet closes — covers both "user
-                // submitted a sample" and "user cancelled" without
-                // needing a callback closure.
-                if !isPresented { viewModel.refresh() }
+            .onChange(of: viewModel.newSample) { _, created in
+                // Refresh once the editor is popped — covers both a
+                // saved and a deleted (empty id) new sample.
+                if created == nil { viewModel.refresh() }
             }
-            .sheet(isPresented: $presentingNewSample) {
-                AddSampleSheet()
+            .retrospectiveEntry(isPresented: $showingRetrospective) { created in
+                viewModel.newSample = created
+            }
+            .navigationDestination(item: $viewModel.newSample) { created in
+                SampleEditorView(
+                    sampleID: created.id,
+                    isNew: true,
+                    suggestedRunning: created.suggestedRunning
+                )
+            }
+            .alert(
+                "Fehler",
+                isPresented: Binding(
+                    get: { viewModel.createError != nil },
+                    set: { if !$0 { viewModel.createError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.createError ?? "")
             }
         }
     }
@@ -80,6 +118,17 @@ private struct HomeContent: View {
             row(icon: "arrow.up.right.square",
                 title: "Letzte Probe",
                 destination: { recentSampleDestination }) // last sample shortcut
+
+            Button {
+                showingRetrospective = true
+            } label: {
+                HomeMenuRow(title: "Probe nachtragen", systemImage: "clock.arrow.circlepath")
+                    .padding(.horizontal, AppSpacing.lg)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Mit Koordinate oder aus einem Foto.")
+            Divider()
+                .padding(.leading, dividerInset)
 
             row(icon: "photo.on.rectangle.angled",
                 title: "Proben",
@@ -97,7 +146,9 @@ private struct HomeContent: View {
                 destination: {
                     FieldtripsListScreen(
                         store: container.fieldtrips,
-                        hydrator: container.hydrator
+                        hydrator: container.hydrator,
+                        samples: container.store,
+                        placemarks: container.placemarksStore
                     )
                 })
 
@@ -128,7 +179,7 @@ private struct HomeContent: View {
                 title: "Einstellungen",
                 destination: { SettingsScreen() })
         }
-        .padding(.top, 8)
+        .padding(.top, AppSpacing.sm)
     }
 
     @EnvironmentObject private var container: AppContainer
@@ -144,11 +195,11 @@ private struct HomeContent: View {
             destination()
         } label: {
             HomeMenuRow(title: title, systemImage: icon, count: count)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, AppSpacing.lg)
         }
         .buttonStyle(.plain)
         Divider()
-            .padding(.leading, 60)
+            .padding(.leading, dividerInset)
     }
 
     /// Recent-sample row jumps either to the sample's detail (when
@@ -159,25 +210,6 @@ private struct HomeContent: View {
             SampleEditorView(sampleID: recent.id)
         } else {
             SamplesListScreen()
-        }
-    }
-}
-
-/// The "+" sheet is its own struct so it can read the container from
-/// the environment without the parent having to re-inject it. Phase
-/// 14c replaced the old AddSampleView with the two-section
-/// `SampleEditorView`.
-private struct AddSampleSheet: View {
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            SampleEditorView(sampleID: nil)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Schließen") { dismiss() }
-                    }
-                }
         }
     }
 }

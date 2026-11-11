@@ -11,7 +11,7 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
-**Aktive Phase: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
+**PocketBase-Update 0.22.42 → 0.40.6 implementiert – wartet auf Test durch Jo (Branch `feat/pocketbase-update`, nicht gemerged, siehe Abschnitt „PocketBase-Update“).** **Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
 
@@ -1045,3 +1045,175 @@ Aufgaben:
 - [ ] `RootView` → `HomeView` (statt MainTabs), `AppContainer` mit
       `PhotoStore`/`LocalPhotoStore`, Info.plist mit Camera/Photo-Usage
 - [ ] Build + Tests grün, manueller Foto-Capture im Simulator verifiziert
+
+---
+
+## Phase O – Ortus-Ortsdaten am Sample
+
+**Status: in progress** (gestartet 2026-11-09)
+
+Ziel: labelloc/MTB-Reverse-Geocoding durch Ortus ersetzen; Ortsdaten
+(Admin-Ebenen, Features, TK25-Quadrant) am Sample speichern.
+
+- Spec: `docs/superpowers/specs/2026-11-09-ortus-sample-ort-design.md`
+- Plan: `docs/superpowers/plans/2026-11-09-ortus-sample-ort.md`
+
+Aufgaben:
+
+Phase O1 – Backend — **done** (2026-11-09)
+- [x] Task 0: Phasenstatus eintragen
+- [x] Task 1: Label-Tabelle – Format, Generator, Go-Loader
+- [x] Task 2: Label-Tabelle – Bereinigungsentwurf aller 77 Länder
+- [x] Task 3: TK25-Quadrant (Go)
+- [x] Task 4: Ortus-Wrapper
+- [x] Task 5: Mapping Ortus → Place / SampleGeo / Features
+- [x] Task 6: Migrationen – Placemarks, Samples, Sample-Features
+- [x] Task 7: Placemark- und Feature-Store + Endpoints
+- [x] Task 8: Sample-Anreicherung über Ortus
+- [x] Task 9: Locality-Placemark über Ortus
+- [x] Task 10: labelloc/MTB entfernen, Leser umstellen
+- [x] Task 11: Phase O1 abschließen
+
+Demo O1 (lokaler Ortus-Lauf, 2026-11-09):
+- DE-Sample 49.681616/10.039652 → Ochsenfurt / Landkreis Würzburg /
+  Unterfranken / Bayern / Deutschland, MTB 6326/1, GPS-Höhe bleibt
+  erhalten.
+- ES La Palma → Canarias / Santa Cruz de Tenerife, kein MTB.
+- Nicht live verifiziert: DEM-Höhe und Inseln — der lokale Ortus hatte
+  keinen DEM-/Insel-Layer (nur über Fixtures getestet).
+- Label-Tabelle ist ein ungeprüfter Entwurf — Jo reviewt sie pro Land
+  vor der O2-UI.
+
+Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026-11-09; App-Unit-Tests auf Tahoe nur via Xcode-IDE lauffähig, daher noch ungelaufen)
+- [x] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
+- [x] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
+- [x] Task 14: GRDB-Migration v13 und Stores
+- [x] Task 15: Ortus-Client und Ortsauflösung beim Anlegen
+- [x] Task 16: Sync – Placemark, Sample, Features
+- [x] Task 17: UI – Ortsfelder anzeigen, bearbeiten, korrigieren, filtern
+- [ ] Task 18: Phase O2 abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach O2 done
+
+Phase O3 – Backfill und Aufräumen — **implementiert, wartet auf Test durch Jo** (2026-11-10 auf `feat/sample-zeit-id`, nach Phase Z)
+- [x] Task 19: Backfill-Kommando
+- [x] Task 20: Alte Spalten entfernen
+- [x] Task 21: Hydration-Cursor statt 200er-Limit (Final-O2 I-3)
+
+Deploy-Hinweise O3:
+- Migration `1700000027` übernimmt die manuellen Alt-Placemarks (`country` … `sub_locality`) selbst nach `country_iso`/`admin_*` (pro Besitzer ein Klon) und löscht erst danach die Altspalten; Prod kann also direkt von 22 auf 27 springen.
+- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec backend /app/fieldworksdiary ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
+- Migration 27 nutzt die Mapping-Logik aus `internal/geoplace`; eine spätere Umbenennung von Placemark-Spalten muss 27 lauffähig halten.
+
+Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `backend/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
+
+## Phase Z – Zeitzone, Sample-ID, Höhe
+
+**Status: implementiert, wartet auf Test durch Jo** (gestartet 2026-11-09, Branch `feat/sample-zeit-id`; App-Unit-Tests auf Tahoe nur via Xcode-IDE lauffähig, daher noch ungelaufen)
+
+Ziel: Zeiten in UTC mit Ortszeit-Anzeige pro Sample (Zeitzone aus Ortus
+`timezones-2026a`), Sample-ID-Format und Tagesrollover als User-Einstellung,
+Sample-ID wird nach dem Speichern nie mehr umnummeriert, nur noch eine Höhe.
+
+- Spec: `docs/superpowers/specs/2026-11-09-sample-zeit-und-id-design.md`
+- Plan: `docs/superpowers/plans/2026-11-09-sample-zeit-id-hoehe.md`
+
+- [x] Task 0: Phasenstatus und Worktree
+- [x] Task 1: Backend-Migration `1700000026`
+- [x] Task 2: Backend-Hook – ID nie anfassen, Sammeltag aus Client/Zeitzone
+- [x] Task 3: Backend-Anreicherung – Zeitzone und eine Höhe
+- [x] Task 4: FieldworksGeo – reine Zeit- und ID-Logik
+- [x] Task 5: iOS-Persistenz und Sync-Schema
+- [x] Task 6: iOS-Einstellungen – Format, Präfix, Offset, Rollover
+- [x] Task 7: iOS-Anlegen – Zeitfenster, Sammeltag, Vorschlag, Eindeutigkeit
+- [x] Task 8: iOS-Ortsauflösung – Zeitzone und Höhe
+- [x] Task 9: iOS-UI – Ortszeit, Zeitzonen-Anzeige, Zeitfenster, Zeitzonenwahl
+- [x] Task 10: iOS-UI – Höhe bearbeiten, Konflikthinweis
+- [ ] Task 11: Phase Z abschließen — offen: Jo führt `Cmd+Shift+U` + `bash scripts/test-ios-no-build.sh` aus und testet im Simulator; erst danach Phase Z done
+
+Demo Z (Branch-Backend + `https://ortus.fieldworksdiary.org`, 2026-11-10):
+- La Palma, 23:50 UTC, Zone Atlantic/Canary, Rollover 0 → Sammeltag 2026-01-15; Ortus setzt Zone (`location_service`) und DEM-Höhe 870 m ± 0,2 m.
+- Gleiche ID nochmal → `260115/1 (2)` mit `original_code`; leere ID zweimal bleibt leer.
+- Features ohne `timezones-2026a`; DE-Sample MTB 6226/3, 247 m.
+
+Nacharbeiten (nicht in Phase Z): Konflikthinweis wegklickbar machen, wenn „X (2)“ bleiben soll; Exkursions-Astro/Anzeige noch fest Europe/Berlin; Tap-Target-Token; Unique-Index auf `client_uuid` (Altthema).
+
+## Phase E – Sofort-Anlage, Hintergrund-Ortung, Feature-Flags
+
+**Status: implementiert, wartet auf Test durch Jo** (gestartet 2026-11-10, Branch `feat/sofort-anlage`, nicht gemerged)
+
+- Spec: `docs/superpowers/specs/2026-11-10-sofort-anlage-design.md`
+- Plan: `docs/superpowers/plans/2026-11-10-sofort-anlage.md`
+
+- [x] Task 0: Phasenstatus
+- [x] Task 1: Sample löschen über die Outbox
+- [x] Task 2: PendingFixService und Ortungsberechtigung „Immer“
+- [x] Task 3: Sofort-Anlage und Editor im Navigation-Stack
+- [x] Task 4: Feature-Flags mit Flipt
+- [ ] Task 5: Phase E abschließen — Xcode-Suite 313/313 grün, Typecheck leer, Abschluss-Review + Korrekturrunde durch; offen: Test durch Jo im Simulator/Gerät
+
+Korrekturrunde nach dem Abschluss-Review: „Probe nachtragen“ als Home-Eintrag (manueller Modus war mit dem Sheet unerreichbar); Hintergrund-Fix nur für auf diesem Gerät angelegte Samples (sonst Fix auf fremde, per Sync hereingekommene Samples); Kartenwahl fusioniert auch offline; Fundort eines gelöschten neuen Samples wird mitgelöscht (nur wenn eigens dafür angelegt und sonst unbenutzt, GRDB v17 `locality_origins`); eine gemeinsame Genauigkeitsschwelle; Wisch-Geste zurück im Editor explizit abgeschaltet.
+
+Testhinweise für Jo: beide Berechtigungsdialoge („Beim Verwenden“, danach „Immer“); Wisch-Geste zurück unter iOS 26 auf dem Gerät; App im Flugmodus starten (Feature-Flags → false, kein Hänger); neues Sample mit leerer ID → Nachfrage, „Sample löschen“ entfernt es auch auf dem Server.
+
+Nacharbeiten (nicht in Phase E): später Fix während laufendem Create überspringt `awaitEnrichment`; HomeView hält den Resolver einmalig; beide Berechtigungsdialoge können beim Tippen erscheinen; verwaister Fundort, wenn das Ursprungs-Sample vor einem Mitnutzer gelöscht wird; „Immer“ ohne sichtbare Funktion ist ein App-Store-Risiko.
+
+## Phase N – Probe nachtragen, Bearbeiten-Formular, Koordinatenformate
+
+**Status: implementiert, wartet auf Test durch Jo** (gestartet 2026-11-10, Branch `feat/nachtragen`, zweigt von `feat/sofort-anlage` ab, nicht gemerged)
+
+- Spec: `docs/superpowers/specs/2026-11-10-nachtragen-und-formular-design.md`
+- Plan: `docs/superpowers/plans/2026-11-10-nachtragen-und-formular.md`
+
+- [x] Task 0: Phasenstatus
+- [x] Task 1: GEOTRANS in FieldworksGeo — Formatieren und Parsen
+- [x] Task 2: Ortus-Anfrage mit Koordinatensystem
+- [x] Task 3: Backend — nachgetragene Samples, Fieldtrip-Neuzuordnung
+- [x] Task 4: iOS-Modell, Sammeltag-Regel, Einstellung Koordinatenformat
+- [x] Task 5: Nachtragen — Auswahl, Dialog „Mit Koordinate“, „Aus Foto“
+- [x] Task 6: Bearbeiten-Formular
+- [x] Task 7: Sample-Ansicht entschlacken
+- [ ] Task 8: Phase N abschließen — Xcode-Suite 391/391, `go test ./...` und `swift test` grün, Typecheck leer, Abschluss-Review + Korrekturrunde durch; offen: Test durch Jo
+
+Abschluss-Review und Korrekturrunde: ganztägige Samples bleiben bei Zeitzonenwechsel (Backend-Anreicherung und App) auf 00:00 desselben Tags; Fieldtrip nach Datumsänderung kommt sofort aus der PATCH-Antwort; Foto ohne GPS zeigt kein „Suche Position …“; „Ortsdaten neu abfragen“ wird beim Scrollen nicht mehr abgebrochen; Karte auch ohne Koordinate („Auf Karte wählen“, Start an letzter bekannter Position); Sammeltag nachgetragener Samples ändert sich nur bei Änderung von Beginn, Zeitzone oder Ganztägig.
+
+Entscheidungen von Claude zur Prüfung: Gazetteer-Zeile endet bei der Gemeinde („…, Landkreis Würzburg, Ochsenfurt“); Karte ohne Koordinate startet an der letzten bekannten Position (ohne: Würzburg).
+
+Testhinweise für Jo:
+1. Ortus-Endpoint in den Einstellungen auf `https://ortus.fieldworksdiary.org` stellen (Prod rechnet nur WGS84).
+2. Probe nachtragen → Mit Koordinate: Gauß-Krüger Zone 3 `3574500` / `5505500` und MGRS `32UNA7440003700` (Kleinochsenfurt), dazu `99999999` / `1` als Fehlerfall (Dialog bleibt offen, Eingabe stehen).
+3. Probe nachtragen → Aus Foto: ein Foto mit und eins ohne Ort; ohne Ort keine „Suche Position …“-Anzeige.
+4. Bearbeiten-Formular: Ganztägig an/aus, Beginn auf ein altes Datum → Fieldtrip wechselt; Formular mit halb eingetippter Koordinate verlassen → Rückfrage.
+5. Einstellungen → Koordinatenformat MGRS/DMS: Sample-Ansicht zeigt das Format mit Namen darunter.
+6. Probe ohne Koordinate → „Auf Karte wählen“: Achtung, „Übernehmen“ ist sofort mit der Geräteposition aktiv.
+
+Anpassungen aus Jos erstem Test (89e34ba, ddafade): Peilung ohne Label und nur, wenn sie über die Gazetteer-Zeile hinaus etwas sagt (nicht „in …“, ab 0,5 km); Sammeltag aus der Sample-Ansicht entfernt; Koordinatensystem (MGRS, UTM, Geographische Koordinaten) über der Koordinate auf Höhe von „Höhe“, Werte und Genauigkeiten in Primärfarbe; Reihenfolge Gazetteer, Peilung, MTB, „Exposition: … Hangneigung: …“ in einer Zeile; iOS-26-Zusatzrand links entfernt, Icon-Spalte schmaler.
+
+Nacharbeiten (nicht in Phase N): neue UI-Strings fehlen in `Localizable.xcstrings` (Anzeige fällt auf den deutschen Schlüssel zurück); Karte ohne Koordinate lässt die Geräteposition ohne Tippen übernehmen; laufende Ortus-Anfrage im Formular wird bei Pop-to-root nicht abgebrochen (schreibt dann noch, harmlos); Fieldtrip-Zuordnung im Backend vor dem 409-Guard; Sammeltag eines nachgetragenen Samples folgt einer vom Backend gesetzten Zeitzone erst beim nächsten eigenen Schreiben; Kamera-Button ohne 44-pt-Mindestbreite; Scrim-Token ohne Increase-Contrast-Variante.
+
+## Projekt Account-Umbau
+
+**Status: pending** (vor der Weitergabe an Tester nötig, noch nicht eingeplant)
+
+- Owner in PocketBase per `ownerId` statt E-Mail.
+- Durchgehend abgesichert: ein angemeldeter User sieht ausschließlich seine eigenen Einträge (alle Collections, alle Endpunkte).
+- Identifizierung (Apple, Google, E-Mail/Passwort) von der Autorisierung trennen: Login-Wechsel, z.B. nach Löschung eines Apple-Accounts, ohne Zugangsverlust.
+- Sammler-Default in den Einstellungen, am Account hinterlegt.
+
+## PocketBase-Update
+
+**Status: implementiert – wartet auf Test durch Jo** (Branch `feat/pocketbase-update`, nicht gemerged; Entscheidung in `docs/adr/0008-pocketbase-0xx.md`)
+
+Anlass: HIGH-Lücken in `labstack/echo/v5` (GO-2026-6293, GO-2026-6885, CVE-2026-55677), das PocketBase 0.22 einbindet; ab 0.23 ist echo raus.
+
+- PocketBase v0.40.6, Go 1.27.4 (go.mod, Dockerfile, golangci-lint v2.15.0 per goinstall in CI). Die 0.22→0.23-Systemmigration ist in v0.40.6 enthalten: Ein-Schritt-Deploy.
+- Backend auf die neue API portiert (core.App/core.Record, Hooks mit `e.Next()`, neuer Router), Verhalten für die iOS-App unverändert. Alle 28 Migrationen inhaltlich treu portiert, Dateinamen gleich; frische und upgegradete DB haben dasselbe Schema (created/updated, users.username).
+- 0.22-Auth-Tokens bleiben bis zu ihrem Ablauf gültig (kein Zwangs-Logout); Shim nach 14 Tagen Prod-Laufzeit entfernen.
+- `scripts/pb-upgrade-check.sh`: Upgrade-Test alte pb_data → neues Binary mit API-Dump-Vergleich (frische Testdaten oder Kopie echter Daten).
+- govulncheck sauber (Allowlist leer, x/net 0.62.0), Gate schlägt jetzt auch bei gescheitertem Scan an.
+- Bekannte Abweichung: Fehler-JSON `status` statt `code`, einige PocketBase-Meldungen umformuliert (iOS liest beides nicht).
+
+Deploy (manuell, siehe `docs/ENVIRONMENTS.md` „Manuelles Deploy“):
+1. Backup: `cp -a pb_data_prod "pb_data_prod_backups/$(date +%Y%m%d-%H%M%S)"`.
+2. Upgrade-Check gegen eine Kopie (nie gegen das Original): `SU_EMAIL=<admin> SU_PASSWORD=… scripts/pb-upgrade-check.sh --pb-data /pfad/zur/kopie` – optional mit `USER_A`/`USER_B`/`USER_PASSWORD` für die User-Sicht. Muss mit „OK“ enden. Die Dumps im Arbeitsverzeichnis enthalten echte Daten (E-Mails) – danach löschen.
+3. Image bauen/pullen und `docker compose … up -d --no-build` wie gewohnt; beim ersten Start migriert PocketBase die DB selbst. Admin-Login heißt jetzt Superuser (`/_/`, gleiche Zugangsdaten).
+4. Zurück nur mit Backup: auf einer einmal migrierten pb_data startet das alte Image zwar, aber Login und Listen scheitern (geprüft) – Rollback = altes Image + Backup zurückspielen.
+

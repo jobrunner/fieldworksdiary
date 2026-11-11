@@ -39,6 +39,52 @@ components:
         Im Header als `Authorization: <token>` mitgeben — **nicht** mit
         `Bearer `-Präfix (PocketBase-Konvention).
   schemas:
+    PlacemarkFields:
+      type: object
+      required: [country_iso]
+      description: |
+        Flache Ortsfelder; für jede Admin-Stufe `admin_<tier>`,
+        `admin_<tier>_level` und `admin_<tier>_native`. `geocoding_source`
+        ist nur bei `/api/placemarks/resolve` auszuwerten (Pflicht dort).
+      properties:
+        geocoding_source: { type: string, enum: [backend_service, manual] }
+        country_iso: { type: string, description: ISO 3166-1 alpha-2 }
+        admin_country: { type: string }
+        admin_country_level: { type: integer }
+        admin_country_native: { type: string }
+        admin_state: { type: string }
+        admin_state_level: { type: integer }
+        admin_state_native: { type: string }
+        admin_region: { type: string }
+        admin_region_level: { type: integer }
+        admin_region_native: { type: string }
+        admin_province: { type: string }
+        admin_province_level: { type: integer }
+        admin_province_native: { type: string }
+        admin_county: { type: string }
+        admin_county_level: { type: integer }
+        admin_county_native: { type: string }
+        admin_district: { type: string }
+        admin_district_level: { type: integer }
+        admin_district_native: { type: string }
+        admin_municipality: { type: string }
+        admin_municipality_level: { type: integer }
+        admin_municipality_native: { type: string }
+        admin_borough: { type: string }
+        admin_borough_level: { type: integer }
+        admin_borough_native: { type: string }
+        admin_parish: { type: string }
+        admin_parish_level: { type: integer }
+        admin_parish_native: { type: string }
+        admin_submunicipality: { type: string }
+        admin_submunicipality_level: { type: integer }
+        admin_submunicipality_native: { type: string }
+        admin_other: { type: string }
+        admin_other_level: { type: integer }
+        admin_other_native: { type: string }
+        island: { type: string }
+        mountain_range: { type: string }
+        mountain: { type: string }
     LabelRequest:
       type: object
       required: [sample_ids]
@@ -166,6 +212,93 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/placemarks/resolve:
+    post:
+      summary: Placemark zu Ortsdaten finden oder anlegen
+      description: |
+        Sucht den Placemark zu den flachen Ortsfeldern (Dedup-Hash +
+        `geocoding_source` + Owner) oder legt ihn an. `manual` gehört dem
+        aufrufenden User (`owner`), `backend_service` ist geteilt (kein
+        `owner`). Die Antwort ist der vollständige Placemark-Record.
+      operationId: resolvePlacemark
+      tags: [placemarks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlacemarkFields" }
+      responses:
+        "200":
+          description: Placemark-Record (enthält `id`).
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/localities/{id}/placemark:
+    patch:
+      summary: Placemark einer Locality manuell überschreiben
+      description: |
+        Gleicher Body wie `/api/placemarks/resolve`, aber ohne
+        `geocoding_source` (immer `manual`, Owner = aufrufender User).
+        Hängt den Placemark an die Locality.
+      operationId: setManualPlacemark
+      tags: [placemarks]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PlacemarkFields" }
+      responses:
+        "200":
+          description: Placemark-Record.
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Locality nicht gefunden.
+
+  /api/samples/{id}/features:
+    put:
+      summary: Feature-Satz eines Samples ersetzen
+      description: |
+        Ersetzt alle `sample_features` des Samples atomar durch den
+        übergebenen Satz. Fremde oder unbekannte Samples liefern 404.
+      operationId: replaceSampleFeatures
+      tags: [samples]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [features]
+              properties:
+                features:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      source_id: { type: string }
+                      source_name: { type: string }
+                      layer: { type: string }
+                      feature_id: { type: string }
+                      properties: { type: object, additionalProperties: true }
+                      license: { type: object, additionalProperties: true }
+      responses:
+        "204": { description: Feature-Satz ersetzt. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: Sample nicht gefunden oder gehört einem anderen User.
 
   /api/export:
     get:
