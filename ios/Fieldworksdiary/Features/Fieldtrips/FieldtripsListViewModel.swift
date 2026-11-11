@@ -94,13 +94,7 @@ final class FieldtripsListViewModel: ObservableObject {
             samples: all.map { (fieldtrip: $0.fieldtrip, placemark: $0.placemark) },
             placemarks: cached
         )
-        placeSummaries = FieldtripPlaceSummary.index(
-            samples: all.map {
-                (fieldtrip: $0.fieldtrip, placemark: $0.placemark,
-                 mtbSheetNumber: $0.mtbSheetNumber, mtbSheetName: $0.mtbSheetName)
-            },
-            placemarks: cached
-        )
+        placeSummaries = FieldtripPlaceSummary.index(samples: all, placemarks: cached)
         rebuildVisible()
     }
 

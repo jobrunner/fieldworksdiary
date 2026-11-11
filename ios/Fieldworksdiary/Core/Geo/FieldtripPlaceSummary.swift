@@ -65,7 +65,7 @@ struct FieldtripPlaceSummary: Equatable {
 
     /// Summaries per fieldtrip id for all local samples at once.
     static func index(
-        samples: [(fieldtrip: String?, placemark: String?, mtbSheetNumber: String?, mtbSheetName: String?)],
+        samples: [LocalSample],
         placemarks: [String: LocalPlacemark]
     ) -> [String: FieldtripPlaceSummary] {
         var grouped: [String: [Sample]] = [:]

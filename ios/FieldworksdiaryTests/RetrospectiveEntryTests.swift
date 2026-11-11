@@ -252,7 +252,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         // No offset in the photo: the wall clock 23:30 is read in the
         // Ortus zone (Canary, 22:30 UTC), not in the device zone (Berlin).
         let data = try Self.makeImage(
-            gps: (28.68, "N", 17.76, "W"),
+            gps: GPS(28.68, "N", 17.76, "W"),
             exif: ["DateTimeOriginal": "2019:06:01 23:30:00"]
         )
 
@@ -279,7 +279,7 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     func testPhotoWithGPS_OrtusFails_DialogSeededAndPhotoGoesToItsSample() async throws {
         let data = try Self.makeImage(
-            gps: (49.68123, "N", 10.03134, "E"),
+            gps: GPS(49.68123, "N", 10.03134, "E"),
             exif: ["DateTimeOriginal": "2019:06:01 14:30:00", "OffsetTimeOriginal": "+02:00"]
         )
 
@@ -319,7 +319,7 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     func testReader_JPEGWithSouthWestGPSAndOffset() throws {
         let data = try Self.makeImage(
-            gps: (33.45, "S", 70.66, "W"),
+            gps: GPS(33.45, "S", 70.66, "W"),
             exif: ["DateTimeOriginal": "2019:06:01 14:30:00", "OffsetTimeOriginal": "-04:00"]
         )
 
@@ -361,7 +361,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         do {
             data = try Self.makeImage(
                 type: .heic,
-                gps: (49.68123, "N", 10.03134, "E"),
+                gps: GPS(49.68123, "N", 10.03134, "E"),
                 exif: ["DateTimeOriginal": "2019:06:01 14:30:00", "OffsetTimeOriginal": "+02:00"]
             )
         } catch {
@@ -421,11 +421,25 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     private enum ImageError: Error { case encode }
 
+    private struct GPS {
+        let lat: Double
+        let latRef: String
+        let lon: Double
+        let lonRef: String
+
+        init(_ lat: Double, _ latRef: String, _ lon: Double, _ lonRef: String) {
+            self.lat = lat
+            self.latRef = latRef
+            self.lon = lon
+            self.lonRef = lonRef
+        }
+    }
+
     /// A tiny image written at runtime with ImageIO, carrying the given
     /// GPS and Exif blocks (no binary fixtures in the repo).
     private static func makeImage(
         type: UTType = .jpeg,
-        gps: (lat: Double, latRef: String, lon: Double, lonRef: String)? = nil,
+        gps: GPS? = nil,
         exif: [String: String]? = nil
     ) throws -> Data {
         guard let context = CGContext(
