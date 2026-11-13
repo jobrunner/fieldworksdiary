@@ -80,7 +80,7 @@ final class PendingMutationsStoreTests: XCTestCase {
         let older = try store.enqueue(entityType: .sample, entityId: nil, op: .create, payload: Data())
         // Tiny sleep so created_at is monotone (the test relies on
         // GRDB's wall-clock granularity, not on UUID order).
-        try Thread.sleep(forTimeInterval: 0.01) // swiftlint:disable:this force_try
+        Thread.sleep(forTimeInterval: 0.01)
         let newer = try store.enqueue(entityType: .sample, entityId: nil, op: .create, payload: Data())
 
         let ordered = try store.fetchAllOrdered()
