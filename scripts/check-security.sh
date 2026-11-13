@@ -35,7 +35,7 @@ if command -v zizmor >/dev/null 2>&1; then
     bad "Findings (Output oben)"
   fi
 else
-  missing "zizmor (Install: pipx install 'zizmor>=1.0,<2.0' oder brew install zizmor)"
+  missing "zizmor (nix develop)"
 fi
 
 section "trivy fs (vuln + misconfig + secret)"

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Volle QA-Suite für die iOS-App (SwiftUI).
-# Erwartet swiftlint + swiftformat im PATH und ein installiertes Xcode
-# unter /Applications/Xcode.app (für xcodebuild build/test).
+# Erwartet die Nix-Shell (`nix develop`: swiftlint, swiftformat,
+# periphery) und ein installiertes Xcode unter /Applications/Xcode.app
+# (für xcodebuild build/test).
 
 set -uo pipefail
 
@@ -12,7 +13,7 @@ FAIL=0
 section() { printf '\n\033[1;34m▸ %s\033[0m\n' "$*"; }
 ok()      { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
 bad()     { printf '\033[1;31m  ✗ %s\033[0m\n' "$*"; FAIL=$((FAIL+1)); }
-missing() { printf '\033[1;33m  ? %s nicht installiert — übersprungen.\033[0m\n' "$*"; }
+missing() { printf '\033[1;33m  ? %s nicht installiert — übersprungen (nix develop?).\033[0m\n' "$*"; }
 
 # xcodebuild verträgt die Nix-Shell-Env nicht (NIX_LDFLAGS / NIX_CFLAGS /
 # SDKROOT / MACOSX_DEPLOYMENT_TARGET / LD/CC etc. werden vom Apple-Linker
@@ -54,7 +55,7 @@ if command -v periphery >/dev/null 2>&1; then
     fi
   fi
 else
-  missing "periphery (Cask: brew install peripheryapp/periphery/periphery)"
+  missing "periphery"
 fi
 
 section "SwiftLint"

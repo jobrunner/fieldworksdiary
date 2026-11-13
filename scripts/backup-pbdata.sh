@@ -26,7 +26,7 @@ if [ ! -d "$SRC" ]; then
 fi
 
 if ! command -v sqlite3 >/dev/null 2>&1; then
-  echo "sqlite3 nicht im PATH (nix-shell oder 'brew install sqlite' nutzen)." >&2
+  echo "sqlite3 nicht im PATH (nix develop nutzen)." >&2
   exit 1
 fi
 
