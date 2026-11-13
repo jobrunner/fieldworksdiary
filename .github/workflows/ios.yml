@@ -8,12 +8,16 @@ on:
       - '.swiftlint.yml'
       - '.swiftformat'
       - '.github/workflows/ios.yml'
+      - 'flake.nix'
+      - 'flake.lock'
   pull_request:
     paths:
       - 'ios/**'
       - '.swiftlint.yml'
       - '.swiftformat'
       - '.github/workflows/ios.yml'
+      - 'flake.nix'
+      - 'flake.lock'
   workflow_dispatch:
 
 concurrency:
@@ -35,41 +39,48 @@ jobs:
     # kein Team parallel darauf angewiesen ist. Bei Bedarf reaktivieren:
     # git log auf diese Datei zeigt die letzte volle Fassung.
     runs-on: macos-15
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Install tooling (xcodegen, SwiftLint, SwiftFormat)
+      # Die Dev-Shell (flake.nix) liest xcode-select; DEVELOPER_DIR als
+      # Env würde Nix ohnehin überschreiben.
+      - name: Xcode auswählen
         run: |
-          brew update
-          brew install xcodegen swiftlint swiftformat
+          sudo xcode-select -s /Applications/Xcode_26.0.app
+          xcodebuild -version
 
-      # Periphery ist nur ein Hinweis-Check und darf den Lint nicht
-      # blockieren. Der Cask aus peripheryapp/periphery scheitert an
-      # `depends_on macos: :catalina` (in Homebrew abgeschaltet), die
-      # Core-Formel ist deprecated, weil das Upstream-Repo archiviert ist
-      # (Abschaltung 2027-08-12). Danach Schritt entfernen oder ersetzen.
-      - name: Install periphery (optional)
-        continue-on-error: true
-        run: brew install periphery
+      # Toolchain kommt wie lokal aus flake.lock (Shell `ios-lint`):
+      # swiftformat, swiftlint, xcodegen, periphery in denselben Versionen.
+      - uses: cachix/install-nix-action@v31.11.5
+
+      # Nix-Store im Actions-Cache, Schlüssel ist flake.lock. Nach dem
+      # ersten Lauf wird nur noch entpackt statt von cache.nixos.org
+      # geladen.
+      - uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-ios-lint-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-ios-lint-${{ runner.os }}-${{ runner.arch }}-
+          gc-max-store-size-macos: 2G
+
+      - name: Dev-Shell bauen
+        run: nix develop .#ios-lint -c true
 
       - name: Generate Xcode project
         working-directory: ios
-        run: xcodegen generate
+        run: nix develop ..#ios-lint -c xcodegen generate
 
       - name: SwiftFormat (lint mode)
-        run: swiftformat --lint --config .swiftformat ios
+        run: nix develop .#ios-lint -c swiftformat --lint --config .swiftformat ios
 
+      # Periphery ist nur ein Hinweis-Check und darf den Lint nicht
+      # blockieren. Upstream ist archiviert; fliegt periphery aus
+      # nixpkgs, diesen Schritt und den Eintrag in flake.nix entfernen.
       - name: Periphery (warn-only, blockt CI nicht)
         continue-on-error: true
-        run: periphery scan --config .periphery.yml --format github-actions
+        run: nix develop .#ios-lint -c periphery scan --config .periphery.yml --format github-actions
 
       - name: SwiftLint
-        run: swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
+        run: nix develop .#ios-lint -c swiftlint lint --config .swiftlint.yml --reporter github-actions-logging
 
