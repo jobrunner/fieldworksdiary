@@ -6,17 +6,11 @@
       "release-type": "simple",
       "changelog-path": "CHANGELOG.md",
       "include-component-in-tag": false,
+      "bump-minor-pre-major": true,
       "extra-files": [
-        {
-          "type": "generic",
-          "path": "VERSION"
-        },
-        {
-          "type": "generic",
-          "path": "ios/project.yml"
-        }
-      ],
-      "bump-minor-pre-major": true
+        { "type": "generic", "path": "VERSION" },
+        { "type": "generic", "path": "ios/project.yml" }
+      ]
     }
   }
 }
