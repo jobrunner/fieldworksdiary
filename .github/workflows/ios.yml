@@ -57,15 +57,20 @@ jobs:
 
       # Nix-Store im Actions-Cache, Schlüssel ist flake.lock. Nach dem
       # ersten Lauf wird nur noch entpackt statt von cache.nixos.org
-      # geladen.
+      # geladen. Der Cache hält vor allem xcodegen: Das liegt nicht im
+      # Binary-Cache von nixpkgs und wird sonst bei jedem Lauf samt
+      # Swift-Toolchain gebaut (gut 3 Minuten).
       - uses: nix-community/cache-nix-action@v7
         with:
-          primary-key: nix-ios-lint-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
-          restore-prefixes-first-match: nix-ios-lint-${{ runner.os }}-${{ runner.arch }}-
+          primary-key: nix-ios-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
+          restore-prefixes-first-match: nix-ios-lint-v2-${{ runner.os }}-${{ runner.arch }}-
           gc-max-store-size-macos: 2G
 
+      # --profile legt eine GC-Root an. Ohne sie räumt die Garbage
+      # Collection vor dem Cache-Speichern die Shell (und das gebaute
+      # xcodegen) weg, die Swift-Toolchain fürs Bauen fliegt dagegen raus.
       - name: Dev-Shell bauen
-        run: nix develop .#ios-lint -c true
+        run: nix develop .#ios-lint --profile "$RUNNER_TEMP/ios-lint-profile" -c true
 
       - name: Generate Xcode project
         working-directory: ios
