@@ -54,26 +54,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # `prod` bleibt als Tag, weil docker-compose.prod.yml ihn als
-      # Default zieht; `sha-…` erlaubt das Zurückrollen auf einen Stand.
+      # Versionierung wie bei Ortus: `VERSION` (von release-please
+      # gepflegt) liefert X.Y.Z, X.Y und X, dazu `latest` und der
+      # Short-SHA. Deployt wird eine feste Version (FWD_VERSION in
+      # docker-compose.prod.yml). Achtung: Zwischen zwei Releases zeigt
+      # X.Y.Z auf den jeweils neuesten main-Stand; unveränderlich ist
+      # nur der SHA-Tag. `cut` schneidet den
+      # `# x-release-please-version`-Marker ab.
+      - name: Version ermitteln
+        id: version
+        run: |
+          VERSION=$(head -n1 VERSION | cut -d' ' -f1)
+          {
+            echo "value=$VERSION"
+            echo "minor=$(echo "$VERSION" | cut -d. -f1-2)"
+            echo "major=$(echo "$VERSION" | cut -d. -f1)"
+            echo "commit=${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Metadaten (Tags + Labels)
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=prod
+            type=raw,value=${{ steps.version.outputs.value }}
+            type=raw,value=${{ steps.version.outputs.minor }}
+            type=raw,value=${{ steps.version.outputs.major }}
             type=raw,value=latest
-            type=sha,prefix=sha-,format=short
-
-      # `VERSION` (von release-please gepflegt) + Short-SHA gehen als
-      # Build-Args ins Image, damit `/api/version` die echte Version
-      # zeigt. `cut` schneidet den `# x-release-please-version`-Marker ab.
-      - name: Version-Build-Args ermitteln
-        id: version
-        run: |
-          echo "value=$(cut -d' ' -f1 VERSION)" >> "$GITHUB_OUTPUT"
-          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            type=sha,prefix=,format=short
 
       - name: Build & Push
         id: push
