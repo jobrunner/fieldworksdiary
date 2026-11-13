@@ -30,10 +30,12 @@ gebündelt. Empfohlener Onboarding-Pfad:
    ```
 
 Damit sind verfügbar: `go`, `golangci-lint`, `govulncheck`, `gofumpt`,
-`swiftlint`, `swiftformat`, `xcodes`, `jq`, `zizmor`.
+`gitleaks`, `trivy`, `semgrep`, `zizmor`, `sqlite3`, `jq` sowie
+`swiftlint`, `swiftformat`, `xcodegen`, `periphery`, `xcodes`.
 
-**Fallback ohne Nix:** `bash scripts/install-qa-tools.sh` installiert
-die Tools via Homebrew bzw. `go install`.
+Die Versionen kommen aus `flake.lock`; die CI nutzt für den iOS-Lint
+dieselbe Flake (Shell `ios-lint`). Homebrew wird nicht gebraucht.
+Aktualisieren: `nix flake update`, dann committen.
 
 ### Claude Code Skills (Submodul)
 
@@ -123,8 +125,7 @@ Xcode-Projekt wird über [xcodegen](https://github.com/yonaskolb/XcodeGen)
 erzeugt:
 
 ```bash
-brew install xcodegen   # einmalig
-cd ios && xcodegen generate
+cd ios && xcodegen generate   # in der Nix-Shell
 open Fieldworksdiary.xcodeproj
 ```
 

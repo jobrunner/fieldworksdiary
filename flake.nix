@@ -29,6 +29,7 @@
           go-licenses      # License-Compliance-Check
           semgrep          # Multi-Sprach-SAST (Go + Swift Rulesets)
           zizmor           # GitHub-Actions-Workflows-Audit
+          sqlite           # sqlite3 für scripts/backup-pbdata.sh
           jq
           coreutils
           git
