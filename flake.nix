@@ -13,11 +13,11 @@
         isDarwin = pkgs.stdenv.isDarwin;
 
         # Tools, die auf allen Plattformen verfügbar sind.
-        # backend/go.mod ist mit `go 1.24` deklariert. Wir verwenden go_1_25,
-        # weil go_1_24 nicht mehr in nixpkgs unstable ist — 1.25 ist
-        # forward-kompatibel zu 1.24 (Go-Versionen sind monoton).
+        # backend/go.mod verlangt go 1.27.4. Liegt in nixpkgs nur eine
+        # ältere Patch-Version, lädt Go die passende Toolchain selbst nach
+        # (GOTOOLCHAIN=auto).
         commonTools = with pkgs; [
-          go_1_25
+          go_1_27
           golangci-lint
           govulncheck
           gofumpt
@@ -35,32 +35,58 @@
         ];
 
         # Swift-Tooling — nur auf macOS sinnvoll (iOS-Build braucht eh Darwin).
-        darwinTools = with pkgs; pkgs.lib.optionals isDarwin [
+        # Dieselben Versionen nutzt die CI (ios.yml, Shell `ios-lint`).
+        iosLintTools = with pkgs; [
           swiftlint
           swiftformat
-          xcodes           # Helper zum Installieren konkreter Xcode-Versionen
+          xcodegen
+          periphery
         ];
+        darwinTools = pkgs.lib.optionals isDarwin (iosLintTools ++ [
+          pkgs.xcodes      # Helper zum Installieren konkreter Xcode-Versionen
+        ]);
+
+        # Nix setzt DEVELOPER_DIR auf einen Stub-SDK ohne `swift` —
+        # SourceKitten (SwiftLint) crasht damit. Außerdem führt das dazu,
+        # dass `xcode-select -p` ebenfalls Nix's Stub zurückgibt
+        # (xcode-select bevorzugt DEVELOPER_DIR). Deshalb fragen wir
+        # xcode-select ohne DEVELOPER_DIR; zeigt es auf ein Xcode (in der CI
+        # per `xcode-select -s` gewählt), gilt das, sonst die üblichen Pfade.
+        # Nix prepended außerdem sein eigenes xcrun-Stub (aus xcbuild);
+        # SwiftLint braucht aber Apples xcrun aus /usr/bin.
+        xcodeHook = ''
+          _xcode="$(env -u DEVELOPER_DIR /usr/bin/xcode-select -p 2>/dev/null || true)"
+          case "$_xcode" in
+            *.app/Contents/Developer) export DEVELOPER_DIR="$_xcode" ;;
+            *)
+              if [ -d /Applications/Xcode.app/Contents/Developer ]; then
+                export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+              elif [ -d /Library/Developer/CommandLineTools ]; then
+                export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+              fi
+              ;;
+          esac
+          unset _xcode
+          export PATH="/usr/bin:$PATH"
+        '';
       in
       {
+        # Schlanke Shell nur für den iOS-Lint (CI und lokal). mkShellNoCC
+        # zieht weder Compiler noch Nix-apple-sdk, dadurch bleibt der
+        # Download in der CI klein.
+        devShells.ios-lint = pkgs.mkShellNoCC {
+          name = "fieldworksdiary-ios-lint";
+          packages = iosLintTools;
+          shellHook = xcodeHook;
+        };
+
         devShells.default = pkgs.mkShell {
           name = "fieldworksdiary-ng";
 
           packages = commonTools ++ darwinTools;
 
           shellHook = ''
-            # Nix setzt DEVELOPER_DIR auf einen Stub-SDK ohne `swift` —
-            # SourceKitten (SwiftLint) crasht damit. Außerdem führt das dazu,
-            # dass `xcode-select -p` ebenfalls Nix's Stub zurückgibt
-            # (xcode-select bevorzugt DEVELOPER_DIR). Wir setzen explizit
-            # auf die übliche System-Xcode-Lokation, sofern vorhanden.
-            if [ -d /Applications/Xcode.app/Contents/Developer ]; then
-              export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-            elif [ -d /Library/Developer/CommandLineTools ]; then
-              export DEVELOPER_DIR=/Library/Developer/CommandLineTools
-            fi
-            # Nix prepended sein eigenes xcrun-Stub (aus xcbuild); SwiftLint
-            # braucht aber Apples xcrun aus /usr/bin.
-            export PATH="/usr/bin:$PATH"
+            ${pkgs.lib.optionalString isDarwin xcodeHook}
 
             # mkShell propagiert auf Darwin ein Nix-eigenes apple-sdk (z.B.
             # apple-sdk-14.4) und setzt SDKROOT dorthin. Dieses SDK ist
