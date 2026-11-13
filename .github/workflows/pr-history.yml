@@ -1,0 +1,43 @@
+name: PR-History
+
+# Semi-lineare History auf `main`: gemerged wird per Merge-Commit, der
+# Branch selbst muss aber linear auf `main` aufsetzen. „Up to date“
+# erzwingt das Ruleset; dass das Aktualisieren per Rebase passiert und
+# nicht per „Update with merge“, prüft dieser Job. Er schlägt fehl,
+# sobald zwischen Base und PR-Head ein Merge-Commit liegt.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  no-merge-commits:
+    name: Keine Merge-Commits im Branch
+    runs-on: ubuntu-latest
+    steps:
+      # Den PR-Head auschecken, nicht den synthetischen Merge-Ref
+      # (refs/pull/N/merge ist selbst ein Merge-Commit).
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Gegen den aktuellen Stand des Base-Branches, nicht gegen
+      # pull_request.base.sha: Nach einem Rebase auf ein neueres main
+      # lägen sonst die PR-Merges von main mit im Bereich.
+      - name: Merge-Commits suchen
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          range="origin/$BASE_REF..HEAD"
+          merges=$(git rev-list --merges "$range")
+          if [ -n "$merges" ]; then
+            echo "::error::Der Branch enthält Merge-Commits. Bitte auf $BASE_REF rebasen statt $BASE_REF hineinzumergen."
+            git log --oneline --merges "$range"
+            exit 1
+          fi
+          echo "Keine Merge-Commits in $range."
