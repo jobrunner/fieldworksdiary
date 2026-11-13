@@ -1,614 +1,973 @@
 {
-  "sourceLanguage": "de",
-  "strings": {
-    "Bitte wählen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitte wählen"
+  "sourceLanguage" : "de",
+  "strings" : {
+    "– (leer lassen)" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "– (leer lassen)"
           }
         }
       }
     },
-    "Eine Exkursion passt, wenn eine ihrer Proben passt.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Eine Exkursion passt, wenn eine ihrer Proben passt."
+    "· %@ Etikett%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "· %1$@ Etikett%2$@"
           }
         }
       }
     },
-    "Erneut senden": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Erneut senden"
+    "%@" : {
+
+    },
+    "%@ – %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ – %2$@"
           }
         }
       }
     },
-    "Höhe": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Höhe"
+    "%@ Fundort%@ · %@ Proben" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ Fundort%2$@ · %3$@ Proben"
           }
         }
       }
     },
-    "Höhe in Metern": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Höhe in Metern"
+    "%@ m" : {
+
+    },
+    "%@ von %@ gefiltert" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ von %2$@ gefiltert"
           }
         }
       }
     },
-    "Kartenpunkt setzen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kartenpunkt setzen"
+    "%@:" : {
+
+    },
+    "%@:00" : {
+
+    },
+    "Account endgültig löschen" : {
+
+    },
+    "admin.borough" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stadtbezirk"
           }
         }
       }
     },
-    "Keine Länder in den Ortsangaben der Proben.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Länder in den Ortsangaben der Proben."
+    "admin.country" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Staat"
           }
         }
       }
     },
-    "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer).": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer)."
+    "admin.county" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kreis"
           }
         }
       }
     },
-    "Koordinate korrigieren": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koordinate korrigieren"
+    "admin.district" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bezirk"
           }
         }
       }
     },
-    "Land": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Land"
+    "admin.municipality" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gemeinde"
           }
         }
       }
     },
-    "Landschaft": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Landschaft"
+    "admin.other" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonstige Einheit"
           }
         }
       }
     },
-    "Manuelle Ortsangaben zurücksetzen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Manuelle Ortsangaben zurücksetzen"
+    "admin.parish" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirchspiel"
           }
         }
       }
     },
-    "Meine Angaben behalten": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meine Angaben behalten"
+    "admin.province" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Provinz"
           }
         }
       }
     },
-    "Neue Ortsangaben verfügbar": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neue Ortsangaben verfügbar"
+    "admin.region" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Region"
           }
         }
       }
     },
-    "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden."
+    "admin.state" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gliedstaat (1. Ebene)"
           }
         }
       }
     },
-    "Ort": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ort"
+    "admin.submunicipality" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsteil"
           }
         }
       }
     },
-    "Ort enthält …": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ort enthält …"
+    "Adresse" : {
+
+    },
+    "Adresse manuell setzen" : {
+
+    },
+    "Adresse wird ermittelt …" : {
+
+    },
+    "Alle" : {
+
+    },
+    "Auf die Karte tippen, um eine Koordinate zu setzen." : {
+
+    },
+    "Backend nicht erreichbar: %@" : {
+
+    },
+    "Backend-Endpoint" : {
+
+    },
+    "Beginn" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beginn"
           }
         }
       }
     },
-    "Ortsangaben ausstehend": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben ausstehend"
+    "Beim Löschen werden Account und alle damit verknüpften Daten unwiderruflich entfernt." : {
+
+    },
+    "Beispiel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beispiel"
           }
         }
       }
     },
-    "Ortsangaben bearbeiten": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben bearbeiten"
+    "Beispiel: http://localhost:8090 (Simulator) oder http://<host-ip>:8090 (Gerät)." : {
+
+    },
+    "Bestätigung" : {
+
+    },
+    "Bestimmung erst nach erfolgtem Sync möglich." : {
+
+    },
+    "Bestimmungen" : {
+
+    },
+    "Bisherige PDFs" : {
+
+    },
+    "Bitte erst unter Einstellungen einen Backend-Endpoint setzen (z. B. `http://192.168.178.30:8090`)." : {
+
+    },
+    "Bitte wählen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte wählen"
           }
         }
       }
     },
-    "Ortsangaben neu übernehmen?": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben neu übernehmen?"
+    "Bürgerliche Dämmerung %@ – %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Bürgerliche Dämmerung %1$@ – %2$@"
           }
         }
       }
     },
-    "Ortsangaben von Hand gesetzt": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben von Hand gesetzt"
+    "Centroid" : {
+
+    },
+    "Das Backend schickt einen Link an deine E-Mail. SMTP muss auf der Synology eingerichtet sein, sonst kommt nichts an." : {
+
+    },
+    "Daten" : {
+
+    },
+    "Der aktive Filter passt auf keine Exkursion." : {
+
+    },
+    "Die eingegebene Koordinate wurde nicht übernommen. Übernehmen kannst du sie mit „Ortsdaten neu abfragen“ oder über die Karte. Zeit und Ortsdaten sind gespeichert." : {
+
+    },
+    "Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?" : {
+
+    },
+    "Diese Aktion löscht deinen Account und alle damit verknüpften Daten unwiderruflich:" : {
+
+    },
+    "Diese Exkursion liegt vermutlich im Fundort **%@**." : {
+
+    },
+    "Eine Exkursion passt, wenn eine ihrer Proben passt." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Exkursion passt, wenn eine ihrer Proben passt."
           }
         }
       }
     },
-    "Ortsangaben von der vorigen Probe des Tages übernommen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben von der vorigen Probe des Tages übernommen"
+    "Ende" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ende"
           }
         }
       }
     },
-    "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync."
+    "Endpoint ändern" : {
+
+    },
+    "Entfernt die manuelle Korrektur; die Ortsangaben werden beim nächsten Abgleich wieder automatisch ermittelt." : {
+
+    },
+    "Erneut senden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erneut senden"
           }
         }
       }
     },
-    "Sync fehlgeschlagen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sync fehlgeschlagen"
+    "Erzeuge PDF …" : {
+
+    },
+    "Etiketten drucken" : {
+
+    },
+    "Export wird erstellt …" : {
+
+    },
+    "Falls du deine Daten behalten willst, lade vorher unter „Einstellungen → Daten → Daten exportieren“ das ZIP-Backup herunter und sichere es an einem zuverlässigen Ort. Nach der Löschung sind die Daten unwiderruflich weg." : {
+
+    },
+    "Felderfassung für entomologische Aufsammlungen" : {
+
+    },
+    "Fieldworksdiary" : {
+
+    },
+    "Format" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format"
           }
         }
       }
     },
-    "Verwaltung": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verwaltung"
+    "Foto wird gelesen …" : {
+
+    },
+    "Fotos zu Proben tauchen automatisch hier auf, sobald du beim Anlegen einer Probe ein Bild aufnimmst." : {
+
+    },
+    "Ganztägig: gespeichert wird nur das Datum, ohne Uhrzeit und Ende." : {
+
+    },
+    "Genauigkeit" : {
+
+    },
+    "Genehmigung" : {
+
+    },
+    "Genehmigungs-Nummer" : {
+
+    },
+    "Genehmigungs-PDF" : {
+
+    },
+    "Geodienst für Ort, Höhe und MTB direkt beim Anlegen einer Probe. Leer lassen, um die Abfrage auf dem Gerät abzuschalten – das Backend ergänzt die Daten dann nach dem Sync." : {
+
+    },
+    "Gespeichert wird immer WGS 84 (Dezimalgrad). Das Format betrifft nur die Anzeige." : {
+
+    },
+    "Gespeichert wird WGS 84. Eine Eingabe gilt erst nach „Ortsdaten neu abfragen“ oder über die Karte. Eine eingegebene Höhe gilt als manuell." : {
+
+    },
+    "Gespeichert." : {
+
+    },
+    "Gilt in der Ortszeit des Samples." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gilt in der Ortszeit des Samples."
           }
         }
       }
     },
-    "Verwerfen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verwerfen"
+    "Höhe" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höhe"
           }
         }
       }
     },
-    "admin.borough": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Stadtbezirk"
+    "Höhe in Metern" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höhe in Metern"
           }
         }
       }
     },
-    "admin.country": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Staat"
+    "Höhe oder Genauigkeit enthält einen ungültigen Wert." : {
+
+    },
+    "Jahresübergreifend: Tag-und-Monat-Bereich wird über alle Jahre angewendet. Bereich darf den Jahreswechsel umfassen." : {
+
+    },
+    "Karte erscheint, sobald die Position bekannt ist." : {
+
+    },
+    "Kartenpunkt setzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartenpunkt setzen"
           }
         }
       }
     },
-    "admin.county": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kreis"
+    "Kein PDF hochgeladen." : {
+
+    },
+    "Keine Genehmigungs-Nummer." : {
+
+    },
+    "Keine Koordinate gesetzt" : {
+
+    },
+    "Keine Länder in den Ortsangaben der Proben." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Länder in den Ortsangaben der Proben."
           }
         }
       }
     },
-    "admin.district": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bezirk"
+    "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer)." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Ortsangaben für diese Koordinate (z. B. auf dem Meer)."
           }
         }
       }
     },
-    "admin.municipality": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemeinde"
+    "Konto" : {
+
+    },
+    "Konto erstellen" : {
+
+    },
+    "Koordinate" : {
+
+    },
+    "Koordinate korrigieren" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordinate korrigieren"
           }
         }
       }
     },
-    "admin.other": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sonstige Einheit"
+    "Koordinate verwerfen?" : {
+
+    },
+    "Lädt alle eigenen Datensätze und PDFs als ZIP-Archiv vom Backend." : {
+
+    },
+    "Land" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Land"
           }
         }
       }
     },
-    "admin.parish": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kirchspiel"
+    "Landschaft" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Landschaft"
           }
         }
       }
     },
-    "admin.province": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Provinz"
+    "Lege Fundorte in der Liste an — sie erscheinen hier sofort." : {
+
+    },
+    "Lege im Tab 'Neu' deine erste Probe an." : {
+
+    },
+    "Lokale Daten bleiben erhalten. Der Token wird aus dem Schlüsselbund entfernt." : {
+
+    },
+    "manuell" : {
+
+    },
+    "Manuelle Ortsangaben zurücksetzen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manuelle Ortsangaben zurücksetzen"
           }
         }
       }
     },
-    "admin.region": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Region"
+    "Meine Angaben behalten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Angaben behalten"
           }
         }
       }
     },
-    "admin.state": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gliedstaat (1. Ebene)"
+    "Mit + einen Fundort anlegen — typisch beim Auswerten zuhause, nicht im Feld." : {
+
+    },
+    "Mit E-Mail anmelden" : {
+
+    },
+    "möglicherweise doppelt" : {
+
+    },
+    "Möglicherweise doppelte Fundorte — beim Auswerten zusammenführen oder behalten." : {
+
+    },
+    "Mond" : {
+
+    },
+    "Mond war nicht über dem Horizont." : {
+
+    },
+    "Nach der Registrierung schickt das Backend eine Verifikations-E-Mail. Du kannst die App in der Zwischenzeit voll nutzen." : {
+
+    },
+    "Neue Ortsangaben verfügbar" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Ortsangaben verfügbar"
           }
         }
       }
     },
-    "admin.submunicipality": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ortsteil"
+    "Noch keine Bestimmung." : {
+
+    },
+    "Noch keine lokalen Proben für diese Exkursion." : {
+
+    },
+    "Notizen" : {
+
+    },
+    "Nur gesyncte Proben können gedruckt werden." : {
+
+    },
+    "oder" : {
+
+    },
+    "Offset" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offset"
           }
         }
       }
     },
-    "place.island": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Insel"
+    "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne Koordinate – setze einen Kartenpunkt, damit Ortsangaben ermittelt werden."
           }
         }
       }
     },
-    "place.mountain": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Berg"
+    "Optional, nur fürs Archiv. Bleibt auf dem Backend liegen." : {
+
+    },
+    "Ort" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ort"
           }
         }
       }
     },
-    "place.mountain_range": {
-      "comment": "Generic place field type (fallback when the country has no own term).",
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gebirge"
+    "Ort enthält …" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ort enthält …"
           }
         }
       }
     },
-    "Übernehmen": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Übernehmen"
+    "Ortsangaben ausstehend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben ausstehend"
           }
         }
       }
     },
-    "Sample-ID": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sample-ID"
+    "Ortsangaben bearbeiten" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben bearbeiten"
           }
         }
       }
     },
-    "Format": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Format"
+    "Ortsangaben neu übernehmen?" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben neu übernehmen?"
           }
         }
       }
     },
-    "Präfix": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Präfix"
+    "Ortsangaben von der vorigen Probe des Tages übernommen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben von der vorigen Probe des Tages übernommen"
           }
         }
       }
     },
-    "Offset": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Offset"
+    "Ortsangaben von Hand gesetzt" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben von Hand gesetzt"
           }
         }
       }
     },
-    "Beispiel": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Beispiel"
+    "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ortsangaben werden ermittelt – spätestens nach dem nächsten Sync."
           }
         }
       }
     },
-    "– (leer lassen)": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "– (leer lassen)"
+    "Ortus-Endpoint" : {
+
+    },
+    "Passwort vergessen?" : {
+
+    },
+    "Passwort zurücksetzen" : {
+
+    },
+    "place.island" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insel"
           }
         }
       }
     },
-    "Tagesrollover": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tagesrollover"
+    "place.mountain" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berg"
           }
         }
       }
     },
-    "Gilt in der Ortszeit des Samples.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gilt in der Ortszeit des Samples."
+    "place.mountain_range" : {
+      "comment" : "Generic place field type (fallback when the country has no own term).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gebirge"
           }
         }
       }
     },
-    "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist.": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist."
+    "Präfix" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Präfix"
           }
         }
       }
     },
-    "Zeitzone": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zeitzone"
+    "Proben" : {
+
+    },
+    "Prüfen" : {
+
+    },
+    "Radius %@ m" : {
+
+    },
+    "Rechtliches" : {
+
+    },
+    "Region" : {
+
+    },
+    "Sample-ID" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sample-ID"
           }
         }
       }
     },
-    "Beginn": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Beginn"
+    "Sobald du Proben anlegst, tauchen die jeweiligen Sammeltage hier auf." : {
+
+    },
+    "Sonne" : {
+
+    },
+    "Sonnen- und Mondzeiten erscheinen, sobald die Anreicherung durchgelaufen ist." : {
+
+    },
+    "Sonstige" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonstige"
           }
         }
       }
     },
-    "Ende": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ende"
+    "Später" : {
+
+    },
+    "STANDORT UND ZEIT" : {
+
+    },
+    "Sync fehlgeschlagen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sync fehlgeschlagen"
           }
         }
       }
     },
-    "Sonstige": {
-      "extractionState": "manual",
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sonstige"
+    "Tagesrollover" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tagesrollover"
           }
         }
       }
+    },
+    "Tippe auf das Plus auf dem Dashboard, um deine erste Probe anzulegen." : {
+
+    },
+    "Tippe auf die Karte, um den Mittelpunkt des Fundorts zu wählen." : {
+
+    },
+    "Tippe das Wort DELETE ein, um den Button zu aktivieren." : {
+
+    },
+    "Tippe in der Proben-Detailansicht auf den Stern, um eine Probe hier zu sammeln." : {
+
+    },
+    "Tippen, um Pin zu verschieben." : {
+
+    },
+    "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tokens: <YY>/<YYYY>, <MM>, <DD>, <PREFIX>, <seq> (Tageszähler) oder <n> (laufender Zähler). Das Backend kann die ID beim Sync um ein Suffix ergänzen, falls sie schon vergeben ist."
+          }
+        }
+      }
+    },
+    "Übernehmen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übernehmen"
+          }
+        }
+      }
+    },
+    "Ungültige Eingaben verwerfen?" : {
+
+    },
+    "Verwaltung" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwaltung"
+          }
+        }
+      }
+    },
+    "Verwerfen" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwerfen"
+          }
+        }
+      }
+    },
+    "Vor dem Löschen" : {
+
+    },
+    "Vorschlag: %@" : {
+
+    },
+    "Wähle zuerst das Land – danach erscheinen dessen Verwaltungsebenen." : {
+
+    },
+    "Während der Exkursion" : {
+
+    },
+    "Was gelöscht wird" : {
+
+    },
+    "Wird auf Locality-Etiketten ausgegeben, wenn gesetzt." : {
+
+    },
+    "Wird berechnet …" : {
+
+    },
+    "Wird gelöscht …" : {
+
+    },
+    "Zeit" : {
+
+    },
+    "Zeitzone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeitzone"
+          }
+        }
+      }
+    },
+    "Zurück" : {
+
     }
   },
-  "version": "1.0"
+  "version" : "1.0"
 }
