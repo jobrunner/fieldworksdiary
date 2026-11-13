@@ -8,6 +8,6 @@ let package = Package(
     targets: [
         .target(name: "CGeotrans", path: "Sources/CGeotrans", publicHeadersPath: "include"),
         .target(name: "FieldworksGeo", dependencies: ["CGeotrans"], resources: [.copy("Resources/admin_labels.json")]),
-        .testTarget(name: "FieldworksGeoTests", dependencies: ["FieldworksGeo"]),
+        .testTarget(name: "FieldworksGeoTests", dependencies: ["FieldworksGeo"])
     ]
 )

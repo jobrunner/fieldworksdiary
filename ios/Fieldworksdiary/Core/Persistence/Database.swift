@@ -494,7 +494,7 @@ final class Database {
         try db.alter(table: "local_placemarks") { t in
             for column in [
                 "country", "administrative_area", "sub_administrative_area", "locality",
-                "sub_locality", "postal_code", "name", "thoroughfare",
+                "sub_locality", "postal_code", "name", "thoroughfare"
             ] {
                 t.drop(column: column)
             }

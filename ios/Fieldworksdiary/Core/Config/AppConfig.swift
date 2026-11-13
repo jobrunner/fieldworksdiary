@@ -83,7 +83,9 @@ final class AppConfig: ObservableObject {
     /// Start offset for the running counter `<n>` (never negative).
     @Published var sampleIDOffset: Int {
         didSet {
-            if sampleIDOffset < 0 { sampleIDOffset = 0; return }
+            if sampleIDOffset < 0 { sampleIDOffset = 0
+                return
+            }
             UserDefaults.standard.set(sampleIDOffset, forKey: Keys.sampleIDOffset)
         }
     }
@@ -93,7 +95,9 @@ final class AppConfig: ObservableObject {
     @Published var dayCutoffHour: Int {
         didSet {
             let clamped = min(max(dayCutoffHour, 0), 23)
-            if clamped != dayCutoffHour { dayCutoffHour = clamped; return }
+            if clamped != dayCutoffHour { dayCutoffHour = clamped
+                return
+            }
             UserDefaults.standard.set(dayCutoffHour, forKey: Keys.dayCutoffHour)
         }
     }

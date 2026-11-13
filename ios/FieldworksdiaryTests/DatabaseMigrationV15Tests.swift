@@ -7,7 +7,7 @@ import XCTest
 /// the Ortus columns survives.
 final class DatabaseMigrationV15Tests: XCTestCase {
     private func columns(_ db: GRDB.Database, _ table: String) throws -> Set<String> {
-        Set(try db.columns(in: table).map(\.name))
+        try Set(db.columns(in: table).map(\.name))
     }
 
     func testMigration_DropsLegacyColumnsAndKeepsNewData() throws {
@@ -57,7 +57,7 @@ final class DatabaseMigrationV15Tests: XCTestCase {
             let placemarks = try columns(db, "local_placemarks")
             for gone in [
                 "country", "administrative_area", "sub_administrative_area", "locality",
-                "sub_locality", "postal_code", "name", "thoroughfare",
+                "sub_locality", "postal_code", "name", "thoroughfare"
             ] {
                 XCTAssertFalse(placemarks.contains(gone), "local_placemarks.\(gone)")
             }

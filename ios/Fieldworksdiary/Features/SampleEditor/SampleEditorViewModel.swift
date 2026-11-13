@@ -77,6 +77,7 @@ final class SampleEditorViewModel: ObservableObject {
     /// Set once the editor was left through `finishEditing()` (or the
     /// sample was deleted); later disappear hooks don't save again.
     private(set) var finished = false
+
     // MARK: Phase O2 place data (Task 17)
 
     /// Placemark the sample points at (local cache row), nil while
@@ -191,9 +192,17 @@ final class SampleEditorViewModel: ObservableObject {
 
     // MARK: - time (read-only; edited in `SampleFormView`)
 
-    var beginDate: Date { savedSample?.beginDate ?? Date() }
-    var endDate: Date? { savedSample?.endDate }
-    var isAllDay: Bool { savedSample?.isAllDay ?? false }
+    var beginDate: Date {
+        savedSample?.beginDate ?? Date()
+    }
+
+    var endDate: Date? {
+        savedSample?.endDate
+    }
+
+    var isAllDay: Bool {
+        savedSample?.isAllDay ?? false
+    }
 
     /// Zone of the sample for display.
     var timeZone: TimeZone {
@@ -269,8 +278,7 @@ final class SampleEditorViewModel: ObservableObject {
             do {
                 let updated = try await client.setMarked(id: backendID, marked: next)
                 await MainActor.run {
-                    guard let self else { return }
-                    guard var fresh = try? self.store.fetchById(localID) else { return }
+                    guard let self, var fresh = try? self.store.fetchById(localID) else { return }
                     fresh.version = updated.version
                     try? self.store.update(fresh)
                     if self.savedSample?.id == localID {

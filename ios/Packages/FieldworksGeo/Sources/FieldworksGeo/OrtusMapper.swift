@@ -7,7 +7,8 @@ public enum OrtusMapper {
     private static let timezoneSource = "timezones-2026a"
 
     public static func map(_ r: OrtusResponse, lat: Double, lon: Double,
-                           table: AdminLabelTable = .shared) -> OrtusResult {
+                           table: AdminLabelTable = .shared) -> OrtusResult
+    {
         var place: Place?
         var geo = SampleGeo()
         if let g = r.gazetteer {
@@ -22,7 +23,8 @@ public enum OrtusMapper {
     }
 
     private static func mapPlace(_ g: OrtusResponse.Gazetteer, _ a: OrtusResponse.Admin,
-                                 _ table: AdminLabelTable) -> Place {
+                                 _ table: AdminLabelTable) -> Place
+    {
         let iso = a.countryISO ?? ""
         var p = Place(countryISO: iso)
         for u in a.hierarchy ?? [] {
@@ -75,7 +77,8 @@ public enum OrtusMapper {
                     sourceID: sr.sourceID ?? "", sourceName: sr.sourceName ?? "",
                     layer: f.layer ?? "", featureID: idString(f.id),
                     propertiesJSON: JSONValue.object(f.properties ?? [:]).jsonString,
-                    licenseJSON: license))
+                    licenseJSON: license
+                ))
             }
         }
         return out
@@ -84,7 +87,7 @@ public enum OrtusMapper {
     private static func mapTimezone(_ results: [OrtusResponse.SourceResult], _ out: inout SampleGeo) {
         for sr in results where sr.sourceID == timezoneSource {
             guard let f = sr.features?.first else { continue }
-            if case .string(let tz)? = f.properties?["tzid"] {
+            if case let .string(tz)? = f.properties?["tzid"] {
                 let t = tz.trimmingCharacters(in: .whitespacesAndNewlines)
                 out.timezone = t.isEmpty ? nil : t
             }
@@ -94,9 +97,9 @@ public enum OrtusMapper {
 
     private static func idString(_ v: JSONValue?) -> String {
         switch v {
-        case .string(let s): return s
-        case .number(let n): return JSONValue.numberString(n)
-        case .bool(let b): return b ? "true" : "false"
+        case let .string(s): return s
+        case let .number(n): return JSONValue.numberString(n)
+        case let .bool(b): return b ? "true" : "false"
         case .array, .object: return v?.jsonString ?? ""
         case .null, nil: return ""
         }
@@ -107,10 +110,10 @@ public enum OrtusMapper {
     static func sheetNumber(_ props: [String: JSONValue]) -> String {
         for key in ["id", "dtknummer"] {
             switch props[key] {
-            case .string(let s):
+            case let .string(s):
                 let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !t.isEmpty { return t }
-            case .number(let n): return JSONValue.numberString(n)
+            case let .number(n): return JSONValue.numberString(n)
             default: break
             }
         }
@@ -118,12 +121,13 @@ public enum OrtusMapper {
     }
 
     private static func mapMTB(_ results: [OrtusResponse.SourceResult], lat: Double, lon: Double,
-                               _ out: inout SampleGeo) {
+                               _ out: inout SampleGeo)
+    {
         for sr in results where sr.sourceID == tk25Source {
             guard let f = sr.features?.first else { continue }
             let props = f.properties ?? [:]
             out.mtbSheetNumber = sheetNumber(props)
-            if case .string(let name)? = props["blattname"] {
+            if case let .string(name)? = props["blattname"] {
                 out.mtbSheetName = name.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if let cell = TK25.cell(lat: lat, lon: lon) { out.mtbQuadrant = cell.quadrant }

@@ -194,7 +194,9 @@ extension View {
             Button("Meine Angaben behalten") { onAnswer(true) }
             Button("Abbrechen", role: .cancel, action: onCancel)
         } message: {
-            Text("Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?")
+            Text(
+                "Die Ortsangaben dieser Probe hast du von Hand gesetzt. Sollen für die neue Koordinate die ermittelten Ortsangaben übernommen werden?"
+            )
         }
     }
 }

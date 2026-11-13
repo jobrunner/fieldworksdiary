@@ -58,8 +58,8 @@ final class SampleLocationResolver {
     /// refreshed); `false` when nothing was written and the caller
     /// should fall back to `inheritOffline`.
     func resolveOnline(sampleID: String) async -> Bool {
-        guard let ortus else { return false }
-        guard let sample = try? samples.fetchById(sampleID),
+        guard let ortus,
+              let sample = try? samples.fetchById(sampleID),
               let lat = sample.latitude, let lon = sample.longitude
         else { return false }
         if sample.locationStatus == .backendService { return true }
@@ -95,8 +95,7 @@ final class SampleLocationResolver {
     /// earlier sample of the same collecting day and marks the sample
     /// `inherited`. Without such a sample it stays `pending`.
     func inheritOffline(sampleID: String) throws {
-        guard var sample = try samples.fetchById(sampleID) else { return }
-        guard sample.locationStatus == .pending else { return }
+        guard var sample = try samples.fetchById(sampleID), sample.locationStatus == .pending else { return }
         guard let placemarkID = try samples.latestPlacemarkID(
             collectingDay: sample.collectingDay,
             excluding: sampleID

@@ -1,5 +1,5 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class SampleIDTemplateTests: XCTestCase {
     func testInvalidWithBothCounters() {
@@ -35,17 +35,20 @@ final class SampleIDTemplateTests: XCTestCase {
         let t = SampleIDTemplate(raw: "<PREFIX><n>")
         var r = SampleIDTemplate.nextSuggestion(template: t, prefix: "JB-", day: "2026-01-15",
                                                 existingIDs: [], lastRunning: 0, offset: 1000)
-        XCTAssertEqual(r.id, "JB-1001"); XCTAssertEqual(r.running, 1001)
+        XCTAssertEqual(r.id, "JB-1001")
+        XCTAssertEqual(r.running, 1001)
         r = SampleIDTemplate.nextSuggestion(template: t, prefix: "JB-", day: "2026-01-15",
                                             existingIDs: ["JB-1001"], lastRunning: 0, offset: 1000)
-        XCTAssertEqual(r.id, "JB-1002"); XCTAssertEqual(r.running, 1002)
+        XCTAssertEqual(r.id, "JB-1002")
+        XCTAssertEqual(r.running, 1002)
     }
 
     func testDaily() {
         let t = SampleIDTemplate.default
         var r = SampleIDTemplate.nextSuggestion(template: t, prefix: "", day: "2026-01-15",
                                                 existingIDs: ["260115/1", "260115/2"], lastRunning: 0, offset: 0)
-        XCTAssertEqual(r.id, "260115/3"); XCTAssertNil(r.running)
+        XCTAssertEqual(r.id, "260115/3")
+        XCTAssertNil(r.running)
         r = SampleIDTemplate.nextSuggestion(template: t, prefix: "", day: "2026-01-15",
                                             existingIDs: ["260114/7", "260115/2 (2)"], lastRunning: 0, offset: 0)
         XCTAssertEqual(r.id, "260115/1")

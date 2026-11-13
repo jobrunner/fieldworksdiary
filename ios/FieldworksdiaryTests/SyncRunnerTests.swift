@@ -176,7 +176,7 @@ final class SyncRunnerTests: XCTestCase {
         XCTAssertEqual(body["location_status"] as? String, "pending")
     }
 
-    func testDecode_ServerSampleWithoutEnrichment_HasNoGeo() throws {
+    func testDecode_ServerSampleWithoutEnrichment_HasNoGeo() {
         let sample = remoteSample(id: "b", code: "260519/1", fieldtrip: "ft")
         XCTAssertNil(sample.geo, "PocketBase zeros must not count as enrichment")
         XCTAssertNil(sample.elevation)

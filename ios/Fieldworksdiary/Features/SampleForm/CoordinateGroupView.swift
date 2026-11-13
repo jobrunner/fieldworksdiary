@@ -88,7 +88,9 @@ struct CoordinateGroupView: View {
         } header: {
             Text("Koordinate")
         } footer: {
-            Text("Gespeichert wird WGS 84. Eine Eingabe gilt erst nach „Ortsdaten neu abfragen“ oder über die Karte. Eine eingegebene Höhe gilt als manuell.")
+            Text(
+                "Gespeichert wird WGS 84. Eine Eingabe gilt erst nach „Ortsdaten neu abfragen“ oder über die Karte. Eine eingegebene Höhe gilt als manuell."
+            )
         }
         .onChange(of: viewModel.coordinateError) { _, message in
             if let message {

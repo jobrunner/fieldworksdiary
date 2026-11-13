@@ -1,5 +1,5 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class AdminLabelTableTests: XCTestCase {
     func testHas77Countries() {

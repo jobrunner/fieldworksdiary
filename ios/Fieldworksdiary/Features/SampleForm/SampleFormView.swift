@@ -86,7 +86,9 @@ private struct SampleFormContent: View {
         } message: {
             switch viewModel.discardReason {
             case .coordinate:
-                Text("Die eingegebene Koordinate wurde nicht übernommen. Übernehmen kannst du sie mit „Ortsdaten neu abfragen“ oder über die Karte. Zeit und Ortsdaten sind gespeichert.")
+                Text(
+                    "Die eingegebene Koordinate wurde nicht übernommen. Übernehmen kannst du sie mit „Ortsdaten neu abfragen“ oder über die Karte. Zeit und Ortsdaten sind gespeichert."
+                )
             case .invalidValues:
                 Text("Höhe oder Genauigkeit enthält einen ungültigen Wert.")
             }

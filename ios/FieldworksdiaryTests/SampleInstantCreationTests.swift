@@ -6,9 +6,17 @@ import XCTest
 private final class SilentFixSource: PendingFixSource {
     var onFix: (@MainActor (LocationProvider.Fix) -> Void)?
     private(set) var running = false
-    func start() { running = true }
-    func stop() { running = false }
-    func emit(_ fix: LocationProvider.Fix) { onFix?(fix) }
+    func start() {
+        running = true
+    }
+
+    func stop() {
+        running = false
+    }
+
+    func emit(_ fix: LocationProvider.Fix) {
+        onFix?(fix)
+    }
 }
 
 /// Phase E: instant creation on the home screen and the editor that
@@ -183,7 +191,7 @@ final class SampleInstantCreationTests: XCTestCase {
         var stored = try XCTUnwrap(samples.fetchById(created.id))
         XCTAssertEqual(stored.latitude, 49.79)
         XCTAssertNotNil(stored.locality, "offline map pick fuses like a late fix")
-        let locality = try XCTUnwrap(localities.fetchById(try XCTUnwrap(stored.locality)))
+        let locality = try XCTUnwrap(try localities.fetchById(XCTUnwrap(stored.locality)))
         XCTAssertEqual(locality.locationSource, LocationSource.user.rawValue)
         XCTAssertEqual(try mutations.fetch(entityType: .locality).map(\.op), [.create])
         for _ in 0 ..< 100 where stored.placemark == nil {

@@ -138,7 +138,7 @@ final class AppContainer: ObservableObject {
             }
         )
 
-        self.featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
+        featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
         self.config = config
         self.auth = auth
         self.database = database

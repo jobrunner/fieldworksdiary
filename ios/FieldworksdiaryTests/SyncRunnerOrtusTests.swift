@@ -956,7 +956,7 @@ final class SyncRunnerOrtusTests: XCTestCase {
 
     func testFeaturesBody_SendsPropertiesAndLicenseAsJSON() throws {
         try features.replace(sampleID: "s", features: [feature("a", license: "{\"id\":\"CC-BY\"}")])
-        let body = SampleFeaturesClient.replaceBody(try features.all(sampleID: "s"))
+        let body = try SampleFeaturesClient.replaceBody(features.all(sampleID: "s"))
         let items = try XCTUnwrap(body["features"] as? [[String: Any]])
         XCTAssertEqual(items.count, 1)
         XCTAssertEqual(items[0]["source_id"] as? String, "wdpa")
@@ -1236,7 +1236,9 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
     var updateError: Error?
     var updateCount = 0
 
-    init(log: CallLog) { self.log = log }
+    init(log: CallLog) {
+        self.log = log
+    }
 
     /// Per-input create response (several samples in one pass); wins
     /// over `createResponse`.
@@ -1252,7 +1254,10 @@ private final class MockPush: SamplePushClient, @unchecked Sendable {
         lastCreate = input
         createCount += 1
         if let duringCreate { await duringCreate() }
-        guard let createResponse = createResponder?(input) ?? createResponse else { throw SampleClientError.http(status: 500, body: "no mock") }
+        guard let createResponse = createResponder?(input) ?? createResponse else { throw SampleClientError.http(
+            status: 500,
+            body: "no mock"
+        ) }
         return createResponse
     }
 
@@ -1289,7 +1294,9 @@ private final class MockPlacemarks: PlacemarkSyncClient, @unchecked Sendable {
     var resolved: [(place: Place, source: Placemark.GeocodingSource)] = []
     var fetchedIDs: [[String]] = []
 
-    init(log: CallLog) { self.log = log }
+    init(log: CallLog) {
+        self.log = log
+    }
 
     func resolve(place: Place, source: Placemark.GeocodingSource) async throws -> Placemark {
         log.calls.append("resolve")
@@ -1311,7 +1318,9 @@ private final class MockFeatures: SampleFeaturesSyncClient, @unchecked Sendable 
     var replaced: [(sampleBackendID: String, features: [LocalSampleFeature])] = []
     var fetchedIDs: [[String]] = []
 
-    init(log: CallLog) { self.log = log }
+    init(log: CallLog) {
+        self.log = log
+    }
 
     func replaceFeatures(sampleBackendID: String, features: [LocalSampleFeature]) async throws {
         log.calls.append("features")

@@ -6,7 +6,9 @@ import Foundation
 public struct SampleIDTemplate: Equatable, Sendable {
     public let raw: String
 
-    public init(raw: String) { self.raw = raw }
+    public init(raw: String) {
+        self.raw = raw
+    }
 
     public static let `default` = SampleIDTemplate(raw: "<YY><MM><DD>/<seq>")
     public static let empty = SampleIDTemplate(raw: "-")
@@ -17,7 +19,7 @@ public struct SampleIDTemplate: Equatable, Sendable {
         SampleIDTemplate(raw: "<YY><MM><DD>-<seq>"),
         SampleIDTemplate(raw: "<seq>/<YY><MM><DD>"),
         SampleIDTemplate(raw: "<PREFIX><n>"),
-        .empty,
+        .empty
     ]
 
     public enum Counter: Sendable { case none, daily, running }
@@ -29,7 +31,9 @@ public struct SampleIDTemplate: Equatable, Sendable {
     }
 
     /// Invalid when both counters are present.
-    public var isValid: Bool { !(raw.contains("<seq>") && raw.contains("<n>")) }
+    public var isValid: Bool {
+        !(raw.contains("<seq>") && raw.contains("<n>"))
+    }
 
     /// Renders for `day` (`yyyy-MM-dd`); `number` fills the counter token.
     public func render(day: String, prefix: String, number: Int) -> String {
@@ -37,7 +41,8 @@ public struct SampleIDTemplate: Equatable, Sendable {
     }
 
     private func render(day: String, prefix: String, counterText: String,
-                        escape: (String) -> String = { $0 }) -> String {
+                        escape: (String) -> String = { $0 }) -> String
+    {
         if self == .empty { return "" }
         let parts = day.split(separator: "-").map(String.init)
         let y = parts.count > 0 ? parts[0] : ""
@@ -46,7 +51,7 @@ public struct SampleIDTemplate: Equatable, Sendable {
         let tokens: [(String, String, Bool)] = [
             ("<YYYY>", y, true), ("<YY>", String(y.suffix(2)), true), ("<MM>", m, true),
             ("<DD>", d, true), ("<PREFIX>", prefix, true), ("<seq>", counterText, false),
-            ("<n>", counterText, false),
+            ("<n>", counterText, false)
         ]
         var out = ""
         var rest = Substring(raw)
@@ -67,19 +72,23 @@ public struct SampleIDTemplate: Equatable, Sendable {
     /// Running: `max(lastRunning, offset) + 1`. Taken ids are skipped.
     public static func nextSuggestion(template: SampleIDTemplate, prefix: String, day: String,
                                       existingIDs: Set<String>, lastRunning: Int,
-                                      offset: Int) -> (id: String, running: Int?) {
+                                      offset: Int) -> (id: String, running: Int?)
+    {
         if template == .empty { return ("", nil) }
         switch template.counter {
         case .none:
             return (template.render(day: day, prefix: prefix, number: 0), nil)
         case .running:
             var n = max(lastRunning, offset) + 1
-            while existingIDs.contains(template.render(day: day, prefix: prefix, number: n)) { n += 1 }
+            while existingIDs.contains(template.render(day: day, prefix: prefix, number: n)) {
+                n += 1
+            }
             return (template.render(day: day, prefix: prefix, number: n), n)
         case .daily:
             let pattern = "^" + template.render(
                 day: day, prefix: prefix, counterText: "(\\d+)",
-                escape: { NSRegularExpression.escapedPattern(for: $0) }) + "$"
+                escape: { NSRegularExpression.escapedPattern(for: $0) }
+            ) + "$"
             var highest = 0
             if let re = try? NSRegularExpression(pattern: pattern) {
                 for id in existingIDs {
@@ -90,7 +99,9 @@ public struct SampleIDTemplate: Equatable, Sendable {
                 }
             }
             var n = highest + 1
-            while existingIDs.contains(template.render(day: day, prefix: prefix, number: n)) { n += 1 }
+            while existingIDs.contains(template.render(day: day, prefix: prefix, number: n)) {
+                n += 1
+            }
             return (template.render(day: day, prefix: prefix, number: n), nil)
         }
     }

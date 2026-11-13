@@ -46,10 +46,6 @@ public struct AdminLabelTable: Sendable {
         return AdminLabelTable(countryTable: root.countries)
     }()
 
-    private init(countryTable: [String: CountryEntry]) {
-        self.countryTable = countryTable
-    }
-
     private func entry(_ country: String, _ level: Int) -> LevelEntry? {
         countryTable[country]?.levels[String(level)]
     }

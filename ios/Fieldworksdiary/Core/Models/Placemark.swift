@@ -102,16 +102,24 @@ struct Placemark: Decodable, Identifiable, Equatable {
                 tiers[tier] = value
             }
         }
-        self.admin = tiers
+        admin = tiers
     }
 }
 
 /// String-keyed coding key for the per-tier placemark columns.
 struct AnyCodingKey: CodingKey {
     var stringValue: String
-    var intValue: Int? { nil }
-    init(stringValue: String) { self.stringValue = stringValue }
-    init?(intValue _: Int) { nil }
+    var intValue: Int? {
+        nil
+    }
+
+    init(stringValue: String) {
+        self.stringValue = stringValue
+    }
+
+    init?(intValue _: Int) {
+        nil
+    }
 }
 
 private extension KeyedDecodingContainer where K == AnyCodingKey {

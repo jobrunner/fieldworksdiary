@@ -91,7 +91,8 @@ final class SampleLocationEditsTests: XCTestCase {
 
     func testManualElevationPayload_ClearsEmptyAccuracyOnServer() {
         var fields = SampleLocationFields(
-            elevation: 412, elevationSource: .manual, locationSource: .user, locationStatus: .manual)
+            elevation: 412, elevationSource: .manual, locationSource: .user, locationStatus: .manual
+        )
         fields.clearsVerticalAccuracy = true
         let body = fields.wireBody
         XCTAssertEqual(body["elevation"] as? Double, 412)

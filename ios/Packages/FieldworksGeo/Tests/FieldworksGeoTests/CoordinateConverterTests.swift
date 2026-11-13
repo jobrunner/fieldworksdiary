@@ -1,5 +1,5 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class CoordinateConverterTests: XCTestCase {
     private let ne = (lat: 49.681230, lon: 10.031340)
@@ -9,7 +9,9 @@ final class CoordinateConverterTests: XCTestCase {
         CoordinateConverter.format(lat: c.lat, lon: c.lon, as: fmt)
     }
 
-    func testDefaultIsDecimalSign() { XCTAssertEqual(CoordinateDisplayFormat.default, .decimalSign) }
+    func testDefaultIsDecimalSign() {
+        XCTAssertEqual(CoordinateDisplayFormat.default, .decimalSign)
+    }
 
     func testTitlesAreUnique() {
         let titles = CoordinateDisplayFormat.allCases.map(\.title)
@@ -63,7 +65,8 @@ final class CoordinateConverterTests: XCTestCase {
     }
 
     private func assertNear(_ c: (lat: Double, lon: Double)?, _ e: (lat: Double, lon: Double),
-                            accuracy: Double = 1e-5, file: StaticString = #filePath, line: UInt = #line) {
+                            accuracy: Double = 1e-5, file: StaticString = #filePath, line: UInt = #line)
+    {
         guard let c else { return XCTFail("nil", file: file, line: line) }
         XCTAssertEqual(c.lat, e.lat, accuracy: accuracy, file: file, line: line)
         XCTAssertEqual(c.lon, e.lon, accuracy: accuracy, file: file, line: line)
@@ -83,9 +86,9 @@ final class CoordinateConverterTests: XCTestCase {
     }
 
     func testFromUTM() {
-        assertNear(CoordinateConverter.fromUTM(zone: 32, northernHemisphere: true, easting: 574400, northing: 5503700), ne)
-        XCTAssertNil(CoordinateConverter.fromUTM(zone: 0, northernHemisphere: true, easting: 574400, northing: 5503700))
-        XCTAssertNil(CoordinateConverter.fromUTM(zone: 32, northernHemisphere: true, easting: -5, northing: 5503700))
+        assertNear(CoordinateConverter.fromUTM(zone: 32, northernHemisphere: true, easting: 574_400, northing: 5_503_700), ne)
+        XCTAssertNil(CoordinateConverter.fromUTM(zone: 0, northernHemisphere: true, easting: 574_400, northing: 5_503_700))
+        XCTAssertNil(CoordinateConverter.fromUTM(zone: 32, northernHemisphere: true, easting: -5, northing: 5_503_700))
     }
 
     func testParseGeographic() {

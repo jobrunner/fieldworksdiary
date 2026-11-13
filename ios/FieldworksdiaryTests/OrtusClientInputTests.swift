@@ -1,15 +1,21 @@
+@testable import Fieldworksdiary
 import FieldworksGeo
 import Foundation
 import XCTest
-@testable import Fieldworksdiary
 
 final class OrtusClientInputTests: XCTestCase {
     private final class StubProtocol: URLProtocol, @unchecked Sendable {
         nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data))?
         nonisolated(unsafe) static var lastURL: URL?
 
-        override class func canInit(with request: URLRequest) -> Bool { true }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+        override class func canInit(with request: URLRequest) -> Bool {
+            true
+        }
+
+        override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+            request
+        }
+
         override func startLoading() {
             Self.lastURL = request.url
             do {
@@ -25,6 +31,7 @@ final class OrtusClientInputTests: XCTestCase {
                 client?.urlProtocol(self, didFailWithError: error)
             }
         }
+
         override func stopLoading() {}
     }
 
@@ -45,7 +52,7 @@ final class OrtusClientInputTests: XCTestCase {
         StubProtocol.handler = { _ in (200, Data(#"{"wgs84":{"lat":49.68123,"lon":10.03134}}"#.utf8)) }
         let response = try await makeClient().query(input: utm)
         XCTAssertEqual(response.wgs84?.lat, 49.68123)
-        let items = URLComponents(url: try XCTUnwrap(StubProtocol.lastURL), resolvingAgainstBaseURL: false)?
+        let items = try URLComponents(url: XCTUnwrap(StubProtocol.lastURL), resolvingAgainstBaseURL: false)?
             .queryItems ?? []
         XCTAssertEqual(items.map(\.name), ["srid", "x", "y"])
         XCTAssertEqual(StubProtocol.lastURL?.path, "/api/v1/query")
@@ -78,7 +85,9 @@ final class OrtusClientInputTests: XCTestCase {
     }
 
     func testInvalidInputThrowsBeforeRequest() async {
-        StubProtocol.handler = { _ in XCTFail("no request expected"); return (200, Data()) }
+        StubProtocol.handler = { _ in XCTFail("no request expected")
+            return (200, Data())
+        }
         do {
             _ = try await makeClient().query(input: CoordinateInput(system: .gk2, first: "", second: ""))
             XCTFail("expected throw")

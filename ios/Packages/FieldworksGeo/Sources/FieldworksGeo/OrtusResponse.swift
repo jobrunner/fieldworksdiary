@@ -17,18 +17,18 @@ public enum JSONValue: Codable, Equatable, Sendable {
         else if let n = try? c.decode(Double.self) { self = .number(n) }
         else if let s = try? c.decode(String.self) { self = .string(s) }
         else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
-        else { self = .object(try c.decode([String: JSONValue].self)) }
+        else { self = try .object(c.decode([String: JSONValue].self)) }
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
         switch self {
         case .null: try c.encodeNil()
-        case .bool(let b): try c.encode(b)
-        case .number(let n): try c.encode(n)
-        case .string(let s): try c.encode(s)
-        case .array(let a): try c.encode(a)
-        case .object(let o): try c.encode(o)
+        case let .bool(b): try c.encode(b)
+        case let .number(n): try c.encode(n)
+        case let .string(s): try c.encode(s)
+        case let .array(a): try c.encode(a)
+        case let .object(o): try c.encode(o)
         }
     }
 
@@ -50,7 +50,9 @@ public enum JSONValue: Codable, Equatable, Sendable {
 /// Subset of Ortus' `GET /api/v1/query` response we consume. Mirrors Go
 /// `services.OrtusResponse`; unknown fields are ignored.
 public struct OrtusResponse: Decodable, Sendable {
-    public struct Coordinate: Decodable, Sendable { public var lon: Double; public var lat: Double }
+    public struct Coordinate: Decodable, Sendable { public var lon: Double
+        public var lat: Double
+    }
 
     public struct Feature: Decodable, Sendable {
         public var id: JSONValue?

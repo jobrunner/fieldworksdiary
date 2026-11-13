@@ -5,9 +5,17 @@ import XCTest
 private final class FakeFixSource: PendingFixSource {
     var onFix: (@MainActor (LocationProvider.Fix) -> Void)?
     private(set) var running = false
-    func start() { running = true }
-    func stop() { running = false }
-    func emit(_ fix: LocationProvider.Fix) { onFix?(fix) }
+    func start() {
+        running = true
+    }
+
+    func stop() {
+        running = false
+    }
+
+    func emit(_ fix: LocationProvider.Fix) {
+        onFix?(fix)
+    }
 }
 
 @MainActor

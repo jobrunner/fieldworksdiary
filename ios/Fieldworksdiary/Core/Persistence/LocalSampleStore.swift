@@ -17,7 +17,10 @@ final class LocalSampleStore {
     /// when a remote row carries no usable zone.
     /// Resolved at use time, so a traveller whose app stays alive gets
     /// the current device zone for new samples.
-    var timeZone: TimeZone { timeZoneProvider() }
+    var timeZone: TimeZone {
+        timeZoneProvider()
+    }
+
     private let timeZoneProvider: () -> TimeZone
     private let defaults: UserDefaults
     private let settingsProvider: () -> SampleIDSettings
@@ -41,7 +44,9 @@ final class LocalSampleStore {
         settingsProvider = settings ?? { SampleIDSettings.current(defaults: defaults) }
     }
 
-    var cutoffHour: Int { settingsProvider().cutoffHour }
+    var cutoffHour: Int {
+        settingsProvider().cutoffHour
+    }
 
     /// Inserts a new sample. Returns the persisted record.
     ///
@@ -148,7 +153,7 @@ final class LocalSampleStore {
         timezoneSource: TimezoneSource,
         mutationsStore: PendingMutationsStore
     ) throws -> LocalSample {
-        let zone = TimeZone(identifier: timezone) ?? self.timeZone
+        let zone = TimeZone(identifier: timezone) ?? timeZone
         let window = SampleTime.defaultWindow(createdAt: beginDate, in: zone)
         let dayKey = SampleTime.collectingDay(window.begin, cutoffHour: settingsProvider().cutoffHour, in: zone)
         let userId = self.userId
@@ -652,7 +657,8 @@ final class LocalSampleStore {
     ) throws -> LocalPlacemark {
         let placemark = try placemarks.lookupOrCreate(place: place, source: .manual)
         try writePlaceEdit(id: id, mutationsStore: mutationsStore,
-                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+                           payload: SampleUpdatePayload(clearsSuggestion: true))
+        { sample in
             sample.placemark = placemark.id
             sample.placemarkSuggestion = nil
             sample.locationStatus = .manual
@@ -671,7 +677,8 @@ final class LocalSampleStore {
         mutationsStore: PendingMutationsStore
     ) throws {
         try writePlaceEdit(id: id, mutationsStore: mutationsStore,
-                           payload: SampleUpdatePayload(elevationEdited: true)) { sample in
+                           payload: SampleUpdatePayload(elevationEdited: true))
+        { sample in
             sample.elevation = elevation
             sample.elevationSource = .manual
             sample.verticalAccuracy = verticalAccuracy
@@ -688,7 +695,8 @@ final class LocalSampleStore {
         mutationsStore: PendingMutationsStore
     ) throws {
         try writePlaceEdit(id: id, mutationsStore: mutationsStore,
-                           payload: SampleUpdatePayload(horizontalAccuracyEdited: true)) { sample in
+                           payload: SampleUpdatePayload(horizontalAccuracyEdited: true))
+        { sample in
             guard sample.horizontalAccuracy != horizontalAccuracy else { return false }
             sample.horizontalAccuracy = horizontalAccuracy
             return true
@@ -700,7 +708,8 @@ final class LocalSampleStore {
     /// No-op without a suggestion.
     func acceptPlacemarkSuggestion(id: String, mutationsStore: PendingMutationsStore) throws {
         try writePlaceEdit(id: id, mutationsStore: mutationsStore,
-                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+                           payload: SampleUpdatePayload(clearsSuggestion: true))
+        { sample in
             guard let suggestion = sample.placemarkSuggestion, !suggestion.isEmpty else { return false }
             sample.placemark = suggestion
             sample.placemarkSuggestion = nil
@@ -714,7 +723,8 @@ final class LocalSampleStore {
     /// forgets it too (a plain nil is never sent).
     func dismissPlacemarkSuggestion(id: String, mutationsStore: PendingMutationsStore) throws {
         try writePlaceEdit(id: id, mutationsStore: mutationsStore,
-                           payload: SampleUpdatePayload(clearsSuggestion: true)) { sample in
+                           payload: SampleUpdatePayload(clearsSuggestion: true))
+        { sample in
             guard let suggestion = sample.placemarkSuggestion, !suggestion.isEmpty else { return false }
             sample.placemarkSuggestion = nil
             return true
@@ -769,8 +779,7 @@ final class LocalSampleStore {
         change: (inout LocalSample) -> Bool
     ) throws {
         let backendID: String? = try database.writer.write { db in
-            guard var sample = try LocalSample.fetchOne(db, key: id) else { return nil }
-            guard change(&sample) else { return nil }
+            guard var sample = try LocalSample.fetchOne(db, key: id), change(&sample) else { return nil }
             sample.updatedAt = Date()
             try sample.update(db)
             return sample.backendId
@@ -826,7 +835,7 @@ final class LocalSampleStore {
     func upsert(_ remote: [Sample]) throws {
         let userId = self.userId
         let cutoffHour = self.cutoffHour
-        let fallbackZone = self.timeZone
+        let fallbackZone = timeZone
 
         try database.writer.write { db in
             for r in remote {
@@ -1070,7 +1079,9 @@ extension LocalSample {
     /// True when both latitude and longitude are set. Samples created
     /// instantly (Phase E) start without one until a fix or a map pick
     /// arrives.
-    var hasCoordinate: Bool { latitude != nil && longitude != nil }
+    var hasCoordinate: Bool {
+        latitude != nil && longitude != nil
+    }
 
     /// Clears everything derived from the coordinate (see
     /// `LocalSampleStore.updateCoordinate`).
