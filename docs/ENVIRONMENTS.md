@@ -17,9 +17,12 @@ SQLite-Volumes. Ein Crash der Staging-Datenbank kann Prod nicht treffen.
 
 - Jeder Push auf `main` baut über `.github/workflows/docker-release.yml`
   das Backend-Image (amd64 + arm64) und legt es in der GitHub Container
-  Registry ab: `ghcr.io/jobrunner/fieldworksdiary` mit den Tags `prod`,
-  `latest` und `sha-<kurz>`. Ein Trivy-Scan läuft danach advisory
-  (Security-Tab), er blockiert nichts.
+  Registry ab: `ghcr.io/jobrunner/fieldworksdiary`. Die Tags folgen
+  `VERSION` wie bei Ortus: `X.Y.Z`, `X.Y`, `X`, `latest` und der
+  Short-SHA (`<kurz>`, ohne Präfix). Zwischen zwei Releases wandert
+  `X.Y.Z` mit jedem Merge weiter, fest ist nur der SHA-Tag. Ein
+  Trivy-Scan läuft danach advisory (SARIF als Artifact am Lauf), er
+  blockiert nichts.
 - **Deployt wird manuell** auf der Docker-Maschine (siehe „Manuelles Deploy“),
   wie bei Ortus. GitHub hat keinen Zugriff auf den Host - es gibt
   bewusst keinen SSH-Deploy-Job und keine Host-Secrets im Repo.
@@ -46,8 +49,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 ```
 
-Das Default-`BACKEND_IMAGE` zeigt auf `ghcr.io/jobrunner/fieldworksdiary:staging`
-bzw. `:prod`. Override per ENV ist möglich:
+Prod zieht `ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION}`, die
+Version steht in der `.env` auf der Docker-Maschine (`FWD_VERSION=0.3.0`).
+Fehlt sie, bricht compose ab. Staging nutzt `BACKEND_IMAGE` mit Default
+`:staging`, Override per ENV:
 
 ```bash
 BACKEND_IMAGE=ghcr.io/.../fieldworksdiary:staging-abc1234 \
@@ -136,26 +141,22 @@ git pull                                   # compose-Files aktuell halten
 # Backup der Prod-DB vor jedem Update (Migrationen laufen beim Start)
 cp -a pb_data_prod "pb_data_prod_backups/$(date +%Y%m%d-%H%M%S)"
 
+# Zielversion in .env eintragen (FWD_VERSION=X.Y.Z)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 curl -fsS http://localhost:8090/api/health
+curl -fsS http://localhost:8090/api/version   # zeigt die laufende Version
 ```
 
-Zurückrollen: `BACKEND_IMAGE=ghcr.io/jobrunner/fieldworksdiary:sha-<kurz>`
-setzen und das Backup zurückspielen (`docs/DISASTER_RECOVERY.md`).
+Zurückrollen: in der `.env` die vorherige Version (oder einen SHA-Tag)
+eintragen und das Backup zurückspielen (`docs/DISASTER_RECOVERY.md`).
 
 ## Versionierung
 
-`MARKETING_VERSION` (= App-Store-Version) wird **manuell** in
-`ios/project.yml` gepflegt. `CURRENT_PROJECT_VERSION` (Build-Number)
-sollte ebenfalls bei jedem Release inkrementieren — ASC akzeptiert
-keinen doppelten Build-Number. Empfehlung: vor `git push origin main`
-beides hochziehen, dann Tag setzen:
-
-```bash
-git tag -s v0.2.0 -m "release v0.2.0"
-git push origin v0.2.0
-```
-
-Ein Tag baut kein eigenes Image; das Image zum Release ist das
-`sha-<kurz>` des getaggten Commits.
+release-please pflegt die Version aus den Conventional Commits: Es hält
+einen Release-PR offen, der `VERSION`, `MARKETING_VERSION` in
+`ios/project.yml` und `CHANGELOG.md` hochzieht. Mit dem Merge dieses PRs
+entstehen Tag `vX.Y.Z` und GitHub-Release, und der Docker-Release baut
+das Image mit den neuen Versions-Tags. `CURRENT_PROJECT_VERSION`
+(Build-Number) bleibt manuell: ASC akzeptiert keine doppelte
+Build-Number, also vor jedem Upload hochziehen.
