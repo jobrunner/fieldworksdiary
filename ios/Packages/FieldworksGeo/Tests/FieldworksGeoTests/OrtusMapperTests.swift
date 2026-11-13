@@ -1,5 +1,5 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class OrtusMapperTests: XCTestCase {
     private let dir = URL(fileURLWithPath: #filePath)
@@ -14,14 +14,15 @@ final class OrtusMapperTests: XCTestCase {
 
     func testMapDE() throws {
         let q = try load("query_de_ochsenfurt.json")
-        let exp = try JSONSerialization.jsonObject(
-            with: Data(contentsOf: dir.appendingPathComponent("expected_de_ochsenfurt.json"))) as! [String: Any]
-        let res = OrtusMapper.map(q, lat: q.wgs84!.lat, lon: q.wgs84!.lon)
+        let exp = try XCTUnwrap(try JSONSerialization.jsonObject(
+            with: Data(contentsOf: dir.appendingPathComponent("expected_de_ochsenfurt.json"))
+        ) as? [String: Any])
+        let res = try OrtusMapper.map(q, lat: XCTUnwrap(q.wgs84?.lat), lon: XCTUnwrap(q.wgs84?.lon))
         let p = try XCTUnwrap(res.place)
         XCTAssertEqual(p.countryISO, "DE")
         XCTAssertEqual(res.geo.timezone, "Europe/Berlin")
         XCTAssertFalse(res.features.contains { $0.sourceID == "timezones-2026a" })
-        let admin = exp["admin"] as! [String: [String: Any]]
+        let admin = try XCTUnwrap(exp["admin"] as? [String: [String: Any]])
         XCTAssertEqual(p.admin.count, admin.count)
         for (k, v) in admin {
             let got = try XCTUnwrap(AdminTier(rawValue: k).flatMap { p.admin[$0] })
@@ -52,7 +53,7 @@ final class OrtusMapperTests: XCTestCase {
 
     func testMapESIsland() throws {
         let q = try load("query_es_lapalma.json")
-        let res = OrtusMapper.map(q, lat: q.wgs84!.lat, lon: q.wgs84!.lon)
+        let res = try OrtusMapper.map(q, lat: XCTUnwrap(q.wgs84?.lat), lon: XCTUnwrap(q.wgs84?.lon))
         let p = try XCTUnwrap(res.place)
         XCTAssertEqual(p.admin[.state]?.name, "Canarias")
         XCTAssertEqual(p.island, "La Palma")
@@ -62,7 +63,7 @@ final class OrtusMapperTests: XCTestCase {
     }
 
     func testMapSeaNoPlace() throws {
-        let res = OrtusMapper.map(try load("query_sea.json"), lat: 40, lon: -25)
+        let res = try OrtusMapper.map(load("query_sea.json"), lat: 40, lon: -25)
         XCTAssertNil(res.place)
         XCTAssertNil(res.geo.elevationDEM)
     }

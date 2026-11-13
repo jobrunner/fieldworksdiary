@@ -1,11 +1,18 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class SampleTimeTests: XCTestCase {
-    private func date(_ iso: String) -> Date { ISO8601DateFormatter().date(from: iso)! }
-    private func tz(_ id: String) -> TimeZone { TimeZone(identifier: id)! }
+    private func date(_ iso: String) -> Date {
+        ISO8601DateFormatter().date(from: iso)!
+    }
+
+    private func tz(_ id: String) -> TimeZone {
+        TimeZone(identifier: id)!
+    }
+
     private func local(_ d: Date, _ id: String) -> DateComponents {
-        var c = Calendar(identifier: .gregorian); c.timeZone = tz(id)
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = tz(id)
         return c.dateComponents([.hour, .minute, .second], from: d)
     }
 

@@ -47,7 +47,9 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     override func tearDownWithError() throws {
         if let all = try? samples.fetchAll() {
-            for sample in all { PhotoStorage.deleteSampleDir(sampleID: sample.id) }
+            for sample in all {
+                PhotoStorage.deleteSampleDir(sampleID: sample.id)
+            }
         }
         sync = nil
         mutations = nil
@@ -63,7 +65,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     // MARK: - dialog „Mit Koordinate“
 
     func testDialog_Success_CreatesRetrospectiveSampleWithPlaceDataFromOneQuery() async throws {
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.6812304, lon: 10.0313449))))
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.6812304, lon: 10.0313449))))
         let vm = makeDialog(ortus)
         vm.system = .etrs89utm32
         vm.first = "574400"
@@ -81,7 +83,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertTrue(sample.isRetrospective)
         XCTAssertEqual(sample.locationSource, LocationSource.user.rawValue)
         XCTAssertEqual(sample.locationStatus, .backendService)
-        let placemark = try XCTUnwrap(placemarks.fetchById(try XCTUnwrap(sample.placemark)))
+        let placemark = try XCTUnwrap(try placemarks.fetchById(XCTUnwrap(sample.placemark)))
         XCTAssertEqual(placemark.admin[.municipality]?.name, "Ochsenfurt")
         XCTAssertEqual(sample.mtbSheetNumber, "6326")
         XCTAssertEqual(sample.elevation, 236, "DEM height")
@@ -95,7 +97,11 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testDialog_OrtusZoneUsedForSample() async throws {
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(OrtusFixtures.answerJSON(
+            lat: 28.68,
+            lon: -17.76,
+            zone: "Atlantic/Canary"
+        ))))
         let vm = makeDialog(ortus)
         vm.first = "28,68"
         vm.second = "-17,76"
@@ -114,7 +120,7 @@ final class RetrospectiveEntryTests: XCTestCase {
             (OrtusQueryError.offline, "Keine Verbindung zu Ortus. Bitte später erneut versuchen."),
             (OrtusQueryError.server(message: "mgrs: invalid input"),
              "Ortus konnte die Koordinate nicht umrechnen: mgrs: invalid input"),
-            (OrtusQueryError.server(message: nil), "Ortus konnte die Koordinate nicht umrechnen."),
+            (OrtusQueryError.server(message: nil), "Ortus konnte die Koordinate nicht umrechnen.")
         ]
         for (error, message) in cases {
             let vm = makeDialog(StubOrtus(.failure(error)))
@@ -151,7 +157,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testDialog_AnswerWithoutWGS84_IsAFailure() async throws {
-        let vm = makeDialog(StubOrtus(.success(try OrtusFixtures.decode("{}"))))
+        let vm = try makeDialog(StubOrtus(.success(OrtusFixtures.decode("{}"))))
         vm.first = "49.68"
         vm.second = "10.03"
 
@@ -162,7 +168,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertEqual(try samples.count(), 0)
     }
 
-    func testDialog_NoEndpoint_ReportsOffline() async throws {
+    func testDialog_NoEndpoint_ReportsOffline() async {
         let vm = makeDialog(nil)
         vm.first = "49.68"
         vm.second = "10.03"
@@ -238,7 +244,7 @@ final class RetrospectiveEntryTests: XCTestCase {
 
     func testPhotoWithoutAnyMetadata_SampleNowWithPhoto() async throws {
         let outcome = try await makeImporter(StubOrtus(.failure(OrtusQueryError.offline)))
-            .importPhoto(try Self.makeImage())
+            .importPhoto(Self.makeImage())
 
         guard case let .created(created) = outcome else { return XCTFail("expected a sample") }
         let sample = try XCTUnwrap(samples.fetchById(created.id))
@@ -248,7 +254,11 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testPhotoWithGPS_Success_CaptureTimeReadInOrtusZone() async throws {
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary"))))
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(OrtusFixtures.answerJSON(
+            lat: 28.68,
+            lon: -17.76,
+            zone: "Atlantic/Canary"
+        ))))
         // No offset in the photo: the wall clock 23:30 is read in the
         // Ortus zone (Canary, 22:30 UTC), not in the device zone (Berlin).
         let data = try Self.makeImage(
@@ -299,7 +309,7 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertEqual(seed.errorMessage, "Keine Verbindung zu Ortus. Bitte später erneut versuchen.")
         XCTAssertEqual(try samples.count(), 0, "nothing created yet")
 
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134))))
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134))))
         let vm = RetrospectiveCoordinateViewModel(
             ortus: ortus, creator: makeCreator(), displayFormat: .decimalSign,
             prefill: seed.input, initialError: seed.errorMessage, photo: seed.photo
@@ -343,7 +353,7 @@ final class RetrospectiveEntryTests: XCTestCase {
     }
 
     func testReader_JPEGWithoutEXIF() throws {
-        let meta = PhotoMetadataReader.read(try Self.makeImage(), fallbackZone: berlin)
+        let meta = try PhotoMetadataReader.read(Self.makeImage(), fallbackZone: berlin)
 
         XCTAssertNil(meta.coordinate)
         XCTAssertNil(meta.capturedAt)
@@ -456,7 +466,7 @@ final class RetrospectiveEntryTests: XCTestCase {
                 kCGImagePropertyGPSLatitude: gps.lat,
                 kCGImagePropertyGPSLatitudeRef: gps.latRef,
                 kCGImagePropertyGPSLongitude: gps.lon,
-                kCGImagePropertyGPSLongitudeRef: gps.lonRef,
+                kCGImagePropertyGPSLongitudeRef: gps.lonRef
             ]
         }
         if let exif {

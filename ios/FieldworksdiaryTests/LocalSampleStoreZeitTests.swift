@@ -1,5 +1,5 @@
-import FieldworksGeo
 @testable import Fieldworksdiary
+import FieldworksGeo
 import XCTest
 
 /// Phase Z: time window, collecting day, sample-id suggestion and the
@@ -100,7 +100,7 @@ final class LocalSampleStoreZeitTests: XCTestCase {
         XCTAssertEqual(first.timezone, "Atlantic/Canary")
         XCTAssertEqual(first.collectingDay, "2026-01-15")
         // swiftlint:disable:next force_unwrapping
-        zone = TimeZone(identifier: "Asia/Tokyo")!
+        zone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
         let second = try store.createLocal(lat: 1, lon: 1, collectedFrom: at, overrideCode: "b")
         XCTAssertEqual(second.timezone, "Asia/Tokyo")
         XCTAssertEqual(second.collectingDay, "2026-01-16")

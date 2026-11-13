@@ -12,7 +12,9 @@ public enum InputCoordinateSystem: String, CaseIterable, Identifiable, Sendable 
     case gk3 = "31467"
     case mgrs
 
-    public var id: String { rawValue }
+    public var id: String {
+        rawValue
+    }
 
     public var title: String {
         switch self {
@@ -86,7 +88,7 @@ public struct CoordinateInput: Equatable, Sendable {
             return [
                 URLQueryItem(name: "srid", value: system.rawValue),
                 URLQueryItem(name: "lon", value: String(format: "%.6f", lon)),
-                URLQueryItem(name: "lat", value: String(format: "%.6f", lat)),
+                URLQueryItem(name: "lat", value: String(format: "%.6f", lat))
             ]
         case .mgrs:
             let text = first.filter { !$0.isWhitespace }.uppercased()
@@ -99,7 +101,7 @@ public struct CoordinateInput: Equatable, Sendable {
             return [
                 URLQueryItem(name: "srid", value: system.rawValue),
                 URLQueryItem(name: "x", value: x),
-                URLQueryItem(name: "y", value: y),
+                URLQueryItem(name: "y", value: y)
             ]
         }
     }

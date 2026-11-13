@@ -61,7 +61,7 @@ public enum CoordinateConverter {
     }
 
     private static func toUTMString(lat: Double, lon: Double) -> String? {
-        var zone: Int = 0
+        var zone = 0
         var hemisphere = CChar(0)
         var easting = 0.0
         var northing = 0.0
@@ -75,7 +75,7 @@ public enum CoordinateConverter {
 
     /// MGRS mit Leerzeichen, z. B. `32U NA 74400 03700`. `precision` 0...5.
     public static func toMGRS(lat: Double, lon: Double, precision: Int = 5) -> String? {
-        guard lat.isFinite, lon.isFinite, (0...5).contains(precision) else { return nil }
+        guard lat.isFinite, lon.isFinite, (0 ... 5).contains(precision) else { return nil }
         var buffer = [CChar](repeating: 0, count: 32)
         let err = Convert_Geodetic_To_MGRS(lat * .pi / 180, lon * .pi / 180, precision, &buffer)
         guard err == 0 else { return nil }
@@ -86,7 +86,7 @@ public enum CoordinateConverter {
               chars.count >= firstLetter + 3 else { return nil }
         let zone = String(chars[..<firstLetter])
         let band = String(chars[firstLetter])
-        let grid = String(chars[(firstLetter + 1)..<(firstLetter + 3)])
+        let grid = String(chars[(firstLetter + 1) ..< (firstLetter + 3)])
         let digits = Array(chars[(firstLetter + 3)...])
         guard digits.count == precision * 2 else { return nil }
         var parts = ["\(zone)\(band)", grid]
@@ -100,8 +100,9 @@ public enum CoordinateConverter {
     // MARK: Umrechnen
 
     public static func fromUTM(zone: Int, northernHemisphere: Bool, easting: Double, northing: Double)
-        -> (lat: Double, lon: Double)? {
-        guard (1...60).contains(zone), easting.isFinite, northing.isFinite else { return nil }
+        -> (lat: Double, lon: Double)?
+    {
+        guard (1 ... 60).contains(zone), easting.isFinite, northing.isFinite else { return nil }
         var lat = 0.0
         var lon = 0.0
         let hemisphere = CChar(UInt8(ascii: northernHemisphere ? "N" : "S"))
@@ -183,8 +184,11 @@ public enum CoordinateConverter {
         t.removeAll { "NSEW".contains($0) }
         t = t.trimmingCharacters(in: .whitespaces)
         var explicitSign: Double?
-        if t.hasPrefix("-") { explicitSign = -1; t.removeFirst() }
-        else if t.hasPrefix("+") { explicitSign = 1; t.removeFirst() }
+        if t.hasPrefix("-") { explicitSign = -1
+            t.removeFirst()
+        } else if t.hasPrefix("+") { explicitSign = 1
+            t.removeFirst()
+        }
         if hemiSign != nil, explicitSign == -1 { return nil }
         // Zahlen extrahieren; alles andere darf nur Trenner/Einheitenzeichen sein.
         let allowedSeparators = Set("°'\"′″ºd:_ ·")
@@ -194,13 +198,18 @@ public enum CoordinateConverter {
             if ch.isASCII, ch.isNumber || ch == "." || ch == "," {
                 current.append(ch == "," ? "." : ch)
             } else if allowedSeparators.contains(ch) || ch == "\u{2019}" {
-                if !current.isEmpty { guard let v = Double(current) else { return nil }; numbers.append(v); current = "" }
+                if !current.isEmpty { guard let v = Double(current) else { return nil }
+                    numbers.append(v)
+                    current = ""
+                }
             } else {
                 return nil
             }
         }
-        if !current.isEmpty { guard let v = Double(current) else { return nil }; numbers.append(v) }
-        guard (1...3).contains(numbers.count) else { return nil }
+        if !current.isEmpty { guard let v = Double(current) else { return nil }
+            numbers.append(v)
+        }
+        guard (1 ... 3).contains(numbers.count) else { return nil }
         if numbers.count >= 2 { guard numbers[1] < 60 else { return nil } }
         if numbers.count == 3 { guard numbers[2] < 60, numbers[1] == numbers[1].rounded() else { return nil } }
         var value = numbers[0]

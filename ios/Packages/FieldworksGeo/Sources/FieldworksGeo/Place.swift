@@ -23,7 +23,8 @@ public struct Place: Codable, Equatable, Sendable {
     public var mountain: String
 
     public init(countryISO: String, admin: [AdminTier: AdminValue] = [:],
-                island: String = "", mountainRange: String = "", mountain: String = "") {
+                island: String = "", mountainRange: String = "", mountain: String = "")
+    {
         self.countryISO = countryISO
         self.admin = admin
         self.island = island
@@ -96,7 +97,8 @@ public struct OrtusFeature: Codable, Equatable, Sendable {
     public var licenseJSON: String?
 
     public init(sourceID: String, sourceName: String, layer: String, featureID: String,
-                propertiesJSON: String, licenseJSON: String?) {
+                propertiesJSON: String, licenseJSON: String?)
+    {
         self.sourceID = sourceID
         self.sourceName = sourceName
         self.layer = layer

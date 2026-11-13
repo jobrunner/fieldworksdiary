@@ -165,7 +165,7 @@ struct OrtusClient: OrtusQuerying {
     func makeRequest(lat: Double, lon: Double) throws -> URLRequest {
         try makeRequest(items: [
             URLQueryItem(name: "lat", value: String(format: "%.6f", lat)),
-            URLQueryItem(name: "lon", value: String(format: "%.6f", lon)),
+            URLQueryItem(name: "lon", value: String(format: "%.6f", lon))
         ])
     }
 

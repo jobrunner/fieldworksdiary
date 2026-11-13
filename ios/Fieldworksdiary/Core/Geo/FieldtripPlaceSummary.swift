@@ -16,7 +16,9 @@ struct FieldtripPlaceSummary: Equatable {
     /// "MTB 6326 Ochsenfurt" of the most frequent sheet (DE only).
     let mtb: String?
 
-    var isEmpty: Bool { name == nil && region == nil && mtb == nil }
+    var isEmpty: Bool {
+        name == nil && region == nil && mtb == nil
+    }
 
     /// One sample of a fieldtrip with the place columns the summary needs.
     struct Sample {

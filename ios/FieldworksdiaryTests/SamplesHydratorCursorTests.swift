@@ -58,7 +58,7 @@ final class SamplesHydratorCursorTests: XCTestCase {
         XCTAssertNil(list.calls.last?.after)
     }
 
-    func testPull_FailureMidway_KeepsOldCursor() async throws {
+    func testPull_FailureMidway_KeepsOldCursor() async {
         let list = MockList()
         list.items = (0 ..< 450).map { sample(index: $0) }
         list.failOnCall = 2

@@ -19,7 +19,7 @@ final class PendingMutationsStoreTests: XCTestCase {
     }
 
     func testEnqueueAndFetchSingle() throws {
-        let payload = #"{"latitude":49.79,"longitude":9.94}"#.data(using: .utf8)!
+        let payload = try XCTUnwrap(#"{"latitude":49.79,"longitude":9.94}"#.data(using: .utf8))
         _ = try store.enqueue(
             entityType: .sample,
             entityId: nil,

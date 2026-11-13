@@ -121,10 +121,14 @@ final class PlaceEditorViewModel: ObservableObject, Identifiable {
     }
 
     /// The height is written when it or the error was changed.
-    private var elevationEdited: Bool { elevationChanged || accuracyChanged }
+    private var elevationEdited: Bool {
+        elevationChanged || accuracyChanged
+    }
 
     /// Something was typed that isn't saved yet.
-    var hasEdits: Bool { placeChanged || elevationEdited }
+    var hasEdits: Bool {
+        placeChanged || elevationEdited
+    }
 
     /// Inline hint under the height field.
     var elevationError: String? {

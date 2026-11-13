@@ -614,13 +614,14 @@ final class SyncRunner: ObservableObject {
             onSampleSynced(created.fieldtrip)
 
             // 4. Features (only when the device has some).
-            if let featureStore, ((try? featureStore.count(sampleID: localId)) ?? 0) > 0 {
-                if !(await pushFeatures(localID: localId, backendID: created.id)) {
-                    _ = try? mutationsStore.enqueue(
-                        entityType: .sample, entityId: localId, op: .update,
-                        payload: SampleUpdatePayload(pushFeatures: true).encoded
-                    )
-                }
+            if let featureStore, ((try? featureStore.count(sampleID: localId)) ?? 0) > 0, !(await pushFeatures(
+                localID: localId,
+                backendID: created.id
+            )) {
+                _ = try? mutationsStore.enqueue(
+                    entityType: .sample, entityId: localId, op: .update,
+                    payload: SampleUpdatePayload(pushFeatures: true).encoded
+                )
             }
 
             // Push any photos that were captured for this sample
@@ -1353,8 +1354,8 @@ final class SyncRunner: ObservableObject {
     /// only forward; place data unless the local state is better),
     /// then pulls placemark and features.
     private func adoptEnrichment(_ target: EnrichmentTarget, via client: SamplePushClient) async -> Bool {
-        guard let s = try? await client.fetchSample(id: target.backendID) else { return false }
-        guard s.locationStatus == .backendService || s.version > target.baseVersion else { return false }
+        guard let s = try? await client.fetchSample(id: target.backendID),
+              s.locationStatus == .backendService || s.version > target.baseVersion else { return false }
         guard var fresh = try? store.fetchById(target.localID), fresh.backendId == target.backendID else {
             return true
         }

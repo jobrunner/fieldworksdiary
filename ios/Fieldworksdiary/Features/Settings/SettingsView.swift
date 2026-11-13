@@ -303,7 +303,9 @@ struct SettingsScreen: View {
             if ortusSavedHint {
                 Text("Gespeichert.")
             } else {
-                Text("Geodienst für Ort, Höhe und MTB direkt beim Anlegen einer Probe. Leer lassen, um die Abfrage auf dem Gerät abzuschalten – das Backend ergänzt die Daten dann nach dem Sync.")
+                Text(
+                    "Geodienst für Ort, Höhe und MTB direkt beim Anlegen einer Probe. Leer lassen, um die Abfrage auf dem Gerät abzuschalten – das Backend ergänzt die Daten dann nach dem Sync."
+                )
             }
         }
     }

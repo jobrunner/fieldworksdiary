@@ -1,5 +1,5 @@
-import XCTest
 @testable import FieldworksGeo
+import XCTest
 
 final class TK25Tests: XCTestCase {
     private struct Case: Decodable {

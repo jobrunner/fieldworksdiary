@@ -50,8 +50,8 @@ struct RemoteSampleFeature: Equatable {
     }
 
     private static func serialize(_ value: Any?) -> String? {
-        guard let value, !(value is NSNull) else { return nil }
-        guard JSONSerialization.isValidJSONObject(value),
+        guard let value, !(value is NSNull),
+              JSONSerialization.isValidJSONObject(value),
               let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
         else { return nil }
         return String(data: data, encoding: .utf8)

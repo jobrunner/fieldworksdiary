@@ -11,7 +11,8 @@ public enum PlaceLabels {
     /// Fallback chain: table term for (country, level), then `rawLocalTerm`,
     /// then `term == nil` (generic key only).
     public static func label(country: String?, tier: AdminTier, level: Int?, rawLocalTerm: String?,
-                             table: AdminLabelTable = .shared) -> PlaceFieldLabel {
+                             table: AdminLabelTable = .shared) -> PlaceFieldLabel
+    {
         var term: String?
         if let country, let level { term = table.term(country: country, level: level) }
         if term == nil, let raw = rawLocalTerm?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty {

@@ -347,7 +347,9 @@ private final class MockUpdateClient: SamplePushClient, @unchecked Sendable {
     var createResponse: Sample?
     /// Every input the SyncRunner sent, in order.
     var updateInputs: [SampleUpdateInput] = []
-    var lastUpdateInput: SampleUpdateInput? { updateInputs.last }
+    var lastUpdateInput: SampleUpdateInput? {
+        updateInputs.last
+    }
 
     func createSample(_: SampleCreateInput) async throws -> Sample {
         guard let createResponse else { throw SampleClientError.http(status: 500, body: "no mock") }

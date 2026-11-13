@@ -156,7 +156,9 @@ final class SampleFormViewModel: ObservableObject {
         queryTask?.cancel()
     }
 
-    var sampleExists: Bool { time != nil }
+    var sampleExists: Bool {
+        time != nil
+    }
 
     // MARK: - Koordinate
 
@@ -375,10 +377,21 @@ final class SampleFormViewModel: ObservableObject {
 
     // MARK: - Zeit
 
-    func setBeginDate(_ date: Date) { time?.setBegin(date) }
-    func setEndDate(_ date: Date) { time?.setEnd(date) }
-    func setTimezone(_ identifier: String) { time?.setTimezone(identifier) }
-    func setAllDay(_ allDay: Bool) { time?.setAllDay(allDay) }
+    func setBeginDate(_ date: Date) {
+        time?.setBegin(date)
+    }
+
+    func setEndDate(_ date: Date) {
+        time?.setEnd(date)
+    }
+
+    func setTimezone(_ identifier: String) {
+        time?.setTimezone(identifier)
+    }
+
+    func setAllDay(_ allDay: Bool) {
+        time?.setAllDay(allDay)
+    }
 
     // MARK: - leaving
 
@@ -479,7 +492,8 @@ final class SampleFormViewModel: ObservableObject {
 
     private func adoptCoordinate(_ sample: LocalSample) {
         storedCoordinate = Self.coordinate(sample)
-        let input = storedCoordinate.map { prefill($0) } ?? CoordinateInput(system: RetrospectiveCoordinateViewModel.defaultSystem(for: displayFormat))
+        let input = storedCoordinate
+            .map { prefill($0) } ?? CoordinateInput(system: RetrospectiveCoordinateViewModel.defaultSystem(for: displayFormat))
         appliedInput = input
         system = input.system
         first = input.first

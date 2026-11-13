@@ -37,7 +37,7 @@ final class SampleLocationResolverTests: XCTestCase {
     // MARK: - online
 
     func testResolveOnline_Success_SetsPlacemarkFeaturesMTBAndStatus() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, accuracy: 5, elevation: 250)
 
         let ok = await makeResolver(fake).resolveOnline(sampleID: sample.id)
@@ -72,7 +72,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_GPSHeightZeroIsKept() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 0)
 
         _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
@@ -83,7 +83,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_ManualCoordinateWithoutHeight_UsesDEM() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, locationSource: .user)
         XCTAssertNil(sample.elevationSource)
 
@@ -99,7 +99,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_ManualHeightIsNeverOverwritten() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         var sample = try samples.createLocal(lat: lat, lon: lon, locationSource: .user)
         sample.elevation = 300
         sample.elevationSource = .manual
@@ -113,7 +113,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_Sea_StoresGeoWithoutPlacemark() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.seaJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.seaJSON)))
         let sample = try samples.createLocal(lat: 40, lon: -25, locationSource: .user)
 
         let ok = await makeResolver(fake).resolveOnline(sampleID: sample.id)
@@ -146,7 +146,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_ManualPlacemark_KeepsPlacemarkAndSetsSuggestion() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let manualPlace = Place(countryISO: "DE",
                                 admin: [.municipality: AdminValue(name: "Anderswo", native: "", level: 8)])
         let manual = try placemarks.lookupOrCreate(place: manualPlace, source: .manual)
@@ -169,7 +169,7 @@ final class SampleLocationResolverTests: XCTestCase {
     // MARK: - offline
 
     func testInheritOffline_CopiesPlacemarkOfPreviousSample() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let first = try samples.createLocal(lat: lat, lon: lon, collectedFrom: Self.morning)
         _ = await makeResolver(fake).resolveOnline(sampleID: first.id)
         let firstPlacemark = try XCTUnwrap(samples.fetchById(first.id)?.placemark)
@@ -200,7 +200,7 @@ final class SampleLocationResolverTests: XCTestCase {
 
     func testResolveOnline_PushedSample_QueuesUpdateWithFeatures() async throws {
         let mutations = PendingMutationsStore(database: database)
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
         sample.backendId = "backend-1"
         sample.syncStatus = .synced
@@ -219,7 +219,7 @@ final class SampleLocationResolverTests: XCTestCase {
 
     func testResolveOnline_UnpushedSample_QueuesNothing() async throws {
         let mutations = PendingMutationsStore(database: database)
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon)
 
         let resolver = SampleLocationResolver(ortus: fake, samples: samples, placemarks: placemarks,
@@ -232,7 +232,7 @@ final class SampleLocationResolverTests: XCTestCase {
     func testInheritOffline_PushedSample_QueuesUpdate() async throws {
         let mutations = PendingMutationsStore(database: database)
         let first = try samples.createLocal(lat: lat, lon: lon, collectedFrom: Self.morning)
-        _ = await makeResolver(FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON))))
+        _ = try await makeResolver(FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON))))
             .resolveOnline(sampleID: first.id)
         var second = try samples.createLocal(lat: lat, lon: lon,
                                              collectedFrom: Self.morning.addingTimeInterval(600))
@@ -269,7 +269,7 @@ final class SampleLocationResolverTests: XCTestCase {
     // MARK: - timezone (Phase Z)
 
     func testResolveOnline_Timezone_SetsZoneAndSourceKeepsDayAndID() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.canaryJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
         XCTAssertEqual(sample.timezoneSource, .device)
 
@@ -285,7 +285,7 @@ final class SampleLocationResolverTests: XCTestCase {
 
     func testResolveOnline_ZoneChange_RecomputesRetrospectiveDay() async throws {
         let mutations = PendingMutationsStore(database: database)
-        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.canaryJSON)))
         // 2019-05-04 05:30 Berlin (03:30 UTC) is after the rollover in
         // Berlin but 04:30 — before it — in Atlantic/Canary.
         let begin = Self.morning2019.addingTimeInterval(-(4 * 3600 + 30 * 60))
@@ -304,7 +304,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_ManualTimezoneStays() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.canaryJSON)))
         var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
         sample.timezone = "Asia/Kolkata"
         sample.timezoneSource = .manual
@@ -318,7 +318,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_NoTimezoneInAnswer_KeepsDeviceZone() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.ochsenfurtJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.ochsenfurtJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
 
         _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
@@ -329,7 +329,7 @@ final class SampleLocationResolverTests: XCTestCase {
     }
 
     func testResolveOnline_CanaryZeroHeightWithSourceIsKept() async throws {
-        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.canaryJSON)))
         let sample = try samples.createLocal(lat: lat, lon: lon, elevation: 0)
 
         _ = await makeResolver(fake).resolveOnline(sampleID: sample.id)
@@ -341,7 +341,7 @@ final class SampleLocationResolverTests: XCTestCase {
 
     func testResolveOnline_PushedSample_QueuesUpdateWithNewTimezone() async throws {
         let mutations = PendingMutationsStore(database: database)
-        let fake = FakeOrtus(.success(try Self.decode(Self.canaryJSON)))
+        let fake = try FakeOrtus(.success(Self.decode(Self.canaryJSON)))
         var sample = try samples.createLocal(lat: lat, lon: lon, elevation: 250)
         sample.backendId = "backend-1"
         sample.syncStatus = .synced

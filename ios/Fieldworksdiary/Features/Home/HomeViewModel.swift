@@ -52,7 +52,9 @@ final class HomeViewModel: ObservableObject {
 
     /// The rollover hour comes from the user's settings (read fresh);
     /// "today" is the day in the device zone.
-    private var timeZone: TimeZone { TimeZone.current }
+    private var timeZone: TimeZone {
+        TimeZone.current
+    }
 
     init(
         auth: AuthSession,

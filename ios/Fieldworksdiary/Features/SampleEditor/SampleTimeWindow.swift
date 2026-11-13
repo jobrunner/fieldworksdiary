@@ -57,8 +57,7 @@ struct SampleTimeWindow: Equatable {
 
     /// Manual zone choice; an unknown identifier is ignored.
     mutating func setTimezone(_ identifier: String) {
-        guard let newZone = TimeZone(identifier: identifier) else { return }
-        guard identifier != timezoneID || timezoneSource != .manual else { return }
+        guard let newZone = TimeZone(identifier: identifier), identifier != timezoneID || timezoneSource != .manual else { return }
         if isAllDay, identifier != timezoneID {
             begin = SampleTime.startOfSameDay(begin, from: timeZone, to: newZone)
             end = begin

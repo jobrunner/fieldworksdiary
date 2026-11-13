@@ -12,7 +12,8 @@ private final class FakeEvaluator: FeatureFlagEvaluating, @unchecked Sendable {
     private let lock = NSLock()
     private var _calls: [Call] = []
     var calls: [Call] {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         return _calls
     }
 
@@ -23,7 +24,8 @@ private final class FakeEvaluator: FeatureFlagEvaluating, @unchecked Sendable {
     }
 
     func isEnabled(_ key: String, entityID: String, context: [String: String]) -> Bool {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        defer { lock.unlock() }
         _calls.append(Call(key: key, entityID: entityID, context: context))
         return enabledKeys.contains(key)
     }
@@ -139,7 +141,17 @@ final class FeatureFlagsTests: XCTestCase {
 private final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var count = 0
-    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
     /// Returns the number of earlier calls.
-    func next() -> Int { lock.lock(); defer { lock.unlock() }; count += 1; return count - 1 }
+    func next() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
+        return count - 1
+    }
 }

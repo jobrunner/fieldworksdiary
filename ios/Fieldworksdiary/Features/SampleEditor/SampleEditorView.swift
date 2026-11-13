@@ -296,7 +296,9 @@ private struct SampleEditorContent: View {
                 .submitLabel(.next)
                 .focused($codeFocused)
                 .accessibilityLabel("Sample-Code")
-                .accessibilityHint("Vorschlag nach deinem ID-Format. Anpassbar oder leer lassbar, falls du eine andere Nummer auf dem Röhrchen hast.")
+                .accessibilityHint(
+                    "Vorschlag nach deinem ID-Format. Anpassbar oder leer lassbar, falls du eine andere Nummer auf dem Röhrchen hast."
+                )
 
             if let codeError = viewModel.codeValidationError {
                 Text(codeError)

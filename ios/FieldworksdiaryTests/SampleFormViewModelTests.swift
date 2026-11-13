@@ -1,5 +1,5 @@
-@testable import Fieldworksdiary
 import CoreLocation
+@testable import Fieldworksdiary
 import FieldworksGeo
 import XCTest
 
@@ -69,7 +69,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testGaussKruegerInput_StoresWGS84OfAnswer_OneRequest() async throws {
         let sample = try seed(lat: 49.0, lon: 10.0)
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 49.6815634, lon: 10.0312817)
         )))
         let vm = makeVM(sample.id, ortus: ortus)
@@ -127,7 +127,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testStartQuery_CompletesWithoutTheView() async throws {
         let sample = try seed(lat: 49.0, lon: 10.0)
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 49.6815634, lon: 10.0312817)
         )))
         let vm = makeVM(sample.id, ortus: ortus)
@@ -145,7 +145,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testLeavingTheForm_CancelsTheQuery() async throws {
         let sample = try seed(lat: 49.0, lon: 10.0)
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 49.6815634, lon: 10.0312817)
         )))
         let vm = makeVM(sample.id, ortus: ortus)
@@ -257,7 +257,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testManualPlace_QueryAsksFirst_KeepKeepsPlacemark() async throws {
         let sample = try seed(lat: 49.0, lon: 10.0)
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134)
         )))
         let vm = makeVM(sample.id, ortus: ortus)
@@ -347,7 +347,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testAllDay_OrtusZoneChange_KeepsCalendarDay() async throws {
         let sample = try seed(lat: 49.0, lon: 10.0, begin: Self.date("2026-11-10 10:07", berlin))
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 28.68, lon: -17.76, zone: "Atlantic/Canary")
         )))
         let vm = makeVM(sample.id, ortus: ortus)
@@ -407,7 +407,7 @@ final class SampleFormViewModelTests: XCTestCase {
 
     func testRequery_UnchangedMGRSPrefill_QueriesStoredWGS84() async throws {
         let sample = try seed(lat: 49.68123, lon: 10.03134)
-        let ortus = StubOrtus(.success(try OrtusFixtures.decode(
+        let ortus = try StubOrtus(.success(OrtusFixtures.decode(
             OrtusFixtures.answerJSON(lat: 49.68123, lon: 10.03134)
         )))
         let vm = makeVM(sample.id, ortus: ortus, format: .mgrs)

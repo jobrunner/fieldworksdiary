@@ -1,6 +1,6 @@
+@testable import FieldworksGeo
 import Foundation
 import XCTest
-@testable import FieldworksGeo
 
 final class CoordinateInputTests: XCTestCase {
     private func dict(_ items: [URLQueryItem]) -> [String: String] {

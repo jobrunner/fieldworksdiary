@@ -84,7 +84,9 @@ final class PendingFixService {
     deinit { timer?.cancel() }
 
     /// Number of samples still waiting for a fix (tests, diagnostics).
-    var pendingCount: Int { pending.count }
+    var pendingCount: Int {
+        pending.count
+    }
 
     /// Starts waiting for a fix for a sample created at `createdAt`
     /// without coordinate.
@@ -197,7 +199,7 @@ final class PendingFixService {
             return
         }
         do {
-            defaults.set(try JSONEncoder().encode(registrations), forKey: Self.registrationsKey)
+            try defaults.set(JSONEncoder().encode(registrations), forKey: Self.registrationsKey)
         } catch {
             Log.persistence.error("pending fix registrations not saved: \(error.localizedDescription)")
         }

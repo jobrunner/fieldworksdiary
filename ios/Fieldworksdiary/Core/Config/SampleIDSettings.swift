@@ -16,7 +16,9 @@ struct SampleIDSettings: Equatable {
     /// Last handed-out number of the running counter (`<n>`).
     var lastRunning: Int = 0
 
-    var template: SampleIDTemplate { SampleIDTemplate(raw: format) }
+    var template: SampleIDTemplate {
+        SampleIDTemplate(raw: format)
+    }
 
     /// UserDefaults keys; shared with `AppConfig`, which writes them.
     enum Keys {

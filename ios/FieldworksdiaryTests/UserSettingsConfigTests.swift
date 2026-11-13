@@ -44,7 +44,8 @@ final class UserSettingsConfigTests: XCTestCase {
 
     func testApplyUserRecord() throws {
         let config = AppConfig()
-        config.apply(user: try user(#","sample_id_format":"<PREFIX><n>","sample_id_prefix":"JB","sample_id_offset":40,"day_cutoff_hour":4"#))
+        try config
+            .apply(user: user(#","sample_id_format":"<PREFIX><n>","sample_id_prefix":"JB","sample_id_offset":40,"day_cutoff_hour":4"#))
         XCTAssertEqual(config.sampleIDFormat, "<PREFIX><n>")
         XCTAssertEqual(config.sampleIDPrefix, "JB")
         XCTAssertEqual(config.sampleIDOffset, 40)
@@ -54,9 +55,9 @@ final class UserSettingsConfigTests: XCTestCase {
     func testApplyEmptyOrInvalidFallsBackToDefaults() throws {
         let config = AppConfig()
         config.sampleIDFormat = "<PREFIX><n>"
-        config.apply(user: try user())
+        try config.apply(user: user())
         XCTAssertEqual(config.sampleIDFormat, "<YY><MM><DD>/<seq>")
-        config.apply(user: try user(#","sample_id_format":"<seq><n>""#))
+        try config.apply(user: user(#","sample_id_format":"<seq><n>""#))
         XCTAssertEqual(config.sampleIDFormat, "<YY><MM><DD>/<seq>")
     }
 }
