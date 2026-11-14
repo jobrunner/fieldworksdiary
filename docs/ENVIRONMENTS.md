@@ -17,12 +17,15 @@ SQLite-Volumes. Ein Crash der Staging-Datenbank kann Prod nicht treffen.
 
 - Jeder Push auf `main` baut über `.github/workflows/docker-release.yml`
   das Backend-Image (amd64 + arm64) und legt es in der GitHub Container
-  Registry ab: `ghcr.io/jobrunner/fieldworksdiary`. Die Tags folgen
-  `VERSION` wie bei Ortus: `X.Y.Z`, `X.Y`, `X`, `latest` und der
-  Short-SHA (`<kurz>`, ohne Präfix). Zwischen zwei Releases wandert
-  `X.Y.Z` mit jedem Merge weiter, fest ist nur der SHA-Tag. Ein
-  Trivy-Scan läuft danach advisory (SARIF als Artifact am Lauf), er
+  Registry ab: `ghcr.io/jobrunner/fieldworksdiary`. Ein main-Build
+  bekommt nur den Short-SHA (`<kurz>`, ohne Präfix) und `edge`, das
+  bewusst auf den neuesten Stand von `main` wandert. Jedes Image erhält
+  eine signierte Build-Provenance (`gh attestation verify`). Ein
+  Trivy-Scan läuft danach advisory (SARIF im Security-Tab), er
   blockiert nichts.
+- Versions-Tags (`X.Y.Z`, `X.Y`, `X`, `latest`) entstehen nur beim
+  Release, siehe „Versionierung“. `X.Y.Z` zeigt danach immer auf
+  dasselbe Image und wird nie umgehängt.
 - **Deployt wird manuell** auf der Docker-Maschine (siehe „Manuelles Deploy“),
   wie bei Ortus. GitHub hat keinen Zugriff auf den Host - es gibt
   bewusst keinen SSH-Deploy-Job und keine Host-Secrets im Repo.
@@ -158,7 +161,14 @@ eintragen und das Backup zurückspielen (`docs/DISASTER_RECOVERY.md`).
 release-please pflegt die Version aus den Conventional Commits: Es hält
 einen Release-PR offen, der `VERSION`, `MARKETING_VERSION` in
 `ios/project.yml` und `CHANGELOG.md` hochzieht. Mit dem Merge dieses PRs
-entstehen Tag `vX.Y.Z` und GitHub-Release, und der Docker-Release baut
-das Image mit den neuen Versions-Tags. `CURRENT_PROJECT_VERSION`
+entstehen Tag `vX.Y.Z` und GitHub-Release. Der Tag startet im
+Docker-Release den Job `promote`: Er baut **nicht** neu, sondern wartet,
+bis das Image des Release-Commits (aus dessen main-Build) existiert und
+seine Attestation dieselbe Prüfung besteht wie in `deploy.sh`. Dann
+setzt er `X.Y.Z` auf genau diesen Digest, `X.Y`, `X` und `latest` nur,
+wenn die Version die höchste ihrer Gruppe ist. Ein schon vorhandenes
+`X.Y.Z` mit anderem Digest bricht ab. Das Binary meldet auf dem
+Release-Commit `X.Y.Z`, auf allen anderen Builds `X.Y.Z+g<sha>`.
+`CURRENT_PROJECT_VERSION`
 (Build-Number) bleibt manuell: ASC akzeptiert keine doppelte
 Build-Number, also vor jedem Upload hochziehen.
