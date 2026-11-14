@@ -37,11 +37,14 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
       `!`/`BREAKING CHANGE`→major, vor `v1.0.0` ohne ADR-Zwang) —
       **kein** manuelles `git tag` mehr, das würde mit release-please
       kollidieren.
-- [ ] `docker compose build` lokal — ohne Cache:
-      `docker compose build --no-cache --pull`
-- [ ] `docker image inspect …` zeigt korrekte Labels (Git-SHA, Version)
-      — TODO: Labels im Dockerfile per `ARG`/`LABEL` einbauen
-- [ ] Image-Scan: `trivy image fieldworksdiary:vX.Y.Z` — HIGH/CRITICAL: 0
+- [ ] Gebaut wird nicht lokal: Der Tag startet in
+      `docker-release.yml` den Job `promote`, der das attestierte
+      Image des Release-Commits auf `X.Y.Z` setzt. Lauf grün und in
+      der Job-Summary steht der Digest.
+- [ ] Attestation prüfen:
+      `gh attestation verify oci://ghcr.io/jobrunner/fieldworksdiary:X.Y.Z -R jobrunner/fieldworksdiary`
+- [ ] Image-Scan im Security-Tab (Kategorie `trivy-release-image`)
+      für den Release-Commit ohne neue HIGH/CRITICAL
 - [ ] **Dry-Run**: Image lokal hochfahren, Postman-Collection grün:
       ```
       newman run tests/Fieldworksdiary.postman_collection.json \
