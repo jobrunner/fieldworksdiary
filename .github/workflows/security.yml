@@ -15,10 +15,10 @@ concurrency:
 
 permissions:
   contents: read
-  # Code-Scanning-Upload braucht GitHub Advanced Security; auf privaten
-  # Repos ohne GHAS ist das nicht verfügbar. SARIF-Reports werden
-  # stattdessen als Workflow-Artifacts archiviert und können dort
-  # eingesehen oder lokal mit `trivy convert` ausgewertet werden.
+  # SARIF-Reports gehen per `upload-sarif` in den Security-Tab (Code
+  # Scanning ist für öffentliche Repos frei). Die Scan-Jobs bekommen
+  # dafür job-lokal `security-events: write`. Bei PRs aus Forks ist der
+  # Token read-only, dort wird der Upload übersprungen.
 
 jobs:
   gitleaks:
@@ -42,6 +42,9 @@ jobs:
   trivy-fs:
     name: Trivy Filesystem-Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -55,17 +58,18 @@ jobs:
           format: sarif
           output: trivy-fs.sarif
       - name: Upload Trivy fs SARIF
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
-          name: trivy-fs-sarif
-          path: trivy-fs.sarif
-          if-no-files-found: warn
-          retention-days: 30
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
 
   trivy-image:
     name: Trivy Image-Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -87,13 +91,11 @@ jobs:
           format: sarif
           output: trivy-image.sarif
       - name: Upload Trivy image SARIF
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
-          name: trivy-image-sarif
-          path: trivy-image.sarif
-          if-no-files-found: warn
-          retention-days: 30
+          sarif_file: trivy-image.sarif
+          category: trivy-image
 
   govulncheck:
     name: Go-Vulnerabilities
@@ -122,6 +124,9 @@ jobs:
     container: semgrep/semgrep
     # Nightly + Push, aber kein PR-Block (continue-on-error in den
     # SARIF-Upload-Step verlagern, wenn sich False-Positives häufen).
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -144,17 +149,18 @@ jobs:
             --error \
             --sarif --output semgrep.sarif
       - name: Upload Semgrep SARIF
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
-          name: semgrep-sarif
-          path: semgrep.sarif
-          if-no-files-found: warn
-          retention-days: 30
+          sarif_file: semgrep.sarif
+          category: semgrep
 
   zizmor:
     name: GitHub-Actions-Audit (zizmor)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -174,9 +180,9 @@ jobs:
       - name: Run zizmor
         env:
           # Aktiviert die Online-Audits (z. B. ref-confusion gegen
-          # die echten Repos der referenzierten Actions). Read-Only
-          # reicht — `permissions: contents: read` (oben) gibt dem
-          # automatischen `GITHUB_TOKEN` genau das.
+          # die echten Repos der referenzierten Actions). Dafür reicht
+          # `contents: read`; `security-events: write` braucht nur der
+          # SARIF-Upload.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # `--persona regular` ist Default; `pedantic` würde auch
         # Style-Issues melden. Konfig siehe `.github/zizmor.yml`.
@@ -187,13 +193,11 @@ jobs:
         run: zizmor --format sarif . > zizmor.sarif
 
       - name: Upload zizmor SARIF
-        if: always()
-        uses: actions/upload-artifact@v7
+        if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
-          name: zizmor-sarif
-          path: zizmor.sarif
-          if-no-files-found: warn
-          retention-days: 30
+          sarif_file: zizmor.sarif
+          category: zizmor
 
   sbom-and-licenses:
     name: SBOM + License-Check
