@@ -3,14 +3,15 @@
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 #
-# Erwartet, dass das Image bereits in der Registry liegt (CI tagged + pusht
-# nach Push auf main). Die Version kommt aus FWD_VERSION (z.B. in der
-# .env neben dieser Datei: `FWD_VERSION=0.3.0`). Ohne gesetzte Version
-# bricht compose ab, damit nie still ein falsches Image läuft.
+# Erwartet, dass das Image bereits in der Registry liegt (CI baut bei
+# jedem Push auf main, ein Release setzt X.Y.Z). Die Version kommt aus
+# FWD_VERSION (z.B. in der .env neben dieser Datei: `FWD_VERSION=0.1.0`).
+# Ohne gesetzte Version bricht compose ab, damit nie still ein falsches
+# Image läuft.
 
 services:
   backend:
-    image: ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION:?FWD_VERSION setzen, z.B. 0.3.0}
+    image: ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION:?FWD_VERSION setzen, z.B. 0.1.0}
     container_name: fieldworksdiary-backend-prod
     ports: !override
       - "8090:8090"

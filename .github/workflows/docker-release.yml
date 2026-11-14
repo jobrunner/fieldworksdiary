@@ -5,6 +5,20 @@ name: Docker Release
 # auf dem Host `docker compose -f docker-compose.prod.yml pull && up -d`.
 # GitHub hat keinen Zugriff auf den Host.
 #
+# Tags:
+# - Jeder main-Build: Short-SHA. `edge` (wandert bewusst mit, für
+#   „neuester Stand“) setzt der Job `edge`, aber nur, solange der
+#   Commit noch der aktuelle Stand von main ist.
+# - Release (Git-Tag vX.Y.Z, von release-please angelegt): Der Job
+#   `promote` hängt X.Y.Z an das bereits gebaute und attestierte Image
+#   des Release-Commits, X.Y, X und `latest` nur, wenn die Version in
+#   ihrer Gruppe die höchste ist. Es wird nicht neu gebaut, der Digest
+#   und damit die Attestation (source-ref refs/heads/main) bleiben
+#   gleich. Ein einmal gesetztes X.Y.Z wird nie umgehängt.
+#
+# Tags gesetzt werden über scripts/ghcr-tag.sh (Manifest byte-genau
+# kopieren, Digest prüfen).
+#
 # Multi-Arch (amd64 + arm64): Go cross-kompiliert im Builder auf der
 # Runner-Architektur, QEMU braucht es nur für den kurzen apk-Schritt
 # im Runtime-Image.
@@ -12,16 +26,14 @@ name: Docker Release
 on:
   push:
     branches: [main]
+    # Pfadfilter gelten nur für Branch-Pushes, Tag-Pushes laufen immer.
+    tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - 'ios/**'
       - '.claude/**'
   workflow_dispatch:
-
-concurrency:
-  group: docker-release
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,7 +44,14 @@ env:
 jobs:
   backend-image:
     name: Build & Push Backend-Image
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
+    # Nur pro Commit serialisiert: Eine gemeinsame Gruppe hält nur einen
+    # wartenden Job, ein neuer Push würde den wartenden (z.B. den
+    # Release-Commit) verdrängen und dessen Image nie bauen.
+    concurrency:
+      group: docker-release-build-${{ github.sha }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write     # für ghcr.io-Push
@@ -54,22 +73,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Versionierung wie bei Ortus: `VERSION` (von release-please
-      # gepflegt) liefert X.Y.Z, X.Y und X, dazu `latest` und der
-      # Short-SHA. Deployt wird eine feste Version (FWD_VERSION in
-      # docker-compose.prod.yml). Achtung: Zwischen zwei Releases zeigt
-      # X.Y.Z auf den jeweils neuesten main-Stand; unveränderlich ist
-      # nur der SHA-Tag. `cut` schneidet den
-      # `# x-release-please-version`-Marker ab.
+      # Version fürs Binary und das OCI-Label: Ändert der Commit die
+      # `VERSION`-Datei, ist es der Release-Commit und bekommt X.Y.Z.
+      # Sonst X.Y.Z+g<sha>, also „nach X.Y.Z, Stand <sha>“. `cut`
+      # schneidet den `# x-release-please-version`-Marker ab.
       - name: Version ermitteln
         id: version
         run: |
-          VERSION=$(head -n1 VERSION | cut -d' ' -f1)
+          BASE=$(head -n1 VERSION | cut -d' ' -f1)
+          COMMIT=${GITHUB_SHA::7}
+          if git diff --quiet HEAD^1 HEAD -- VERSION; then
+            VERSION="${BASE}+g${COMMIT}"
+          else
+            VERSION="${BASE}"
+          fi
           {
             echo "value=$VERSION"
-            echo "minor=$(echo "$VERSION" | cut -d. -f1-2)"
-            echo "major=$(echo "$VERSION" | cut -d. -f1)"
-            echo "commit=${GITHUB_SHA::7}"
+            echo "commit=$COMMIT"
           } >> "$GITHUB_OUTPUT"
 
       - name: Metadaten (Tags + Labels)
@@ -78,11 +98,9 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.value }}
-            type=raw,value=${{ steps.version.outputs.minor }}
-            type=raw,value=${{ steps.version.outputs.major }}
-            type=raw,value=latest
             type=sha,prefix=,format=short
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
 
       - name: Build & Push
         id: push
@@ -141,7 +159,7 @@ jobs:
     needs: backend-image
     permissions:
       contents: read
-      packages: read           # privates Image aus ghcr ziehen
+      packages: read           # Image aus ghcr ziehen
       security-events: write   # SARIF-Upload
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -165,3 +183,152 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-release-image
+
+  # `edge` nachziehen. Ein neuerer Lauf darf einen älteren abbrechen;
+  # gesetzt wird nur, wenn der Commit noch der Stand von main ist, damit
+  # ein langsamer alter Build `edge` nicht zurückdreht.
+  edge:
+    name: edge-Tag setzen
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: backend-image
+    concurrency:
+      group: docker-release-edge
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      packages: write     # Tag in ghcr.io setzen
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: edge auf diesen Commit setzen
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ needs.backend-image.outputs.digest }}
+        run: |
+          HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" -q .sha)
+          if [[ "$HEAD" != "$GITHUB_SHA" ]]; then
+            echo "::notice::main steht inzwischen auf ${HEAD::7}, edge bleibt unverändert"
+            exit 0
+          fi
+          # Per Digest aus dem Build-Job, nicht über den SHA-Tag, der sich
+          # bei einem erneuten Build-Lauf ändern kann.
+          scripts/ghcr-tag.sh copy "${IMAGE#ghcr.io/}" "$DIGEST" edge
+
+  # Release: Versions-Tags an das Image des Release-Commits hängen. Der
+  # main-Build und die Attestation des Release-Commits laufen parallel
+  # an; promote wartet bis zu 20 Minuten, bis das Image da ist und die
+  # Attestation dieselbe Prüfung besteht wie in deploy.sh. Erst dann
+  # werden Tags gesetzt.
+  promote:
+    name: Release-Tags setzen
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docker-release-promote-${{ github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write     # Tags in ghcr.io setzen
+      attestations: read  # Attestation des Release-Images prüfen
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Version prüfen
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG hat nicht die Form vX.Y.Z"; exit 1
+          fi
+          VERSION="${TAG#v}"
+          FILE=$(head -n1 VERSION | cut -d' ' -f1)
+          if [[ "$FILE" != "$VERSION" ]]; then
+            echo "::error::VERSION-Datei ($FILE) passt nicht zum Tag ($TAG)"; exit 1
+          fi
+          {
+            echo "value=$VERSION"
+            echo "minor=$(echo "$VERSION" | cut -d. -f1-2)"
+            echo "major=$(echo "$VERSION" | cut -d. -f1)"
+            echo "commit=${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Auf attestiertes Image warten
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          REPO="${IMAGE#ghcr.io/}"
+          for i in $(seq 1 40); do
+            DIGEST=$(scripts/ghcr-tag.sh digest "$REPO" "$COMMIT")
+            if [[ -n "$DIGEST" ]] && gh attestation verify "oci://${IMAGE}@${DIGEST}" \
+                --repo "$GITHUB_REPOSITORY" \
+                --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/docker-release.yml" \
+                --source-ref refs/heads/main \
+                --deny-self-hosted-runners > /dev/null 2>&1; then
+              echo "Quelle: ${IMAGE}:${COMMIT} (${DIGEST}), Attestation ok"
+              echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "warte auf ${IMAGE}:${COMMIT} mit gültiger Attestation (${i}/40)..."
+            sleep 30
+          done
+          echo "::error::Kein attestiertes Image ${IMAGE}:${COMMIT}. Liefen main-Build und attest für diesen Commit?"
+          # Einmal mit Ausgabe prüfen, damit im Log steht, woran es liegt.
+          if [[ -n "$DIGEST" ]]; then
+            gh attestation verify "oci://${IMAGE}@${DIGEST}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/docker-release.yml" \
+              --source-ref refs/heads/main \
+              --deny-self-hosted-runners || true
+          fi
+          exit 1
+
+      - name: Image des Release-Commits befördern
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+          DIGEST: ${{ steps.source.outputs.digest }}
+        run: |
+          REPO="${IMAGE#ghcr.io/}"
+
+          # X.Y.Z wird nie umgehängt: gleicher Digest ist ok (erneuter
+          # Lauf), ein anderer bricht ab, bevor irgendein Tag geändert ist.
+          EXISTING=$(scripts/ghcr-tag.sh digest "$REPO" "$VERSION")
+          if [[ -n "$EXISTING" && "$EXISTING" != "$DIGEST" ]]; then
+            echo "::error::${IMAGE}:${VERSION} zeigt schon auf ${EXISTING}, nicht auf ${DIGEST}. Abbruch ohne Änderung."
+            exit 1
+          fi
+
+          # Gleitende Aliase nur setzen, wenn diese Version laut Git-Tags
+          # die höchste ihrer Gruppe ist. So dreht ein älteres oder
+          # parallel laufendes Release sie nicht zurück.
+          RELEASES=$(git ls-remote --tags --refs origin 'refs/tags/v*' \
+            | sed 's|.*refs/tags/v||' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
+          highest() { printf '%s\n' "$RELEASES" | grep -E "^$1" | sort -V | tail -1; }
+          TAGS=("$VERSION")
+          [[ "$(highest "${MINOR//./\\.}\\.")" == "$VERSION" ]] && TAGS+=("$MINOR")
+          [[ "$(highest "${MAJOR}\\.")" == "$VERSION" ]] && TAGS+=("$MAJOR")
+          [[ "$(highest "")" == "$VERSION" ]] && TAGS+=(latest)
+
+          # Quelle ist der geprüfte Digest, nicht der SHA-Tag: Der könnte
+          # sich seit der Attestation-Prüfung geändert haben.
+          scripts/ghcr-tag.sh copy "$REPO" "$DIGEST" "${TAGS[@]}"
+
+          {
+            echo "### ${IMAGE}:${VERSION}"
+            echo
+            echo "Befördert von \`${COMMIT}\`, Digest \`${DIGEST}\`, Attestation geprüft."
+            echo "Tags: ${TAGS[*]}"
+          } >> "$GITHUB_STEP_SUMMARY"
