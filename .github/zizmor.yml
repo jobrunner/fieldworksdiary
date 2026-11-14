@@ -1,24 +1,16 @@
 # zizmor — GitHub-Actions-Audit-Konfiguration
 # Doku: https://docs.zizmor.sh/configuration/
 #
-# **Erste Stufe** (jetzt aktiv): blanket-policy `ref-pin`. Jede
-# referenzierte Action MUSS einen konkreten Tag/SHA tragen — niemals
-# einen mutierbaren Branch (`@main`, `@master`). Das fängt die
-# Hauptklasse der Supply-Chain-Risiken (Action-Repo wechselt
-# Branch-HEAD), ohne dass wir sofort 46 `@v4` → `@<sha>`-Pins durch
-# das ganze Repo schleppen müssen.
-#
-# **Zweite Stufe** (Folge-Issue): `hash-pin` als blanket. Voraussetzung
-# ist, dass Dependabot SHA-Kommentare auswertet (`uses: actions/checkout@<sha>  # v4.2.1`).
-# Bei Marketplace-Actions reicht `ref-pin` häufig nicht — dann lohnt
-# sich die Umstellung.
+# Blanket-Policy `hash-pin`: Jede referenzierte Action MUSS auf einen
+# vollen Commit-SHA gepinnt sein, mit Versions-Kommentar
+# (`uses: actions/checkout@<sha> # v6.0.2`). Tags sind mutierbar, ein
+# kompromittiertes Action-Repo könnte sie umhängen. Dependabot
+# (`github-actions`) wertet den Kommentar aus und hebt SHA und
+# Kommentar gemeinsam an. Auf Repo-Ebene ist zusätzlich
+# „Require actions to be pinned to a full-length commit SHA“ aktiv.
 
 rules:
   unpinned-uses:
     config:
       policies:
-        # Trusted-Publisher-Liste: diese Orgs retaggen ihre Releases
-        # nicht und sind GitHub-Native (offizielle Action-Quellen).
-        # Für sie reicht `ref-pin`. Für alle anderen würden wir später
-        # auf `hash-pin` umstellen.
-        "*": ref-pin
+        "*": hash-pin

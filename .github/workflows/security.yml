@@ -31,11 +31,11 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0   # gitleaks scannt die History
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@v3.0.0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -46,7 +46,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Trivy fs (vuln + secret + misconfig)
@@ -59,7 +59,7 @@ jobs:
           output: trivy-fs.sarif
       - name: Upload Trivy fs SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -71,13 +71,13 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build image (load to local daemon)
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: backend
           file: backend/Dockerfile
@@ -92,7 +92,7 @@ jobs:
           output: trivy-image.sarif
       - name: Upload Trivy image SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
@@ -104,31 +104,33 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: backend/go.mod
           cache: true
           cache-dependency-path: backend/go.sum
       - name: govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           export PATH="$PATH:$(go env GOPATH)/bin"
           ../scripts/govulncheck-gate.sh
 
   semgrep:
     name: Semgrep SAST
     runs-on: ubuntu-latest
-    container: semgrep/semgrep
+    # Image per Digest gepinnt; Dependabot pflegt Workflow-Container
+    # nicht, also beim Semgrep-Update Tag und Digest von Hand anpassen.
+    container: semgrep/semgrep:1.184.0@sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed
     # Nightly + Push, aber kein PR-Block (continue-on-error in den
     # SARIF-Upload-Step verlagern, wenn sich False-Positives häufen).
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
       - name: Run semgrep
@@ -150,7 +152,7 @@ jobs:
             --sarif --output semgrep.sarif
       - name: Upload Semgrep SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -162,7 +164,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           # Default-Verhalten von `checkout` schreibt einen Token in
           # `.git/config`, der allen späteren Steps zugänglich ist —
@@ -171,11 +173,11 @@ jobs:
           persist-credentials: false
 
       - name: Install zizmor
-        # `pipx` ist auf ubuntu-latest vorinstalliert. Soft-Pin auf
-        # die 1.x-Serie — Dependabot kennt pipx-Installs nicht, also
-        # gelegentlich manuell aktualisieren, wenn neue Audits
-        # interessant aussehen.
-        run: pipx install 'zizmor>=1.0,<2.0'
+        # `pipx` ist auf ubuntu-latest vorinstalliert. Fester Pin, damit
+        # neue Audits nicht unangekündigt den Required Check brechen.
+        # Dependabot kennt pipx-Installs nicht, also gelegentlich von
+        # Hand anheben (lokal vorher `zizmor .` laufen lassen).
+        run: pipx install 'zizmor==1.32.0'
 
       - name: Run zizmor
         env:
@@ -194,7 +196,7 @@ jobs:
 
       - name: Upload zizmor SARIF
         if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v4.39.3
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: zizmor.sarif
           category: zizmor
@@ -203,10 +205,10 @@ jobs:
     name: SBOM + License-Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: backend/go.mod
           cache: true
@@ -214,8 +216,8 @@ jobs:
 
       - name: Install cyclonedx-gomod + go-licenses
         run: |
-          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@latest
-          go install github.com/google/go-licenses@latest
+          go install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@v1.12.0
+          go install github.com/google/go-licenses@v1.6.0
 
       - name: Generate SBOM (CycloneDX)
         working-directory: backend
@@ -241,7 +243,7 @@ jobs:
           go-licenses report ./... > ../dist/licenses-backend.csv
 
       - name: Upload SBOM + Lizenz-Reports
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-and-licenses
           path: dist/
