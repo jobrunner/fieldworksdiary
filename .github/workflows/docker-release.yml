@@ -5,6 +5,14 @@ name: Docker Release
 # auf dem Host `docker compose -f docker-compose.prod.yml pull && up -d`.
 # GitHub hat keinen Zugriff auf den Host.
 #
+# Tags:
+# - Jeder main-Build: Short-SHA (unveränderlich) und `edge` (wandert
+#   bewusst mit, für „neuester Stand“).
+# - Release (Git-Tag vX.Y.Z, von release-please angelegt): Der Job
+#   `promote` hängt X.Y.Z, X.Y, X und `latest` an das bereits gebaute
+#   Image des Release-Commits. Es wird nicht neu gebaut, der Digest und
+#   damit die Attestation (source-ref refs/heads/main) bleiben gleich.
+#
 # Multi-Arch (amd64 + arm64): Go cross-kompiliert im Builder auf der
 # Runner-Architektur, QEMU braucht es nur für den kurzen apk-Schritt
 # im Runtime-Image.
@@ -12,16 +20,14 @@ name: Docker Release
 on:
   push:
     branches: [main]
+    # Pfadfilter gelten nur für Branch-Pushes, Tag-Pushes laufen immer.
+    tags: ['v*']
     paths-ignore:
       - '**.md'
       - 'docs/**'
       - 'ios/**'
       - '.claude/**'
   workflow_dispatch:
-
-concurrency:
-  group: docker-release
-  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -32,7 +38,11 @@ env:
 jobs:
   backend-image:
     name: Build & Push Backend-Image
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
+    concurrency:
+      group: docker-release-build
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write     # für ghcr.io-Push
@@ -54,22 +64,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Versionierung wie bei Ortus: `VERSION` (von release-please
-      # gepflegt) liefert X.Y.Z, X.Y und X, dazu `latest` und der
-      # Short-SHA. Deployt wird eine feste Version (FWD_VERSION in
-      # docker-compose.prod.yml). Achtung: Zwischen zwei Releases zeigt
-      # X.Y.Z auf den jeweils neuesten main-Stand; unveränderlich ist
-      # nur der SHA-Tag. `cut` schneidet den
-      # `# x-release-please-version`-Marker ab.
+      # Version fürs Binary und das OCI-Label: Ändert der Commit die
+      # `VERSION`-Datei, ist es der Release-Commit und bekommt X.Y.Z.
+      # Sonst X.Y.Z+g<sha>, also „nach X.Y.Z, Stand <sha>“. `cut`
+      # schneidet den `# x-release-please-version`-Marker ab.
       - name: Version ermitteln
         id: version
         run: |
-          VERSION=$(head -n1 VERSION | cut -d' ' -f1)
+          BASE=$(head -n1 VERSION | cut -d' ' -f1)
+          COMMIT=${GITHUB_SHA::7}
+          if git diff --quiet HEAD^1 HEAD -- VERSION; then
+            VERSION="${BASE}+g${COMMIT}"
+          else
+            VERSION="${BASE}"
+          fi
           {
             echo "value=$VERSION"
-            echo "minor=$(echo "$VERSION" | cut -d. -f1-2)"
-            echo "major=$(echo "$VERSION" | cut -d. -f1)"
-            echo "commit=${GITHUB_SHA::7}"
+            echo "commit=$COMMIT"
           } >> "$GITHUB_OUTPUT"
 
       - name: Metadaten (Tags + Labels)
@@ -78,11 +89,10 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.value }}
-            type=raw,value=${{ steps.version.outputs.minor }}
-            type=raw,value=${{ steps.version.outputs.major }}
-            type=raw,value=latest
             type=sha,prefix=,format=short
+            type=raw,value=edge
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
 
       - name: Build & Push
         id: push
@@ -141,7 +151,7 @@ jobs:
     needs: backend-image
     permissions:
       contents: read
-      packages: read           # privates Image aus ghcr ziehen
+      packages: read           # Image aus ghcr ziehen
       security-events: write   # SARIF-Upload
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -165,3 +175,95 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
           category: trivy-release-image
+
+  # Release: Versions-Tags an das Image des Release-Commits hängen. Das
+  # Manifest wird byte-genau unter den neuen Tags abgelegt, deshalb
+  # bleibt der Digest identisch (am Ende geprüft). Der main-Build des
+  # Release-Commits läuft parallel an; ist sein Image noch nicht da,
+  # wird bis zu 15 Minuten gewartet.
+  promote:
+    name: Release-Tags setzen
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: docker-release-promote-${{ github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write     # Tags in ghcr.io setzen
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Version prüfen
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag $TAG hat nicht die Form vX.Y.Z"; exit 1
+          fi
+          VERSION="${TAG#v}"
+          FILE=$(head -n1 VERSION | cut -d' ' -f1)
+          if [[ "$FILE" != "$VERSION" ]]; then
+            echo "::error::VERSION-Datei ($FILE) passt nicht zum Tag ($TAG)"; exit 1
+          fi
+          {
+            echo "value=$VERSION"
+            echo "minor=$(echo "$VERSION" | cut -d. -f1-2)"
+            echo "major=$(echo "$VERSION" | cut -d. -f1)"
+            echo "commit=${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Image des Release-Commits befördern
+        env:
+          ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.value }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          set -euo pipefail
+          REPO="${IMAGE#ghcr.io/}"
+          REG="https://ghcr.io/v2/${REPO}/manifests"
+          ACCEPT='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json'
+          token() {
+            curl -fsS -u "${ACTOR}:${GH_TOKEN}" \
+              "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO}:pull,push" | jq -r .token
+          }
+
+          for i in $(seq 1 30); do
+            TOKEN=$(token)
+            if curl -fsS -o manifest.json -D headers.txt \
+                -H "Authorization: Bearer ${TOKEN}" -H "Accept: ${ACCEPT}" "${REG}/${COMMIT}"; then
+              break
+            fi
+            if [[ $i == 30 ]]; then
+              echo "::error::${IMAGE}:${COMMIT} nicht gefunden. Lief der main-Build für diesen Commit?"; exit 1
+            fi
+            echo "warte auf ${IMAGE}:${COMMIT} (${i}/30)..."
+            sleep 30
+          done
+
+          CT=$(grep -i '^content-type:' headers.txt | tail -1 | cut -d' ' -f2- | tr -d '\r')
+          DIGEST=$(grep -i '^docker-content-digest:' headers.txt | tail -1 | cut -d' ' -f2 | tr -d '\r')
+          echo "Quelle: ${IMAGE}:${COMMIT} (${DIGEST})"
+
+          for tag in "${VERSION}" "${MINOR}" "${MAJOR}" latest; do
+            curl -fsS -X PUT -o /dev/null -H "Authorization: Bearer ${TOKEN}" \
+              -H "Content-Type: ${CT}" --data-binary @manifest.json "${REG}/${tag}"
+            GOT=$(curl -fsSI -H "Authorization: Bearer ${TOKEN}" -H "Accept: ${ACCEPT}" "${REG}/${tag}" \
+              | grep -i '^docker-content-digest:' | cut -d' ' -f2 | tr -d '\r')
+            if [[ "$GOT" != "$DIGEST" ]]; then
+              echo "::error::${tag} zeigt auf ${GOT}, erwartet ${DIGEST}"; exit 1
+            fi
+            echo "${IMAGE}:${tag} -> ${DIGEST}"
+          done
+
+          {
+            echo "### ${IMAGE}:${VERSION}"
+            echo
+            echo "Befördert von \`${COMMIT}\`, Digest \`${DIGEST}\`."
+            echo "Tags: \`${VERSION}\`, \`${MINOR}\`, \`${MAJOR}\`, \`latest\`"
+          } >> "$GITHUB_STEP_SUMMARY"

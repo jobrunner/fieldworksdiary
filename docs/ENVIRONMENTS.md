@@ -50,8 +50,10 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 ```
 
 Prod zieht `ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION}`, die
-Version steht in der `.env` auf der Docker-Maschine (`FWD_VERSION=0.3.0`).
-Fehlt sie, bricht compose ab. Staging nutzt `BACKEND_IMAGE` mit Default
+Version steht in der `.env` auf der Docker-Maschine (`FWD_VERSION=0.1.0`).
+Fehlt sie, bricht compose ab. X.Y.Z gibt es nur für Releases und zeigt
+immer auf dasselbe Image; jeder main-Build bekommt seinen Short-SHA und
+`edge` (wandert mit). Staging nutzt `BACKEND_IMAGE` mit Default
 `:staging`, Override per ENV:
 
 ```bash
