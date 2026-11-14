@@ -8,6 +8,10 @@
 #   ghcr-tag.sh digest <repo> <tag>              Digest ausgeben, leer wenn es den Tag nicht gibt
 #   ghcr-tag.sh copy   <repo> <quelle> <ziel>... Ziel-Tags auf den Digest der Quelle setzen
 #
+# <quelle> ist ein Tag oder ein Digest (sha256:…). Wurde vorher ein
+# Digest geprüft (z.B. seine Attestation), immer den Digest übergeben:
+# Ein Tag kann sich zwischen Prüfung und Kopie ändern.
+#
 # <repo> ohne Registry, z.B. jobrunner/fieldworksdiary. Zugangsdaten
 # kommen aus GHCR_USER und GHCR_TOKEN (in Actions: github.actor und
 # GITHUB_TOKEN mit packages: write). Ohne beide wird anonym gelesen.
@@ -60,7 +64,16 @@ copy() {
     -H "Authorization: Bearer ${tok}" -H "Accept: ${ACCEPT}" \
     "https://ghcr.io/v2/${repo}/manifests/${src}"
   ct=$(header content-type < "$dir/headers")
-  want=$(header docker-content-digest < "$dir/headers")
+  want="sha256:$(sha256sum "$dir/manifest" 2>/dev/null || shasum -a 256 "$dir/manifest")"
+  want="${want%% *}"
+  if [[ "$want" != "$(header docker-content-digest < "$dir/headers")" ]]; then
+    echo "ghcr-tag: Manifest von ${repo}@${src} passt nicht zum gemeldeten Digest" >&2
+    rm -rf "$dir"; return 1
+  fi
+  if [[ "$src" == sha256:* && "$src" != "$want" ]]; then
+    echo "ghcr-tag: angefordert ${src}, geliefert ${want}" >&2
+    rm -rf "$dir"; return 1
+  fi
 
   for tag in "$@"; do
     curl -fsS -X PUT -o /dev/null \

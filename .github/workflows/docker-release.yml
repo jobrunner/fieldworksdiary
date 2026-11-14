@@ -208,13 +208,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ needs.backend-image.outputs.digest }}
         run: |
           HEAD=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" -q .sha)
           if [[ "$HEAD" != "$GITHUB_SHA" ]]; then
             echo "::notice::main steht inzwischen auf ${HEAD::7}, edge bleibt unverändert"
             exit 0
           fi
-          scripts/ghcr-tag.sh copy "${IMAGE#ghcr.io/}" "${GITHUB_SHA::7}" edge
+          # Per Digest aus dem Build-Job, nicht über den SHA-Tag, der sich
+          # bei einem erneuten Build-Lauf ändern kann.
+          scripts/ghcr-tag.sh copy "${IMAGE#ghcr.io/}" "$DIGEST" edge
 
   # Release: Versions-Tags an das Image des Release-Commits hängen. Der
   # main-Build und die Attestation des Release-Commits laufen parallel
@@ -319,7 +322,9 @@ jobs:
           [[ "$(highest "${MAJOR}\\.")" == "$VERSION" ]] && TAGS+=("$MAJOR")
           [[ "$(highest "")" == "$VERSION" ]] && TAGS+=(latest)
 
-          scripts/ghcr-tag.sh copy "$REPO" "$COMMIT" "${TAGS[@]}"
+          # Quelle ist der geprüfte Digest, nicht der SHA-Tag: Der könnte
+          # sich seit der Attestation-Prüfung geändert haben.
+          scripts/ghcr-tag.sh copy "$REPO" "$DIGEST" "${TAGS[@]}"
 
           {
             echo "### ${IMAGE}:${VERSION}"
