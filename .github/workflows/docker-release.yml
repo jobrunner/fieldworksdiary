@@ -99,11 +99,42 @@ jobs:
             COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha,scope=backend-release
           cache-to: type=gha,scope=backend-release,mode=max
+          # BuildKit hängt SLSA-Provenance und ein SPDX-SBOM als
+          # Attestation-Manifeste an den Image-Index. In GHCR tauchen
+          # die als Plattform `unknown/unknown` auf, das ist normal.
+          provenance: mode=max
+          sbom: true
+
+  # Signierte Build-Provenance (Sigstore) auf den Digest. Eigener Job,
+  # damit ein Fehler hier den Image-Scan nicht überspringt; der hängt
+  # nur am Push. Prüfen mit:
+  #   gh attestation verify oci://ghcr.io/jobrunner/fieldworksdiary:<tag> \
+  #     -R jobrunner/fieldworksdiary
+  attest:
+    name: Build-Provenance attestieren
+    runs-on: ubuntu-latest
+    needs: backend-image
+    permissions:
+      packages: write     # Attestation nach ghcr.io pushen
+      id-token: write     # OIDC-Token für die Sigstore-Signatur
+      attestations: write # Build-Provenance im Repo ablegen
+    steps:
+      - name: Login zu GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build-Provenance attestieren
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ needs.backend-image.outputs.digest }}
+          push-to-registry: true
 
   # Advisory-Scan des veröffentlichten Images: blockiert nichts, das
-  # SARIF liegt als Artifact am Lauf. Den Security-Tab gibt es nicht,
-  # weil Code Scanning bei privaten Repos GitHub Code Security braucht
-  # (wie in security.yml).
+  # SARIF geht in den Security-Tab (wie in security.yml).
   image-scan:
     name: Trivy-Scan (advisory)
     runs-on: ubuntu-latest
@@ -111,6 +142,7 @@ jobs:
     permissions:
       contents: read
       packages: read           # privates Image aus ghcr ziehen
+      security-events: write   # SARIF-Upload
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -127,11 +159,9 @@ jobs:
           format: sarif
           output: trivy-results.sarif
 
-      - name: SARIF als Artifact hochladen
+      - name: SARIF in den Security-Tab hochladen
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: github/codeql-action/upload-sarif@v4.39.3
         with:
-          name: trivy-release-image-sarif
-          path: trivy-results.sarif
-          if-no-files-found: warn
-          retention-days: 30
+          sarif_file: trivy-results.sarif
+          category: trivy-release-image
