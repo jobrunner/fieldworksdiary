@@ -40,7 +40,7 @@ jobs:
     # git log auf diese Datei zeigt die letzte volle Fassung.
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -53,14 +53,14 @@ jobs:
 
       # Toolchain kommt wie lokal aus flake.lock (Shell `ios-lint`):
       # swiftformat, swiftlint, xcodegen, periphery in denselben Versionen.
-      - uses: cachix/install-nix-action@v31.11.5
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31.11.5
 
       # Nix-Store im Actions-Cache, Schlüssel ist flake.lock. Nach dem
       # ersten Lauf wird nur noch entpackt statt von cache.nixos.org
       # geladen. Der Cache hält vor allem xcodegen: Das liegt nicht im
       # Binary-Cache von nixpkgs und wird sonst bei jedem Lauf samt
       # Swift-Toolchain gebaut (gut 3 Minuten).
-      - uses: nix-community/cache-nix-action@v7
+      - uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
         with:
           primary-key: nix-ios-lint-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.nix', 'flake.lock') }}
           restore-prefixes-first-match: nix-ios-lint-v2-${{ runner.os }}-${{ runner.arch }}-
