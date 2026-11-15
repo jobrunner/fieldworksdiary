@@ -10,7 +10,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        isDarwin = pkgs.stdenv.isDarwin;
+        isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 
         # Tools, die auf allen Plattformen verfügbar sind.
         # backend/go.mod verlangt go 1.27.4. Liegt in nixpkgs nur eine
