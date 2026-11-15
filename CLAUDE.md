@@ -60,7 +60,8 @@ provisorische Exkursionszuordnung.
 - **Englische Bezeichner im Code**, deutsche Strings in der UI.
 - **Commits** folgen Conventional Commits (`feat(scope): …`,
   `fix(scope): …`, etc.). Hook in `.githooks/commit-msg` erzwingt das
-  lokal — Konvention in @.claude/rules/COMMITS.md.
+  lokal, in PRs prüft commitlint (`.github/workflows/commitlint.yml`,
+  `.commitlintrc.yml`) — Konvention in @.claude/rules/COMMITS.md.
 - Domänen-Begriffe (auch im Code-Kontext) sind: `Sample`, `Excursion`,
   `Locality`, `Determination`. Wir benutzen NICHT „Collection" als Modell,
   weil PocketBase „collections" für Tabellen verwendet (Namens-Konflikt).

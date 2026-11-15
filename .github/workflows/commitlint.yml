@@ -1,0 +1,33 @@
+# Prüft, dass alle Commits eines PRs Conventional Commits folgen.
+#
+# CI-Gegenstück zum lokalen Hook .githooks/commit-msg, der nur greift, wenn
+# `core.hooksPath` gesetzt ist, und Commits aus der GitHub-UI oder von Bots
+# nicht sieht. release-please (release-please.yml) leitet Version und
+# CHANGELOG aus den Commit-Typen ab; ein nicht konformer Commit würde falsch
+# oder gar nicht einsortiert. Übernommen aus Ortus.
+#
+# Konfiguration in .commitlintrc.yml. `pull_request` mit Read-only-Token:
+# der Job liest nur Commit-Messages und führt keinen PR-Code aus.
+name: Commit Lint
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    name: Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Volle History, damit die Action jeden Commit im PR-Bereich prüft.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: PR-Commits prüfen
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed # v6.2.1
+        with:
+          configFile: .commitlintrc.yml
