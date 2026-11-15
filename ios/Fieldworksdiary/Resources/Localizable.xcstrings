@@ -260,7 +260,7 @@
     "Bisherige PDFs" : {
 
     },
-    "Bitte erst unter Einstellungen einen Backend-Endpoint setzen (z. B. `http://192.168.178.30:8090`)." : {
+    "Bitte erst unter Einstellungen einen Backend-Endpoint setzen (z. B. `https://tabularius.legulus.app`)." : {
 
     },
     "Bitte wählen" : {
@@ -362,7 +362,7 @@
     "Felderfassung für entomologische Aufsammlungen" : {
 
     },
-    "Fieldworksdiary" : {
+    "Legulus" : {
 
     },
     "Format" : {

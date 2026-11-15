@@ -56,9 +56,9 @@ final class AppConfig: ObservableObject {
 
     /// Base URL of the Flipt server for feature flags (Phase E). An
     /// empty value disables flags: every flag then reads `false`.
-    let featureFlagsURL = "https://ff.fieldworksdiary.org"
+    let featureFlagsURL = "https://ff.legulus.app"
 
-    static let defaultOrtusEndpointURL = "https://ortus.fieldworksdiary.org"
+    static let defaultOrtusEndpointURL = "https://ortus.legulus.app"
 
     /// Sample-ID template (Phase Z). Mirrored from the users record
     /// (`sample_id_format`) and cached here so the offline generator
@@ -141,15 +141,15 @@ final class AppConfig: ObservableObject {
     /// ist die In-App-Variante (Settings → Datenschutz). Hosting:
     /// `docs/datenschutz.md` muss auf eine erreichbare Seite gemappt
     /// werden, bevor wir submitten.
-    let privacyPolicyURL: URL = .init(string: "https://fieldworksdiary.org/datenschutz")! // swiftlint:disable:this force_unwrapping
+    let privacyPolicyURL: URL = .init(string: "https://legulus.app/datenschutz")! // swiftlint:disable:this force_unwrapping
 
     init() {
         let stored = UserDefaults.standard.string(forKey: Self.Keys.endpointURL) ?? ""
         if stored.isEmpty {
             // First-Launch (oder ein Reset): nehmen wir den Build-
-            // eingebackenen Default. Debug-Builds haben einen leeren
-            // Default, damit der Dev den Endpoint manuell setzen kann.
-            let baked = Bundle.main.object(forInfoDictionaryKey: "BACKEND_ENDPOINT_DEFAULT") as? String ?? ""
+            // eingebackenen Default (`TABULARIUS_ENDPOINT_DEFAULT`
+            // aus project.yml, pro Build-Config: Tunnel, Stage, Prod).
+            let baked = Bundle.main.object(forInfoDictionaryKey: "TABULARIUS_ENDPOINT_DEFAULT") as? String ?? ""
             endpointURL = baked
             if !baked.isEmpty {
                 UserDefaults.standard.set(baked, forKey: Self.Keys.endpointURL)

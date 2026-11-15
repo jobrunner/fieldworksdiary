@@ -259,7 +259,7 @@ struct SettingsScreen: View {
 
     private var endpointSection: some View {
         Section {
-            TextField("http://192.168.1.10:8090", text: $draft)
+            TextField("https://tabularius.legulus.app", text: $draft)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .keyboardType(.URL)
