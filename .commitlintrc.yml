@@ -1,0 +1,25 @@
+# Conventional-Commits-Gate für PRs (CI-Gegenstück zu .githooks/commit-msg,
+# Konvention in .claude/rules/COMMITS.md). release-please leitet Version und
+# CHANGELOG aus den Commit-Typen ab (feat → minor, fix → patch, `!` bzw.
+# BREAKING CHANGE → major); ein nicht konformer Commit würde falsch oder gar
+# nicht einsortiert. Übernommen aus Ortus.
+extends:
+  - '@commitlint/config-conventional'
+rules:
+  # Subject bis 100 Zeichen (wie der lokale Hook) plus type(scope)!: davor.
+  header-max-length: [2, always, 120]
+  type-enum:
+    - 2
+    - always
+    - [build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test]
+  # Aus: Subjects sind oft deutsch, Substantive am Anfang stehen groß
+  # („feat(ios): Datenschutz-Link in SettingsView“). config-conventional
+  # würde das als sentence-case ablehnen.
+  subject-case: [0]
+  # Warnung statt Fehler: Dependabot schreibt Body-Zeilen über 100 Zeichen.
+  # Release-please wertet nur Typ und Header aus, der Body ist Kosmetik.
+  # (failOnWarnings ist in der Action per Default aus.)
+  body-max-line-length: [1, always, 100]
+  # Dito für den Footer: BREAKING-CHANGE-Erklärungen laufen gern über
+  # 100 Zeichen. Release-please braucht nur das Token `BREAKING CHANGE:`.
+  footer-max-line-length: [1, always, 100]
