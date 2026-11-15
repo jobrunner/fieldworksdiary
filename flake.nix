@@ -33,6 +33,7 @@
           jq
           coreutils
           git
+          commitlint       # Conventional Commits, Regeln in .commitlintrc.yml
         ];
 
         # Swift-Tooling — nur auf macOS sinnvoll (iOS-Build braucht eh Darwin).
@@ -72,6 +73,11 @@
         '';
       in
       {
+        # Für .githooks/commit-msg außerhalb der Dev-Shell (Commits aus
+        # Xcode, Fork, IDE): der Hook baut das einmal und verlinkt es in
+        # .git/, damit nicht jeder Commit die Flake neu auswertet.
+        packages.commitlint = pkgs.commitlint;
+
         # Schlanke Shell nur für den iOS-Lint (CI und lokal). mkShellNoCC
         # zieht weder Compiler noch Nix-apple-sdk, dadurch bleibt der
         # Download in der CI klein.

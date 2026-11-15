@@ -61,6 +61,12 @@ git -C vendor/claude-skills pull origin main \
 git config core.hooksPath .githooks
 ```
 
+Der Hook prüft mit commitlint und denselben Regeln wie das CI-Gate
+(`.commitlintrc.yml`). commitlint kommt aus der Nix-Shell oder, bei
+Commits außerhalb (Xcode, IDE), aus der Flake: beim ersten Commit
+einmal gebaut und unter `.git/commitlint-nix` verlinkt. Ohne Nix
+greift nur ein grober Regex-Check.
+
 Konvention im Detail: [`.claude/rules/COMMITS.md`](.claude/rules/COMMITS.md).
 
 Version + Changelog laufen automatisch über
