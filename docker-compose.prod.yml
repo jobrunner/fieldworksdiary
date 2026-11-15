@@ -19,7 +19,7 @@ services:
       - ./pb_data_prod:/app/pb_data
     environment:
       APP_ENV: production
-      ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.fieldworksdiary.org}
+      ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
     labels:
       env: production
       managed-by: docker-compose

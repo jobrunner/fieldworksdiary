@@ -30,9 +30,9 @@ import (
 // `APPLE_ALLOWED_AUDIENCES` env var (comma-separated) overrides this
 // list — useful for staging environments with their own bundle ids.
 var defaultAppleAudiences = []string{
-	"org.fieldworksdiary.dev",
-	"org.fieldworksdiary.staging",
-	"org.fieldworksdiary.prod",
+	"app.legulus.dev",
+	"app.legulus.staging",
+	"app.legulus.prod",
 }
 
 func resolveAppleAudiences() []string {
