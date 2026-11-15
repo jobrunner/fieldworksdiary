@@ -82,12 +82,15 @@ elif [ ! -d ios/Fieldworksdiary.xcodeproj ]; then
   bad "ios/Fieldworksdiary.xcodeproj fehlt — 'xcodegen generate' im ios/-Dir ausführen"
 else
   BUILD_LOG=$(mktemp)
+  # ARCHS=arm64: `generic/platform=iOS Simulator` baut sonst auch x86_64,
+  # FliptClients `libfliptengine.a` gibt es aber nur für arm64.
   if xcb \
       -project ios/Fieldworksdiary.xcodeproj \
       -scheme Fieldworksdiary \
       -sdk iphonesimulator \
       -destination 'generic/platform=iOS Simulator' \
       build \
+      ARCHS=arm64 \
       CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO >"$BUILD_LOG" 2>&1; then
     ok "xcodebuild build SUCCEEDED"
   else
