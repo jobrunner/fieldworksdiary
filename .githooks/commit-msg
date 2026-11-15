@@ -7,7 +7,8 @@
 #   1. `commitlint` im PATH (Nix-Dev-Shell, `nix develop`)
 #   2. aus der Flake (`.#commitlint`), einmal gebaut und als
 #      .git/commitlint-nix verlinkt (zugleich GC-Root); neu gebaut,
-#      sobald flake.lock jünger ist als .git/commitlint-nix.stamp
+#      sobald flake.lock jünger ist als .git/commitlint-nix.stamp.
+#      Ein vorhandener Build läuft auch ohne Nix im PATH.
 #   3. ohne Nix: Regex-Fallback auf die erste Zeile (gröber als
 #      commitlint, das CI-Gate fängt den Rest)
 
@@ -31,17 +32,42 @@ resolve_commitlint() {
     command -v commitlint
     return 0
   fi
-  command -v nix >/dev/null 2>&1 || return 1
   local link="$GIT_DIR/commitlint-nix"
   # Eigener Stempel, weil `-nt` dem Symlink in den Store folgt und
   # Store-Pfade immer mtime 1970 haben.
   local stamp="$GIT_DIR/commitlint-nix.stamp"
-  if [ ! -x "$link/bin/commitlint" ] || [ ! -f "$stamp" ] || [ "$REPO/flake.lock" -nt "$stamp" ]; then
-    echo "commit-msg: baue commitlint aus der Flake (einmalig) …" >&2
-    nix build "$REPO#commitlint" --out-link "$link" >&2 || return 1
-    touch "$stamp"
+  local built=false fresh=false
+  [ -x "$link/bin/commitlint" ] && built=true
+  if $built && [ -f "$stamp" ] && ! [ "$REPO/flake.lock" -nt "$stamp" ]; then
+    fresh=true
   fi
-  echo "$link/bin/commitlint"
+  # Ein aktueller Build braucht kein Nix - wichtig für GUI-Apps wie Xcode,
+  # deren PATH Nix oft nicht enthält.
+  if $fresh; then
+    echo "$link/bin/commitlint"
+    return 0
+  fi
+  # Nix auch am Standard-Installationspfad suchen, nicht nur im PATH.
+  local nix_bin
+  nix_bin=$(command -v nix 2>/dev/null || true)
+  [ -z "$nix_bin" ] && [ -x /nix/var/nix/profiles/default/bin/nix ] \
+    && nix_bin=/nix/var/nix/profiles/default/bin/nix
+  if [ -n "$nix_bin" ]; then
+    echo "commit-msg: baue commitlint aus der Flake (einmalig) …" >&2
+    if "$nix_bin" build "$REPO#commitlint" --out-link "$link" >&2; then
+      touch "$stamp"
+      echo "$link/bin/commitlint"
+      return 0
+    fi
+  fi
+  # Kein Nix (oder Build gescheitert): ein veralteter Build prüft immer
+  # noch genauer als der Regex.
+  if $built; then
+    echo "commit-msg: nutze vorhandenes commitlint, flake.lock ist neuer." >&2
+    echo "$link/bin/commitlint"
+    return 0
+  fi
+  return 1
 }
 
 if CL=$(resolve_commitlint) && [ -f "$CONFIG" ]; then
