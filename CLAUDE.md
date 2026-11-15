@@ -120,7 +120,7 @@ provisorische Exkursionszuordnung.
 - **Ortus** (Geodaten-Dienst): liefert Reverse-Geocoding/Placemark,
   Höhe (DEM), Terrain und Feature-Quellen. Endpoint kommt aus der
   Umgebungsvariable `ORTUS_BASE_URL` (Docker-Compose, nicht im Code;
-  Default `https://ortus.fieldworksdiary.org` — immer gegen diese Instanz
+  Default `https://ortus.legulus.app` — immer gegen diese Instanz
   entwickeln, dort liegt der aktuelle Feature-Stand).
 
 Der Wrapper liegt in `backend/internal/services/ortus.go` (Retry,

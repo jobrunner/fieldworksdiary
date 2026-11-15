@@ -7,21 +7,20 @@ selbst ist nach Phase 11d soweit.
 ## 1. Apple Developer Account
 
 - [ ] Apple Developer Program-Mitgliedschaft aktiv ($99 / Jahr).
-- [ ] Bundle ID `org.fieldworksdiary.prod` im Developer-Portal
+- [ ] Bundle ID `app.legulus.prod` im Developer-Portal
       registriert (oder eine neue, falls die App vor Submit umbenannt
       wird).
 - [ ] Capability **Sign in with Apple** auf der Bundle ID aktiviert.
 
 ## 2. Sign-in-with-Apple-Setup (Backend-seitig)
 
-- [ ] Service ID im Developer-Portal anlegen (z. B.
-      `org.fieldworksdiary.prod.signin`).
-- [ ] Domain & Return URLs eintragen — Return URL ist der
-      Self-Hosted-Endpoint plus `/api/oauth2-redirect`.
-- [ ] Private Key (`.p8`) erzeugen, Team ID und Key ID notieren.
-- [ ] In der PocketBase Admin-UI unter `_users` → Auth-Provider →
-      Apple aktivieren und die vier Werte (Client ID = Service ID,
-      Team ID, Key ID, Private Key) eintragen.
+Native Flow über `POST /api/auth/apple-native` - keine Service ID,
+kein `.p8`, kein OAuth2-Provider in PocketBase. Details in
+`docs/APPLE_SIGN_IN_SETUP.md`.
+
+- [ ] `app.legulus.prod` steht in den erlaubten Audiences von
+      Tabularius (Default in `backend/main.go`, sonst
+      `APPLE_ALLOWED_AUDIENCES`).
 - [ ] Smoke-Test: in der iOS-App auf einem Gerät auf den
       „Sign in with Apple"-Button tippen → Login funktioniert.
 
@@ -46,7 +45,7 @@ selbst ist nach Phase 11d soweit.
 - [ ] Altersfreigabe-Fragebogen ausfüllen.
 - [ ] Datenschutz-URL = öffentlich erreichbare HTTPS-Adresse der
       Datenschutzerklärung (`docs/datenschutz.md` als Quelle, irgendwo
-      gehostet — z. B. `https://fieldworksdiary.<domain>/datenschutz`).
+      gehostet — z. B. `https://legulus.app/datenschutz`).
 - [ ] Support-URL eintragen.
 
 ## 5. Privacy Nutrition Labels

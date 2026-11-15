@@ -3,11 +3,20 @@
 Drei Stages. Die Tabelle ist die kurze Wahrheit, der Rest des Dokuments
 füllt die Details. Deployt wird manuell (siehe „Build und Deploy“).
 
-| Stage | Branch | Bundle-ID (iOS) | Backend-Host | Port | Volume | TestFlight-Track |
+| Stage | Branch | Bundle-ID (iOS) | Tabularius-URL | Port | Volume | TestFlight-Track |
 |---|---|---|---|---|---|---|
-| **Dev** | beliebig (lokal) | `org.fieldworksdiary.dev` | localhost | 8090 | `./backend/pb_data/` | — |
-| **Staging** | `staging` | `org.fieldworksdiary.staging` | gleiche Docker-Maschine | 8091 | `./pb_data_staging/` | Internal Beta |
-| **Production** | `main` | `org.fieldworksdiary.prod` | gleiche Docker-Maschine | 8090 | `./pb_data_prod/` | External / App Store |
+| **Dev** | beliebig (lokal) | `app.legulus.dev` | `https://tabularius.tunnel.legulus.app` (sish-Tunnel auf localhost) | 8090 | `./backend/pb_data/` | — |
+| **Staging** | `staging` | `app.legulus.staging` | `https://tabularius-stage.legulus.app` (noch nicht aufgesetzt) | 8091 | `./pb_data_staging/` | Internal Beta |
+| **Production** | `main` | `app.legulus.prod` | `https://tabularius.legulus.app` | 8090 | `./pb_data_prod/` | External / App Store |
+
+Die iOS-App heißt **Legulus**, das Backend (PocketBase als Go-Library)
+**Tabularius**. Repo-, Image- und Container-Namen tragen noch den alten
+Namen `fieldworksdiary`; das zieht ein eigener Schritt nach.
+
+Der Dev-Tunnel ist ein SSH-Tunnel über sish auf die lokale Instanz
+(Port 8090). Ein Gerät erreicht sie damit per HTTPS, ohne ATS-Ausnahme
+und ohne gemeinsames WLAN. Läuft der Tunnel nicht, antwortet die
+Tunnel-URL mit 404.
 
 Staging und Production laufen **isoliert** in eigenen Docker-Containern
 (`fieldworksdiary-backend-staging` vs `fieldworksdiary-backend-prod`) mit eigenen
@@ -71,17 +80,20 @@ drei Schemes:
 
 | Scheme | Config | Wofür |
 |---|---|---|
-| `Fieldworksdiary` | Debug | Lokale Entwicklung, Tests, Simulator |
-| `Fieldworksdiary-Staging` | Staging | TestFlight-Beta-Builds, CI auf `staging` |
-| `Fieldworksdiary-Prod` | Release | App-Store-Submits, CI auf `main` |
+| `Fieldworksdiary` | Debug | Lokale Entwicklung, Tests, Simulator - „Legulus Dev“, DEV-Icon, Tunnel |
+| `Fieldworksdiary-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
+| `Fieldworksdiary-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
 
 Jede Config bekommt per Build-Setting:
 
 - `PRODUCT_BUNDLE_IDENTIFIER` (s. Tabelle oben)
-- `APP_DISPLAY_NAME` → Springboard-Name (`Diary Beta` mit Suffix)
+- `APP_DISPLAY_NAME` → Springboard-Name (`Legulus Dev`, `Legulus Beta`, `Legulus`)
+- `ASSETCATALOG_COMPILER_APPICON_NAME` → `AppIcon-Dev`, `AppIcon-Staging`,
+  `AppIcon` (Dev und Beta mit farbigem Banner, damit die drei Apps
+  nebeneinander auf dem Homescreen unterscheidbar sind)
 - `APP_ENV` → Wird in `Info.plist` injiziert, zur Laufzeit per
   `Bundle.main.object(forInfoDictionaryKey: "APP_ENV")` lesbar
-- `BACKEND_ENDPOINT_DEFAULT` → wird beim ersten App-Launch als
+- `TABULARIUS_ENDPOINT_DEFAULT` → wird beim ersten App-Launch als
   Default-Endpoint übernommen (kann vom User in Settings überschrieben
   werden, aber baked-in für Tester)
 
@@ -118,18 +130,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 open http://<host>:8090/_/
 
 # 8. Reverse-Proxy davor (DSM-Web Station / nginx) für TLS-Termination
-#    auf staging.fieldworksdiary.org (→ :8091) und
-#    api.fieldworksdiary.org (→ :8090).
+#    auf tabularius-stage.legulus.app (→ :8091) und
+#    tabularius.legulus.app (→ :8090).
 ```
 
 ## App-Store-Connect-Setup
 
 Zwei ASC-App-Einträge nötig (eine pro Bundle-ID):
 
-1. **Diary Beta** — `org.fieldworksdiary.staging`
+1. **Legulus Beta** — `app.legulus.staging`
    - Sichtbarkeit: nur „Internal Testers" (kein App-Store-Listing)
    - TestFlight: Internal-Group mit dir + Beta-Testern
-2. **Fieldworksdiary** — `org.fieldworksdiary.prod`
+2. **Legulus** — `app.legulus.prod`
    - Sichtbarkeit: zukünftige App-Store-Listing
    - TestFlight: External-Group für breitere Beta vor Submit
 
