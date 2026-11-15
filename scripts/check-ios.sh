@@ -100,29 +100,50 @@ else
   fi
 fi
 
-section "xcodebuild test (Unit-Tests)"
+section "xcodebuild test (Unit- + UI-Tests, iOS-Matrix)"
+# Getestet wird auf zwei Simulatoren: einem iPhone der ältesten und einem
+# der neuesten installierten iOS-Runtime (z. B. 18.6 und 26.5). So fallen
+# Unterschiede zwischen altem und neuem System-Rendering auf, bevor ein
+# Tester sie findet. Override: IOS_TEST_SIM_IDS="<udid> <udid>".
 if [ ! -d /Applications/Xcode.app ] || [ ! -d ios/Fieldworksdiary.xcodeproj ]; then
   missing "Xcode oder Projektdatei fehlt"
 else
-  SIM_DEST=$(env -i PATH="/usr/bin:/bin" /usr/bin/xcrun simctl list devices available -j 2>/dev/null \
-    | jq -r '.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.isAvailable==true) | .udid' 2>/dev/null \
-    | head -1)
-  if [ -z "$SIM_DEST" ]; then
+  if [ -n "${IOS_TEST_SIM_IDS:-}" ]; then
+    SIM_IDS="$IOS_TEST_SIM_IDS"
+  else
+    # Pro iOS-Runtime das erste verfügbare iPhone, sortiert nach
+    # Runtime-Version; davon das erste und das letzte.
+    SIM_LIST=$(env -i PATH="/usr/bin:/bin" /usr/bin/xcrun simctl list devices available -j 2>/dev/null \
+      | jq -r '.devices | to_entries[]
+          | select(.key | test("SimRuntime\\.iOS-"))
+          | (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)")) as $v
+          | [($v.maj | tonumber), ($v.min | tonumber),
+             ([.value[] | select(.isAvailable == true and (.name | startswith("iPhone")))][0].udid // empty)]
+          | select(.[2] != null) | @tsv' 2>/dev/null \
+      | sort -n -k1,1 -k2,2)
+    SIM_IDS=$(printf '%s\n' "$SIM_LIST" | sed -n '1p;$p' | cut -f3 | awk '!seen[$0]++' | tr '\n' ' ')
+  fi
+  if [ -z "${SIM_IDS// /}" ]; then
     missing "Kein iOS-Simulator verfügbar — Test übersprungen"
   else
-    TEST_LOG=$(mktemp)
-    if xcb \
-        -project ios/Fieldworksdiary.xcodeproj \
-        -scheme Fieldworksdiary \
-        -destination "id=$SIM_DEST" \
-        test \
-        CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO >"$TEST_LOG" 2>&1; then
-      ok "Unit-Tests grün"
-    else
-      bad "Unit-Tests fehlgeschlagen"
-      echo "    log: $TEST_LOG (letzte 20 Zeilen unten)"
-      tail -20 "$TEST_LOG" | sed 's/^/      /'
-    fi
+    for SIM_DEST in $SIM_IDS; do
+      SIM_NAME=$(env -i PATH="/usr/bin:/bin" /usr/bin/xcrun simctl list devices -j 2>/dev/null \
+        | jq -r --arg id "$SIM_DEST" '.devices | to_entries[] | .key as $rt | .value[]
+            | select(.udid == $id) | "\(.name) (\($rt | sub(".*SimRuntime\\.iOS-"; "iOS ") | gsub("-"; ".")))"')
+      TEST_LOG=$(mktemp)
+      if xcb \
+          -project ios/Fieldworksdiary.xcodeproj \
+          -scheme Fieldworksdiary \
+          -destination "id=$SIM_DEST" \
+          test \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO >"$TEST_LOG" 2>&1; then
+        ok "Tests grün auf $SIM_NAME"
+      else
+        bad "Tests fehlgeschlagen auf $SIM_NAME"
+        echo "    log: $TEST_LOG (Fehler unten)"
+        grep -E "error:|failed|Failing tests" "$TEST_LOG" | sort -u | head -20 | sed 's/^/      /'
+      fi
+    done
   fi
 fi
 

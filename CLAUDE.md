@@ -190,7 +190,13 @@ arm64 → `ARCHS=arm64` setzen. Mit konkretem Simulator
 (`-destination "id=…"`) baut Xcode ohnehin nur die aktive Arch.
 
 ```bash
-bash scripts/check-ios.sh                 # Lint + Build + Tests
+bash scripts/check-ios.sh                 # Lint + Build + Tests auf ältester und neuester iOS-Runtime
 bash scripts/test-ios-no-build.sh         # nur Tests auf vorhandenem Build
 ```
+
+Snapshot-Referenzen liegen pro iOS-Hauptversion vor
+(`testPrimaryButton.iOS18.png`, `….iOS26.png`), weil die Systemstile
+unter 18 und 26 unterschiedlich rendern. Kommt eine neue Hauptversion
+dazu: einmal laufen lassen (nimmt die Referenz auf, Test rot), Bild
+prüfen, committen.
 
