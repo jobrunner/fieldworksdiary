@@ -16,6 +16,9 @@ on:
 
 permissions:
   contents: read
+  # Die Action holt die PR-Commits über `/repos/…/pulls/N/commits`
+  # (wie gitleaks in security.yml); ohne diese Scope droht ein 403.
+  pull-requests: read
 
 jobs:
   commitlint:
