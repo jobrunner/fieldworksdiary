@@ -6,7 +6,7 @@ import OSLog
 ///
 /// Konvention: siehe `.claude/rules/LOGGING.md`.
 enum Log {
-    private static let subsystem = "org.fieldworksdiary"
+    private static let subsystem = "app.legulus"
 
     static let app = Logger(subsystem: subsystem, category: "App")
     static let auth = Logger(subsystem: subsystem, category: "Auth")

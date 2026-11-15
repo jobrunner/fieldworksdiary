@@ -65,7 +65,7 @@ func newApplesFixture(t *testing.T) *applesFixture {
 	t.Cleanup(jwks.Close)
 
 	now := time.Date(2026, 5, 28, 12, 0, 0, 0, time.UTC)
-	v := services.NewAppleVerifier([]string{"org.fieldworksdiary.dev"})
+	v := services.NewAppleVerifier([]string{"app.legulus.dev"})
 	v.JWKSURL = jwks.URL
 	v.Clock = func() time.Time { return now }
 
@@ -92,7 +92,7 @@ func (f *applesFixture) signToken(t *testing.T, claims jwt.MapClaims) string {
 		claims["iss"] = "https://appleid.apple.com"
 	}
 	if _, ok := claims["aud"]; !ok {
-		claims["aud"] = "org.fieldworksdiary.dev"
+		claims["aud"] = "app.legulus.dev"
 	}
 	if _, ok := claims["exp"]; !ok {
 		claims["exp"] = f.now.Add(10 * time.Minute).Unix()

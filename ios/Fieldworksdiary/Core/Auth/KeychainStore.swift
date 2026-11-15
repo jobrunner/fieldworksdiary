@@ -12,7 +12,7 @@ import Security
 struct KeychainStore {
     let service: String
 
-    static let `default` = Self(service: "org.fieldworksdiary.auth")
+    static let `default` = Self(service: "app.legulus.auth")
 
     func setString(_ value: String, forKey key: String) {
         delete(key: key)

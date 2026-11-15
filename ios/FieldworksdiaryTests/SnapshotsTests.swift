@@ -22,41 +22,28 @@ import XCTest
 final class SnapshotsTests: XCTestCase {
     /// Stabile Render-Konfiguration: fixe Größe, fixer Trait-Stack.
     /// Verhindert Flackern durch Simulator-Variationen.
-    private let size = CGSize(width: 320, height: 64)
+    private let size = CGSize(width: 320, height: 80)
 
     func testPrimaryButton() {
-        let view = PrimaryButtonPreview()
+        let view = PrimaryButton(title: "Sample anlegen", systemImage: "plus.circle.fill") {}
+            .padding()
             .frame(width: size.width, height: size.height)
             .fixedSize()
 
-        // Precision-Toleranzen erlauben kleine Pixel-Diffs zwischen
-        // Renderer-Versionen (lokales Xcode ≠ CI-Xcode/-Simulator).
-        // 0.99/0.97 sind die Point-Free-Empfehlungen für stabile
-        // SwiftUI-Smoketests; höhere Werte führen zu Flakiness.
+        // Eine Referenz pro iOS-Hauptversion: `borderedProminent` hat
+        // unter iOS 18 und iOS 26 andere Innenabstände und Schrift-
+        // metrik, ein gemeinsames Bild wäre auf einer Seite immer rot.
+        // Precision-Toleranzen fangen nur kleine Renderer-Diffs ab
+        // (lokales Xcode ≠ CI-Xcode); 0.99/0.97 sind die Point-Free-
+        // Empfehlungen für stabile SwiftUI-Smoketests.
         assertSnapshot(
             of: view,
             as: .image(
                 precision: 0.99,
                 perceptualPrecision: 0.97,
                 layout: .fixed(width: size.width, height: size.height)
-            )
+            ),
+            named: "iOS\(ProcessInfo.processInfo.operatingSystemVersion.majorVersion)"
         )
-    }
-}
-
-/// Klein gehaltene Vorschau-Komponente — bewusst minimal, damit der
-/// Smoketest nicht durch Änderungen an echten Views flackert.
-private struct PrimaryButtonPreview: View {
-    var body: some View {
-        Button {
-            // intentional no-op
-        } label: {
-            Label("Sample anlegen", systemImage: "plus.circle.fill")
-                .font(.headline)
-                .frame(maxWidth: .infinity, minHeight: 48)
-        }
-        .buttonStyle(.borderedProminent)
-        .padding()
-        .accessibilityIdentifier("primary-button-preview")
     }
 }

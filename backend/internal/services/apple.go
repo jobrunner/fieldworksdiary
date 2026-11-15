@@ -45,7 +45,7 @@ type AppleClaims struct {
 // `NewAppleVerifier` and inject — it's safe to share across requests.
 type AppleVerifier struct {
 	// AllowedAudiences lists the iOS bundle ids the app may legitimately
-	// produce identityTokens for (e.g. `org.fieldworksdiary.dev`).
+	// produce identityTokens for (e.g. `app.legulus.dev`).
 	// A token whose `aud` is outside the list is rejected.
 	AllowedAudiences []string
 

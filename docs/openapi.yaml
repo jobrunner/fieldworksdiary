@@ -21,9 +21,9 @@ info:
 servers:
   - url: http://localhost:8090
     description: Lokales Dev-Backend
-  - url: https://staging.fieldworksdiary.org
+  - url: https://tabularius-stage.legulus.app
     description: Staging
-  - url: https://api.fieldworksdiary.org
+  - url: https://tabularius.legulus.app
     description: Production
 
 security:

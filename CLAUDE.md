@@ -120,7 +120,7 @@ provisorische Exkursionszuordnung.
 - **Ortus** (Geodaten-Dienst): liefert Reverse-Geocoding/Placemark,
   Höhe (DEM), Terrain und Feature-Quellen. Endpoint kommt aus der
   Umgebungsvariable `ORTUS_BASE_URL` (Docker-Compose, nicht im Code;
-  Default `https://ortus.fieldworksdiary.org` — immer gegen diese Instanz
+  Default `https://ortus.legulus.app` — immer gegen diese Instanz
   entwickeln, dort liegt der aktuelle Feature-Stand).
 
 Der Wrapper liegt in `backend/internal/services/ortus.go` (Retry,
@@ -155,45 +155,48 @@ cd backend && go test ./internal/codes -run TestCollectingDay
 # iOS-Projekt erzeugen (xcodegen, einmalig nötig oder nach project.yml-Änderung)
 cd ios && xcodegen generate
 
-# iOS bauen (CLI-Verifikation)
-cd ios && xcodebuild -project Fieldworksdiary.xcodeproj -scheme Fieldworksdiary \
+# iOS bauen (CLI-Verifikation) - saubere Env + arm64, siehe unten
+env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  /usr/bin/xcodebuild -project ios/Fieldworksdiary.xcodeproj -scheme Fieldworksdiary \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build \
-  CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+  ARCHS=arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 ```
 
 Nach erstem Backend-Start: PocketBase-Admin unter
-`http://localhost:8090/_/` einrichten. Danach in der iOS-App den
-Endpoint `http://<host>:8090` setzen.
+`http://localhost:8090/_/` einrichten. Der Debug-Build der App
+(„Legulus Dev“) zeigt per Default auf den sish-Tunnel
+`https://tabularius.tunnel.legulus.app`, der auf die lokale Instanz
+weiterleitet. Stages und URLs: `docs/ENVIRONMENTS.md`.
 
 `ios/Fieldworksdiary.xcodeproj/` ist gitignored und wird aus
 `ios/project.yml` regeneriert (`xcodegen generate`). Quelle für
 Projekt-Änderungen ist immer `project.yml`, nicht das `.xcodeproj`.
 
-### Lokales iOS-Testing auf macOS Tahoe (26)
+### `xcodebuild` lokal (macOS Tahoe, Nix-Shell)
 
-Apple-Bug: `xcodebuild build` für SwiftPM-Targets (z.B. GRDB)
-schlägt auf macOS Tahoe an einer ld-Argv-Parser-Strenge fehl
-(`ld: -objc_abi_version '-Xlinker' not supported`). Tritt mit
-Xcode 16.x und 26.x gleichermaßen auf, sobald Host = Tahoe.
-CI auf macos-15 ist nicht betroffen.
+Der frühere „Tahoe-Linker-Bug“ (`ld: -objc_abi_version '-Xlinker'
+not supported`) ist kein Apple-Bug. Die Nix-devShell exportiert
+`SDKROOT`, `LD=ld`, `CC=clang`, `NIX_LDFLAGS` usw. auf ihre eigene
+Toolchain, und xcodebuild übernimmt Umgebungsvariablen als
+Build-Settings. Dann ruft Xcode `ld` direkt mit Clang-Driver-Argumenten
+auf. Abhilfe: xcodebuild in einer leeren Umgebung starten, die nur auf
+Xcode bzw. das installierte Tahoe-SDK zeigt (`env -i …`, so wie in
+`scripts/check-ios.sh` und `scripts/test-ios-no-build.sh`).
 
-**Lokaler Workaround** (bis Apple das fixt):
+Zweiter Stolperstein: `-destination 'generic/platform=iOS Simulator'`
+baut auch x86_64, FliptClients `libfliptengine.a` gibt es aber nur für
+arm64 → `ARCHS=arm64` setzen. Mit konkretem Simulator
+(`-destination "id=…"`) baut Xcode ohnehin nur die aktive Arch.
 
-1. In Xcode 26 IDE einmal `Product > Build for Testing`
-   (`Cmd+Shift+U`). Die IDE umgeht den Bug durch eine andere
-   Driver-Pipeline und legt das fertige App-Bundle + eine
-   `.xctestrun`-Datei in DerivedData ab.
-2. Anschließend Tests headless via CLI:
-   ```bash
-   bash scripts/test-ios-no-build.sh         # Default: iPhone 17
-   bash scripts/test-ios-no-build.sh "iPhone 17 Pro"
-   ```
-   Der Script findet die jüngste `.xctestrun` automatisch und
-   ruft `xcodebuild test-without-building` — kein erneuter
-   problematischer Link-Step.
+```bash
+bash scripts/check-ios.sh                 # Lint + Build + Tests auf ältester und neuester iOS-Runtime
+bash scripts/test-ios-no-build.sh         # nur Tests auf vorhandenem Build
+```
 
-Nach Code-Änderungen → wieder Schritt 1, dann Schritt 2.
-Für reine Builds (ohne Tests) reicht die IDE per `Cmd+B`.
-`scripts/check-ios.sh` (volle CI-Suite mit `xcodebuild build`)
-bleibt für CI gedacht und scheitert lokal auf Tahoe.
+Snapshot-Referenzen liegen pro iOS-Hauptversion vor
+(`testPrimaryButton.iOS18.png`, `….iOS26.png`), weil die Systemstile
+unter 18 und 26 unterschiedlich rendern. Kommt eine neue Hauptversion
+dazu: einmal laufen lassen (nimmt die Referenz auf, Test rot), Bild
+prüfen, committen.
 

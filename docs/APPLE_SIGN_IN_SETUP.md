@@ -1,312 +1,194 @@
 # Apple-Sign-In — Setup-Anleitung
 
-Vollständige Schritt-für-Schritt-Anleitung für das Einrichten von
-"Mit Apple anmelden" gegen das PocketBase-Backend.
-
-> **Vor Beginn**: Bundle-IDs und App-Namen sollten finalisiert sein.
-> Diese Anleitung verwendet die Platzhalter `<BUNDLE_ID_*>` und
-> `<TEAM_ID>` — überall im Dokument ersetzen, sobald die endgültigen
-> Werte feststehen.
->
-> Aktuelle Platzhalter im Code (Stand vor Rebranding):
-> - Dev:     `org.fieldworksdiary.dev`
-> - Staging: `org.fieldworksdiary.staging`
-> - Prod:    `org.fieldworksdiary.prod`
-
-Reihenfolge ist wichtig — von oben nach unten durcharbeiten. Es spielen
-**drei Welten** zusammen: das Apple-Developer-Portal (wo Apple deine
-Identität als Entwickler kennt), das Xcode-Projekt (lokal) und das
-PocketBase-Backend (wo Apple-Tokens validiert werden).
-
----
-
-## 1. Apple-Developer-Portal — einmaliges Setup
-
-Öffne https://developer.apple.com/account und melde dich an. Unter
-**Certificates, Identifiers & Profiles**:
-
-### 1.1 — Team-ID notieren
-
-Rechts oben im Header steht die **Team-ID** (10-Zeichen-Code,
-in unserem Fall: `XS554Q5YY9`). Wir brauchen sie zweimal: in `ios/project.yml`
-und im Client-Secret-Generator-Skript.
-
-### 1.2 — App-IDs anlegen (3 Stück)
-
-**Identifiers → + → App IDs → App → Continue**.
-
-Pro Bundle-ID einmal:
-
-| Description           | Bundle ID               | Capabilities         |
-|-----------------------|-------------------------|----------------------|
-| Diary Dev         | `<BUNDLE_ID_DEV>`       | ✅ Sign in with Apple |
-| Diary Beta     | `<BUNDLE_ID_STAGING>`   | ✅ Sign in with Apple |
-| Fieldworksdiary Production  | `<BUNDLE_ID_PROD>`      | ✅ Sign in with Apple |
-
-Bei "Sign in with Apple" → **Configure** → **Enable as a primary
-App ID** anklicken → **Save**.
-
-Das **muss** für alle drei separat passieren — Apple bindet
-Authorization-Codes an genau die Bundle-ID, von der sie ausgegeben
-werden.
-
-### 1.3 — Sign-in-with-Apple-Key erzeugen
-
-**Keys → + → Sign in with Apple aktivieren → Configure**:
-
-- Primary App ID: wähle **`<BUNDLE_ID_PROD>`** (Production)
-- Save → Continue → Register
-
-Du bekommst dann:
-
-- Eine **Key-ID** (10 Zeichen, z. B. `7XK4F9D2AB`) — notieren
-- Eine **`.p8`-Datei** zum Download — **das ist die einzige Chance,
-  lade sie jetzt herunter**. Speicher sie sicher (z. B. 1Password /
-  iCloud-Keychain), Apple zeigt sie nie wieder. Ein verlorener Key
-  heißt: alten Key revoken, neuen erzeugen, alle Secrets neu
-  generieren.
-
-**Ein Key reicht für alle drei Bundle-IDs** — Apple erlaubt bis zu
-zwei aktive Keys gleichzeitig, falls du rotieren musst.
-
-### 1.4 — Services ID (überspringen für Native-only-iOS)
-
-Für reine iOS-Apps mit nativem Sign-in-with-Apple **brauchst du keine
-Services ID**. Die wäre nur nötig, wenn du Sign-in-with-Apple aus
-einer Website heraus anbietest. Skip.
-
----
-
-## 2. Xcode-Projekt — Team-ID + Capability
-
-Das **Entitlement** ist bereits gesetzt (`ios/Fieldworksdiary/Fieldworksdiary.entitlements`
-enthält `com.apple.developer.applesignin`).
-
-Was fehlt: deine **Team-ID** muss aktiv sein, sonst kann Xcode keine
-Provisioning-Profile auflösen.
-
-`ios/project.yml` öffnen, im `Fieldworksdiary`-Target unter `settings.base`
-ist die Zeile
-
-```yaml
-# DEVELOPMENT_TEAM: ABC123XYZ
-```
-
-als Kommentar. Das `#` entfernen und die Team-ID einsetzen:
-
-```yaml
-DEVELOPMENT_TEAM: <TEAM_ID>
-```
-
-Danach im `ios/`-Verzeichnis:
-
-```bash
-xcodegen generate
-```
-
-Damit kommt die Team-ID in die `.xcodeproj`. Xcode lädt dann
-automatisch die richtigen Provisioning-Profile mit Sign-in-with-Apple-
-Capability.
-
----
-
-## 3. Client-Secret für PocketBase erzeugen
-
-Apple verlangt als OAuth2-`client_secret` einen **JWT**, signiert mit
-dem `.p8`-Schlüssel. Du musst den lokal generieren. Der JWT darf
-maximal 180 Tage gelten — danach erneuern.
-
-Im Repo liegt das Skript `scripts/apple-client-secret.sh`. Aufruf:
-
-```bash
-bash scripts/apple-client-secret.sh \
-  --team-id  <TEAM_ID> \
-  --key-id   <KEY_ID> \
-  --client   <BUNDLE_ID_DEV> \
-  --key-file ~/Downloads/AuthKey_<KEY_ID>.p8
-```
-
-Output ist ein langer JWT-String (`eyJhbGciOiJFUz…`). Den brauchst
-du für den nächsten Schritt.
-
-**Wichtig**: Pro Stage einmal aufrufen, jeweils mit der passenden
-Bundle-ID als `--client`:
-
-- Dev-PocketBase     → `--client <BUNDLE_ID_DEV>`
-- Staging-PocketBase → `--client <BUNDLE_ID_STAGING>`
-- Prod-PocketBase    → `--client <BUNDLE_ID_PROD>`
-
-Der gleiche JWT lässt sich nicht für zwei Bundle-IDs verwenden
-(Apple verweigert den Token-Exchange mit `invalid_grant`, weil der
-Code an Bundle-ID A ausgestellt war und du als Bundle-ID B kommst).
-
----
-
-## 4. PocketBase-Backend konfigurieren
-
-Im Browser zum PB-Admin der jeweiligen Stage einloggen:
-
-- Dev:     `http://<DEV_HOST>:8090/_/`
-- Staging: `https://staging.<DEINE-DOMAIN>/_/`
-- Prod:    `https://api.<DEINE-DOMAIN>/_/`
-
-### 4.1 — OAuth2-Apple-Provider aktivieren
-
-**Collections** in der Seitenleiste → Klick auf die **users**-Collection
-→ oben rechts **Edit Collection** → Tab **Options**.
-
-Runterscrollen zu **OAuth2** → den **Apple**-Block aufklappen:
-
-- **Enabled** anschalten
-- **Client ID**: die Bundle-ID **dieser** Stage
-  (z. B. `<BUNDLE_ID_DEV>` auf dem Dev-PocketBase)
-- **Client secret**: den JWT aus Schritt 3 reinpasten
-  (der lange `eyJ…`-String)
-
-**Save changes** unten.
-
-### 4.2 — Allowed-Auth-Origins prüfen
-
-In der gleichen Settings-Sektion: stelle sicher, dass
-**Allow OAuth2 sign-up** aktiv ist (sonst kann sich niemand neu
-anmelden). Optional auch **Manage email/password** aktiv lassen —
-sonst können Apple-User keinen Email-Login mehr nachziehen.
-
-### 4.3 — Token-Erneuerung im Kalender vormerken
-
-Setz dir einen Kalender-Reminder auf das Ablaufdatum (das Skript zeigt
-es nach jedem Run als Hinweis an). 2 Wochen vorher: Skript erneut
-laufen lassen, neuen JWT in PB-Admin pasten, speichern. Apple-Login
-funktioniert sofort weiter — kein App-Update nötig.
-
----
-
-## 5. Testen
-
-1. **Alte App vom Device löschen** (falls die Bundle-ID sich geändert
-   hat, sonst kommt es zu Profile-Konflikten).
-
-2. Xcode öffnen, Scheme **`Fieldworksdiary`** (Debug) wählen, Device als
-   Run-Destination.
-
-3. **Run** (▶). Beim ersten Launch kommt evtl. ein Dialog "Möchte
-   'Diary Dev' Geräte im lokalen Netzwerk finden?" — **Erlauben**.
-
-4. In der App den Backend-Endpoint setzen (für Dev: `http://<DEV_HOST>:8090`).
-
-5. **"Mit Apple anmelden"** tippen:
-   - Apple-System-Dialog erscheint
-   - Beim allerersten Mal: Name + Email-Sharing-Option auswählen
-     (Email teilen oder verbergen). Apple gibt diese Daten **nur
-     einmalig** mit — wenn du den User in PocketBase später löschst
-     und neu anlegst, kommt **kein** Name/Email mehr, nur die
-     Apple-User-ID. Tipp für Tests: in iOS-Einstellungen →
-     Apple-ID → Sign in with Apple → die App entfernen, dann fragt's
-     beim nächsten Mal wieder.
-   - Mit Face-ID / Touch-ID / Apple-ID-Passwort bestätigen
-   - Apple gibt der App `identityToken` + `authorizationCode` zurück
-   - Die App POSTet das an
-     `<BACKEND>/api/collections/users/auth-with-oauth2`
-   - PocketBase tauscht den Code bei Apple gegen einen ID-Token ein,
-     validiert die JWT-Signatur, erstellt einen User in der
-     `users`-Collection (oder lädt den existierenden)
-   - User landet in der App eingeloggt
-
-6. Im PB-Admin nachsehen: **users**-Collection sollte einen neuen User
-   haben, mit einer langen ID und der von Apple übermittelten Email
-   (oder einer Apple-Relay-Adresse `…@privaterelay.appleid.com`).
-
----
-
-## 6. Debugging — wenn was schiefgeht
-
-### `invalid_client` / `invalid_grant` vom PocketBase
-
-→ Die **Client-ID** in PB stimmt nicht mit der Bundle-ID überein,
-gegen die der Code ausgegeben wurde. Beispiel: Dev-Bundle-ID
-`<BUNDLE_ID_DEV>` in der App, aber in PocketBase steht
-`<BUNDLE_ID_PROD>` als Client-ID. Apple sagt "der Code gehört zu
-einer anderen App".
-
-**Fix**: Bundle-ID prüfen (in `project.yml`), PB-Client-ID anpassen,
-oder ein neues `client_secret` mit der korrekten Bundle-ID als
-`--client` erzeugen.
-
-### `client_secret expired` (nach ~180 Tagen)
-
-→ Apple lehnt den JWT ab. Skript aus Schritt 3 erneut laufen, neuen
-JWT in PB pasten, fertig.
-
-### Apple-Dialog kommt gar nicht erst auf
-
-→ Sign-in-with-Apple-Capability ist auf der App-ID nicht aktiv, oder
-das Provisioning-Profile ist veraltet.
-
-**Fix**: in Xcode → Target Fieldworksdiary → Signing & Capabilities →
-**+ Capability** → **Sign in with Apple**. Dann Profile manuell
-neu laden (Xcode → Settings → Accounts → Download Manual Profiles).
-
-### "Es besteht anscheinend keine Verbindung zum Internet"
-
-→ ATS blockt rohe IP. Schon gefixt mit der separaten
-`Info.debug.plist`; nochmal sicherstellen, dass der **Debug**-Build
-benutzt wird (= App heißt "Diary Dev" mit blauem `DEV`-Badge
-auf der Welcome-Screen).
-
-### "OAuth2 provider not configured"
-
-→ PB-Admin → users-Collection → Options → OAuth2 → Apple ist nicht
-angeschaltet, oder der Save-Button wurde nicht gedrückt.
-
----
-
-## 7. Quick-Reference
-
-| Wo | Was |
-|---|---|
-| Apple-Portal | 3× App-ID mit Sign-in-with-Apple anlegen |
-| Apple-Portal | 1× Key (.p8) generieren, Key-ID notieren |
-| Apple-Portal | Team-ID notieren |
-| Lokal | `bash scripts/apple-client-secret.sh …` → JWT generieren |
-| `project.yml` | `DEVELOPMENT_TEAM: <TEAM_ID>` eintragen, `xcodegen generate` |
-| PB-Admin | users → Options → OAuth2 → Apple → Client-ID + JWT eintragen |
-| Device | Alte App löschen, Debug-Scheme neu installieren, testen |
-
-Sobald Team-ID + Key-ID vorliegen, sind das ~15 Minuten reine
-Klick-Arbeit pro Stage.
-
----
-
-## 8. Werte-Sammlung (ausfüllen, sobald bekannt)
-
-Diese Tabelle ist der schnelle Lookup beim späteren Reaktivieren —
-nach dem Rebranding hier die finalen Werte eintragen.
+Schritt-für-Schritt-Anleitung für „Mit Apple anmelden“ in Legulus
+gegen das Tabularius-Backend.
+
+## Wie der Flow funktioniert
+
+Legulus nutzt den **nativen** Sign-in-with-Apple-Flow (seit Phase R8).
+Der PocketBase-OAuth2-Provider ist dafür nicht beteiligt:
+
+1. Die App holt sich über `AuthenticationServices` ein `identityToken`
+   (JWT, von Apple signiert, `aud` = Bundle-ID der App).
+2. Sie POSTet es an `<TABULARIUS>/api/auth/apple-native`.
+3. Tabularius prüft Signatur (Apple-JWKS, 1 h gecacht), Issuer,
+   Ablauf und `aud` gegen die Liste erlaubter Bundle-IDs.
+4. Tabularius sucht den User über `apple_user_id` (= Apples `sub`),
+   verknüpft ihn ggf. per E-Mail mit einem bestehenden Passwort-User
+   oder legt ihn neu an, und gibt ein PocketBase-Auth-Token zurück.
+
+Für die iOS-App folgt daraus: **kein** Client-Secret-JWT, **kein**
+`.p8`-Key und **keine** OAuth2-Konfiguration im PB-Admin. Eine frisch
+leere Datenbank braucht für Apple-Login nichts außer dem Superuser fürs
+Admin-UI. Website und PWA brauchen zusätzlich eine Services ID, siehe
+Abschnitt 6.
+
+## Werte
 
 | Wert | Inhalt |
 |------|--------|
-| Team-ID | `_______________` |
-| Bundle-ID Dev | `_______________` |
-| Bundle-ID Staging | `_______________` |
-| Bundle-ID Prod | `_______________` |
-| Sign-in-with-Apple Key-ID | `_______________` |
-| `.p8`-Schlüssel Speicherort | `_______________` |
-| JWT-Ablaufdatum Dev | `_______________` |
-| JWT-Ablaufdatum Staging | `_______________` |
-| JWT-Ablaufdatum Prod | `_______________` |
-
-> **Sicherheits-Reminder**: Diese Tabelle **nicht committen**, sobald
-> echte Werte drinstehen. Stattdessen in einem Password-Manager
-> ablegen. Bundle-IDs und Team-ID sind zwar öffentlich erkennbar (aus
-> dem `.app`-Bundle), aber Key-ID + `.p8` + JWT sind Geheimnisse.
+| Team-ID | `XS554Q5YY9` |
+| Bundle-ID Dev | `app.legulus.dev` |
+| Bundle-ID Staging | `app.legulus.staging` |
+| Bundle-ID Prod | `app.legulus.prod` |
+| Tabularius Dev | `https://tabularius.tunnel.legulus.app` (sish-Tunnel) |
+| Tabularius Staging | `https://tabularius-stage.legulus.app` |
+| Tabularius Prod | `https://tabularius.legulus.app` |
 
 ---
 
+## 1. Apple-Developer-Portal
+
+https://developer.apple.com/account → **Certificates, Identifiers &
+Profiles** → **Identifiers** → **+** → **App IDs** → **App**.
+
+Pro Bundle-ID, die du wirklich baust:
+
+| Description | Bundle ID | Capability |
+|---|---|---|
+| Legulus Dev | `app.legulus.dev` | Sign in with Apple |
+| Legulus Beta | `app.legulus.staging` | Sign in with Apple |
+| Legulus | `app.legulus.prod` | Sign in with Apple |
+
+Bei „Sign in with Apple“ → **Configure** → **Enable as a primary App
+ID** → **Save**.
+
+Apples `sub` ist pro Team und primärer App-ID stabil. Neue Bundle-IDs
+sind für Apple neue Apps: Ein User, der sich unter `org.fieldworksdiary.*`
+angemeldet hatte, bekommt unter `app.legulus.*` ggf. einen anderen `sub`.
+
+Mit automatischem Signing (`CODE_SIGN_STYLE: Automatic`) legt Xcode
+die App-IDs beim ersten Device-Build auch selbst an. Die Capability
+kommt dann aus dem Entitlement. Prüfen lohnt sich trotzdem.
+
+## 2. Xcode
+
+`ios/project.yml` ist die Quelle (Team-ID, Bundle-IDs, Icons,
+`TABULARIUS_ENDPOINT_DEFAULT` pro Config). Danach:
+
+```bash
+cd ios && xcodegen generate
+```
+
+Das Entitlement `com.apple.developer.applesignin` steht in
+`ios/Fieldworksdiary/Fieldworksdiary.entitlements`.
+
+## 3. Tabularius
+
+### 3.1 — Erlaubte Audiences
+
+Default in `backend/main.go` (`defaultAppleAudiences`):
+`app.legulus.dev`, `app.legulus.staging`, `app.legulus.prod`.
+
+Abweichend per Env-Variable im Compose-File (kommagetrennt):
+
+```yaml
+environment:
+  APPLE_ALLOWED_AUDIENCES: app.legulus.prod
+```
+
+Ich würde auf Prod nur `app.legulus.prod` zulassen, sobald es eigene
+Dev-/Stage-Instanzen gibt. Bis dahin ist der Default bequemer.
+
+### 3.2 — Superuser auf frischer DB
+
+Beim ersten Start mit leerer DB schreibt PocketBase einen
+Installer-Link ins Log (`docker compose logs backend`). Alternativ:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend \
+  /app/fieldworksdiary superuser upsert <mail> <passwort>
+```
+
+Admin-UI: `<TABULARIUS>/_/`.
+
+## 4. Testen
+
+1. Bei einem Reset oder einer leeren DB: Auf dem iPhone unter
+   Einstellungen → [Name] → Anmelden mit Apple → App → „Nicht mehr
+   verwenden“. Apple liefert Name und E-Mail **nur beim allerersten**
+   Login pro App. Ohne Reset legt Tabularius den User als
+   `<sub>@apple.local` an.
+2. Scheme wählen (`Fieldworksdiary` = Dev, `-Staging`, `-Prod`), auf
+   dem Gerät starten. Für Dev muss der sish-Tunnel laufen.
+3. „Mit Apple anmelden“ tippen.
+4. Im Admin unter **users**: ein User mit gesetzter `apple_user_id`
+   und `verified = true`.
+
+## 5. Debugging
+
+| Symptom | Ursache / Fix |
+|---|---|
+| 401, Log `apple-signin: verify failed` | `aud` nicht erlaubt → Bundle-ID in `APPLE_ALLOWED_AUDIENCES` bzw. Default aufnehmen. Oder Token abgelaufen (Uhrzeit Gerät/Server). |
+| 400 `identity_token is required` | App schickt kein Token - Client-Bug. |
+| Apple-Dialog erscheint nicht | Capability fehlt auf der App-ID oder Provisioning-Profil veraltet → Xcode → Settings → Accounts → Download Manual Profiles. |
+| User heißt `apple_<sub>`, Mail `…@apple.local` | Apple hat keine Mail mitgeschickt, weil die App schon autorisiert war → Schritt 4.1. |
+| Dev-Build erreicht nichts, Tunnel-URL gibt 404 | sish-Tunnel läuft nicht oder die lokale Instanz ist aus. |
+
+## 6. Website und PWA (geplant)
+
+Zur iOS-App kommen eine Website und ggf. eine PWA. Ohne nativen
+`AuthenticationServices`-Dialog läuft Apple-Login dort über
+„Sign in with Apple JS“ oder den OAuth-Redirect, und dafür braucht es
+eine **Services ID**.
+
+### 6.1 — Services ID anlegen
+
+Portal → **Identifiers** → **+** → **Services IDs**:
+
+- Description: `Legulus Web`
+- Identifier: z. B. `app.legulus.web` (darf keine Bundle-ID sein)
+- „Sign in with Apple“ aktivieren → **Configure**:
+  - **Primary App ID**: `app.legulus.prod`. Damit landen Web- und
+    iOS-Login desselben Apple-Users im selben `sub`, also im selben
+    Tabularius-User.
+  - **Domains**: die Web-Domain (z. B. `legulus.app`), ohne Schema
+  - **Return URLs**: die Callback-URL der Website, HTTPS, exakt
+    (Apple vergleicht zeichengenau)
+
+Pro Stage mit eigener Domain eine eigene Services ID (z. B.
+`app.legulus.web.stage`), jeweils mit der passenden primären App-ID.
+
+### 6.2 — Welcher Weg im Backend
+
+**Variante A (Empfehlung): Apple JS mit Popup, Token an den bestehenden
+Endpoint.** Apple JS liefert im Popup-Modus direkt ein `id_token`, mit
+`aud` = Services ID. Das geht an `POST /api/auth/apple-native` wie bei
+iOS. Auf Backend-Seite muss nur die Services ID in die erlaubten
+Audiences (`APPLE_ALLOWED_AUDIENCES` bzw. Default in `main.go`). Der
+Vorteil: Es gibt einen einzigen User-Lookup über `apple_user_id`, also
+keine Dubletten zwischen Web und App.
+
+**Variante B: PocketBase-OAuth2-Provider „Apple“.** Dafür sind Client
+ID = Services ID, ein Client-Secret-JWT aus dem `.p8`-Key
+(`scripts/apple-client-secret.sh`, maximal 180 Tage gültig) und die
+Return-URL `<TABULARIUS>/api/oauth2-redirect` nötig. Das Problem:
+PocketBase verknüpft OAuth2-User über `_externalAuths`, nicht über
+`apple_user_id`. Wer sich zuerst in der App und dann im Web anmeldet,
+landet ohne Zusatzlogik in zwei Accounts (oder wird nur über die
+E-Mail verknüpft, und die fehlt bei Relay-Adressen).
+
+Ich halte A für den saubereren Weg. B lohnt sich nur, falls die Website
+ohnehin das PocketBase-JS-SDK mit `authWithOAuth2` nutzt.
+
+### 6.3 — Offene Punkte, bevor Web live geht
+
+- **Nonce**: Der Verifier prüft heute kein `nonce`-Claim. Bei iOS ist
+  das tragbar. Im Browser sollte die Website einen Nonce erzeugen, an
+  Apple JS übergeben und mitschicken, und das Backend sollte ihn
+  prüfen. Sonst lässt sich ein abgegriffenes `id_token` innerhalb
+  seiner Laufzeit wiederverwenden.
+- **Token-Revocation bei Account-Löschung**: Apple verlangt für
+  App-Store-Apps mit Sign in with Apple, dass beim Löschen des Accounts
+  das Token über `https://appleid.apple.com/auth/revoke` widerrufen
+  wird. Dafür braucht es den `.p8`-Key und ein Client-Secret, also
+  dann auch für iOS. Das ist im Backend noch nicht umgesetzt.
+- **Key**: Ein Sign-in-with-Apple-Key (`.p8`) reicht für alle App- und
+  Services-IDs des Teams. Key-ID und Datei gehören in den
+  Password-Manager, nicht ins Repo.
+
 ## Verwandte Dokumente
 
-- [`docs/ENVIRONMENTS.md`](ENVIRONMENTS.md) — Drei-Stage-Setup
-  (Dev/Staging/Prod) inkl. Bundle-ID-Mapping
-- [`docs/RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) — Pre-Flight
-  vor jedem Submit
-- [`SECURITY.md`](../SECURITY.md) — Threat-Model inkl. Auth-Pfade
+- [`docs/ENVIRONMENTS.md`](ENVIRONMENTS.md) — Stages, Bundle-IDs, URLs
 - [`docs/adr/0002-auth-and-owner-scoping.md`](adr/0002-auth-and-owner-scoping.md)
-  — Architektur-Entscheidung zum Auth-Modell
+- `backend/internal/api/apple_signin.go`, `backend/internal/services/apple.go`

@@ -25,8 +25,8 @@
 	<string>$(APP_DISPLAY_NAME)</string>
 	<key>APP_ENV</key>
 	<string>$(APP_ENV)</string>
-	<key>BACKEND_ENDPOINT_DEFAULT</key>
-	<string>$(BACKEND_ENDPOINT_DEFAULT)</string>
+	<key>TABULARIUS_ENDPOINT_DEFAULT</key>
+	<string>$(TABULARIUS_ENDPOINT_DEFAULT)</string>
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
@@ -38,7 +38,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Wird beim Anlegen einer Aufsammlung verwendet, um die Fundkoordinaten zu erfassen.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Fieldworksdiary ortet neue Proben auch bei geschlossener App bis zum ersten genauen Standort und braucht das später für Hinweise im Gelände.</string>
+	<string>Legulus ortet neue Proben auch bei geschlossener App bis zum ersten genauen Standort und braucht das später für Hinweise im Gelände.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
