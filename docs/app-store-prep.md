@@ -14,15 +14,17 @@ selbst ist nach Phase 11d soweit.
 
 ## 2. Sign-in-with-Apple-Setup (Backend-seitig)
 
-Native Flow über `POST /api/auth/apple-native` - keine Service ID,
-kein `.p8`, kein OAuth2-Provider in PocketBase. Details in
-`docs/APPLE_SIGN_IN_SETUP.md`.
+Native Flow über `POST /api/auth/apple-native` - für die iOS-App keine
+Services ID und kein OAuth2-Provider in PocketBase. Details (auch zu
+Website/PWA) in `docs/APPLE_SIGN_IN_SETUP.md`.
 
 - [ ] `app.legulus.prod` steht in den erlaubten Audiences von
       Tabularius (Default in `backend/main.go`, sonst
       `APPLE_ALLOWED_AUDIENCES`).
 - [ ] Smoke-Test: in der iOS-App auf einem Gerät auf den
       „Sign in with Apple"-Button tippen → Login funktioniert.
+- [ ] Token-Revocation bei Account-Löschung (`/auth/revoke`, braucht
+      `.p8`-Key + Client-Secret) - Pflicht für den Review.
 
 ## 3. Xcode-Projekt
 

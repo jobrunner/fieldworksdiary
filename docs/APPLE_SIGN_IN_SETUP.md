@@ -17,11 +17,11 @@ Der PocketBase-OAuth2-Provider ist dafür nicht beteiligt:
    verknüpft ihn ggf. per E-Mail mit einem bestehenden Passwort-User
    oder legt ihn neu an, und gibt ein PocketBase-Auth-Token zurück.
 
-Daraus folgt: **kein** Client-Secret-JWT, **kein** `.p8`-Key, **keine**
-Services ID und **keine** OAuth2-Konfiguration im PB-Admin. Eine frisch
+Für die iOS-App folgt daraus: **kein** Client-Secret-JWT, **kein**
+`.p8`-Key und **keine** OAuth2-Konfiguration im PB-Admin. Eine frisch
 leere Datenbank braucht für Apple-Login nichts außer dem Superuser fürs
-Admin-UI. `scripts/apple-client-secret.sh` stammt aus dem alten
-OAuth2-Weg und wird nur gebraucht, falls je ein Web-Login dazukommt.
+Admin-UI. Website und PWA brauchen zusätzlich eine Services ID, siehe
+Abschnitt 6.
 
 ## Werte
 
@@ -124,6 +124,68 @@ Admin-UI: `<TABULARIUS>/_/`.
 | Apple-Dialog erscheint nicht | Capability fehlt auf der App-ID oder Provisioning-Profil veraltet → Xcode → Settings → Accounts → Download Manual Profiles. |
 | User heißt `apple_<sub>`, Mail `…@apple.local` | Apple hat keine Mail mitgeschickt, weil die App schon autorisiert war → Schritt 4.1. |
 | Dev-Build erreicht nichts, Tunnel-URL gibt 404 | sish-Tunnel läuft nicht oder die lokale Instanz ist aus. |
+
+## 6. Website und PWA (geplant)
+
+Zur iOS-App kommen eine Website und ggf. eine PWA. Ohne nativen
+`AuthenticationServices`-Dialog läuft Apple-Login dort über
+„Sign in with Apple JS“ oder den OAuth-Redirect, und dafür braucht es
+eine **Services ID**.
+
+### 6.1 — Services ID anlegen
+
+Portal → **Identifiers** → **+** → **Services IDs**:
+
+- Description: `Legulus Web`
+- Identifier: z. B. `app.legulus.web` (darf keine Bundle-ID sein)
+- „Sign in with Apple“ aktivieren → **Configure**:
+  - **Primary App ID**: `app.legulus.prod`. Damit landen Web- und
+    iOS-Login desselben Apple-Users im selben `sub`, also im selben
+    Tabularius-User.
+  - **Domains**: die Web-Domain (z. B. `legulus.app`), ohne Schema
+  - **Return URLs**: die Callback-URL der Website, HTTPS, exakt
+    (Apple vergleicht zeichengenau)
+
+Pro Stage mit eigener Domain eine eigene Services ID (z. B.
+`app.legulus.web.stage`), jeweils mit der passenden primären App-ID.
+
+### 6.2 — Welcher Weg im Backend
+
+**Variante A (Empfehlung): Apple JS mit Popup, Token an den bestehenden
+Endpoint.** Apple JS liefert im Popup-Modus direkt ein `id_token`, mit
+`aud` = Services ID. Das geht an `POST /api/auth/apple-native` wie bei
+iOS. Auf Backend-Seite muss nur die Services ID in die erlaubten
+Audiences (`APPLE_ALLOWED_AUDIENCES` bzw. Default in `main.go`). Der
+Vorteil: Es gibt einen einzigen User-Lookup über `apple_user_id`, also
+keine Dubletten zwischen Web und App.
+
+**Variante B: PocketBase-OAuth2-Provider „Apple“.** Dafür sind Client
+ID = Services ID, ein Client-Secret-JWT aus dem `.p8`-Key
+(`scripts/apple-client-secret.sh`, maximal 180 Tage gültig) und die
+Return-URL `<TABULARIUS>/api/oauth2-redirect` nötig. Das Problem:
+PocketBase verknüpft OAuth2-User über `_externalAuths`, nicht über
+`apple_user_id`. Wer sich zuerst in der App und dann im Web anmeldet,
+landet ohne Zusatzlogik in zwei Accounts (oder wird nur über die
+E-Mail verknüpft, und die fehlt bei Relay-Adressen).
+
+Ich halte A für den saubereren Weg. B lohnt sich nur, falls die Website
+ohnehin das PocketBase-JS-SDK mit `authWithOAuth2` nutzt.
+
+### 6.3 — Offene Punkte, bevor Web live geht
+
+- **Nonce**: Der Verifier prüft heute kein `nonce`-Claim. Bei iOS ist
+  das tragbar. Im Browser sollte die Website einen Nonce erzeugen, an
+  Apple JS übergeben und mitschicken, und das Backend sollte ihn
+  prüfen. Sonst lässt sich ein abgegriffenes `id_token` innerhalb
+  seiner Laufzeit wiederverwenden.
+- **Token-Revocation bei Account-Löschung**: Apple verlangt für
+  App-Store-Apps mit Sign in with Apple, dass beim Löschen des Accounts
+  das Token über `https://appleid.apple.com/auth/revoke` widerrufen
+  wird. Dafür braucht es den `.p8`-Key und ein Client-Secret, also
+  dann auch für iOS. Das ist im Backend noch nicht umgesetzt.
+- **Key**: Ein Sign-in-with-Apple-Key (`.p8`) reicht für alle App- und
+  Services-IDs des Teams. Key-ID und Datei gehören in den
+  Password-Manager, nicht ins Repo.
 
 ## Verwandte Dokumente
 
