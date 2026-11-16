@@ -15,6 +15,10 @@ tabularius/pb_data_test/
 pb_data_staging/
 pb_data_prod/
 tabularius/tabularius
+# Bis zur Umbenennung lag das Backend in `backend/`. Bestehende Checkouts
+# behalten dort ihre lokalen Datenbanken, die nie ins Repo gehören.
+backend/pb_data/
+backend/pb_data_test/
 *.log
 
 # iOS
