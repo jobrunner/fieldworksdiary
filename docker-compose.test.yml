@@ -16,7 +16,9 @@ services:
     build: ./backend
     container_name: fieldworksdiary-backend-test
     ports:
-      - "8092:8090"
+      # Nur Loopback: Simulator und Tests laufen auf diesem Rechner, und
+      # die Zugangsdaten des Test-Nutzers stehen im Repo.
+      - "127.0.0.1:8092:8090"
     volumes:
       - ./backend/pb_data_test:/app/pb_data
     environment:
