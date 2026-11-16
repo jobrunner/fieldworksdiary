@@ -12,7 +12,7 @@
 # Digest geprüft (z.B. seine Attestation), immer den Digest übergeben:
 # Ein Tag kann sich zwischen Prüfung und Kopie ändern.
 #
-# <repo> ohne Registry, z.B. jobrunner/fieldworksdiary. Zugangsdaten
+# <repo> ohne Registry, z.B. jobrunner/tabularius. Zugangsdaten
 # kommen aus GHCR_USER und GHCR_TOKEN (in Actions: github.actor und
 # GITHUB_TOKEN mit packages: write). Ohne beide wird anonym gelesen.
 #
