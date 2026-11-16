@@ -119,6 +119,17 @@ docker compose up --build
 Erster Start: PocketBase-Admin unter `http://localhost:8090/_/`
 einrichten (Account erstellen).
 
+Bestehender Checkout aus der Zeit vor der Umbenennung: Die lokale
+Datenbank lag unter `backend/pb_data`, Compose und
+`scripts/backup-pbdata.sh` erwarten sie jetzt unter
+`tabularius/pb_data`. Einmalig umziehen, bevor der Container startet,
+sonst beginnt er mit leerer Datenbank:
+
+```bash
+docker compose down
+mv backend/pb_data tabularius/pb_data
+```
+
 Tests:
 
 ```bash
