@@ -53,9 +53,13 @@ Pro Bundle-ID, die du wirklich baust:
 Bei „Sign in with Apple“ → **Configure** → **Enable as a primary App
 ID** → **Save**.
 
-Apples `sub` ist pro Team und primärer App-ID stabil. Neue Bundle-IDs
-sind für Apple neue Apps: Ein User, der sich unter `org.fieldworksdiary.*`
-angemeldet hatte, bekommt unter `app.legulus.*` ggf. einen anderen `sub`.
+Apples `sub` (bei uns `apple_user_id`) und die Relay-Adresse
+`…@privaterelay.appleid.com` gelten **pro Developer-Team**, nicht pro
+App-ID. Alle Bundle-IDs und Services IDs unter Team `XS554Q5YY9` sehen
+für denselben Apple-User denselben `sub`. Deshalb lässt sich eine
+Tabularius-Datenbank zwischen Dev, Stage und Prod umziehen, ohne dass
+Apple-Logins ins Leere laufen (Abschnitt 7). Nur ein Wechsel des Teams
+ändert den `sub`; das ginge nur über Apples Transfer-Flow.
 
 Mit automatischem Signing (`CODE_SIGN_STYLE: Automatic`) legt Xcode
 die App-IDs beim ersten Device-Build auch selbst an. Die Capability
@@ -139,9 +143,10 @@ Portal → **Identifiers** → **+** → **Services IDs**:
 - Description: `Legulus Web`
 - Identifier: z. B. `app.legulus.web` (darf keine Bundle-ID sein)
 - „Sign in with Apple“ aktivieren → **Configure**:
-  - **Primary App ID**: `app.legulus.prod`. Damit landen Web- und
-    iOS-Login desselben Apple-Users im selben `sub`, also im selben
-    Tabularius-User.
+  - **Primary App ID**: `app.legulus.prod`. Gruppiert die Website mit
+    der App, sodass der User sie unter „Mit Apple anmelden“ als eine
+    App sieht. Der `sub` ist ohnehin team-weit gleich, Web- und
+    iOS-Login landen also im selben Tabularius-User.
   - **Domains**: die Web-Domain (z. B. `legulus.app`), ohne Schema
   - **Return URLs**: die Callback-URL der Website, HTTPS, exakt
     (Apple vergleicht zeichengenau)
@@ -186,6 +191,26 @@ ohnehin das PocketBase-JS-SDK mit `authWithOAuth2` nutzt.
 - **Key**: Ein Sign-in-with-Apple-Key (`.p8`) reicht für alle App- und
   Services-IDs des Teams. Key-ID und Datei gehören in den
   Password-Manager, nicht ins Repo.
+
+## 7. Eine Datenbank für Dev, Stage und Prod
+
+Möglich, weil `apple_user_id` team-weit gilt. Eine Kopie von Prod nach
+Stage oder Dev (`pb_data/`) funktioniert für Apple-Logins ohne
+Nacharbeit. Beim Kopieren wandert aber mehr mit als die Daten:
+
+- **Token-Secrets:** PocketBase legt die Signatur-Secrets für Auth-Tokens
+  in der DB ab. Nach einer Kopie sind Prod-Tokens auch auf Stage gültig
+  und umgekehrt. Nach jedem Kopieren auf der Ziel-Instanz im Admin unter
+  Collections → users → Options → Tokens die Tokens invalidieren
+  (dasselbe für `_superusers`).
+- **Settings:** Application URL, SMTP und ggf. S3 stehen in der DB. Nach
+  der Kopie anpassen, sonst verschickt Stage Mails mit Prod-Links.
+- **Superuser:** kommen mit. Auf Dev/Stage ggf. per
+  `superuser upsert` ein eigenes Passwort setzen.
+- **Audiences:** Was ein Login auf welcher Instanz darf, steuert
+  `APPLE_ALLOWED_AUDIENCES`, nicht die DB. Der Default lässt alle drei
+  Bundle-IDs überall zu. Wer verhindern will, dass sich eine Dev-App an
+  Prod anmeldet, setzt pro Instanz nur die passende Bundle-ID.
 
 ## Verwandte Dokumente
 
