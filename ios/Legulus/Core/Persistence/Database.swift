@@ -17,8 +17,42 @@ final class Database {
             appropriateFor: nil,
             create: true
         )
-        let path = dir.appendingPathComponent("legulus.sqlite").path
+        Self.adoptLegacyFile(in: dir, fileManager: fm)
+        let path = dir.appendingPathComponent(Self.fileName).path
         try self.init(path: path)
+    }
+
+    static let fileName = "legulus.sqlite"
+    /// File name from before the app was renamed to Legulus.
+    static let legacyFileName = "fieldworksdiary.sqlite"
+
+    /// Moves the database of an installation from before the rename to
+    /// the current file name. Without it the app would start empty:
+    /// the photo index (`local_photos`) and unsynced rows exist only
+    /// locally and cannot be restored from the server.
+    ///
+    /// An existing current file always wins. The sidecars move first
+    /// and the main file last, so an interrupted run is repeated on
+    /// the next launch. On failure the legacy files stay where they
+    /// are and the app opens a fresh database.
+    static func adoptLegacyFile(in dir: URL, fileManager fm: FileManager = .default) {
+        let legacy = dir.appendingPathComponent(legacyFileName)
+        let current = dir.appendingPathComponent(fileName)
+        guard fm.fileExists(atPath: legacy.path), !fm.fileExists(atPath: current.path) else { return }
+        do {
+            for suffix in ["-wal", "-shm", ""] {
+                let source = URL(fileURLWithPath: legacy.path + suffix)
+                guard fm.fileExists(atPath: source.path) else { continue }
+                let target = URL(fileURLWithPath: current.path + suffix)
+                if fm.fileExists(atPath: target.path) {
+                    try fm.removeItem(at: target)
+                }
+                try fm.moveItem(at: source, to: target)
+            }
+            Log.persistence.notice("adopted legacy database file")
+        } catch {
+            Log.persistence.error("adopting legacy database file failed: \(error.localizedDescription)")
+        }
     }
 
     /// Explicit-path init — used by tests to point at an in-memory
