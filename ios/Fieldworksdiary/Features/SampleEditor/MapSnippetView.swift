@@ -36,26 +36,10 @@ struct MapSnippetView: View {
     }
 
     private func content(for coordinate: CLLocationCoordinate2D) -> some View {
-        ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [Color(.systemGray5), Color(.systemGray6)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                ProgressView()
+        MapSnippetImage(image: image, height: height)
+            .task(id: renderKey(for: coordinate)) {
+                await load(coordinate: coordinate)
             }
-        }
-        .frame(height: height)
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .task(id: renderKey(for: coordinate)) {
-            await load(coordinate: coordinate)
-        }
     }
 
     private var placeholder: some View {
@@ -110,5 +94,35 @@ struct MapSnippetView: View {
             // snippet shouldn't block the sample workflow.
             Log.persistence.error("map snapshot failed: \(error.localizedDescription)")
         }
+    }
+}
+
+/// The snapshot (or the loading gradient) in the snippet's frame. A
+/// view of its own so the layout is testable without rendering a map.
+struct MapSnippetImage: View {
+    let image: UIImage?
+    let height: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                LinearGradient(
+                    colors: [Color(.systemGray5), Color(.systemGray6)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                ProgressView()
+            }
+        }
+        .frame(height: height)
+        // `minWidth: 0`: the filled image is wider than a narrow screen
+        // (369 pt at this height, 320 pt with Display Zoom). Without it
+        // the frame can't go below the image and widens the editor.
+        .frame(minWidth: 0, maxWidth: .infinity)
+        .clipped()
     }
 }
