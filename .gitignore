@@ -18,7 +18,7 @@ tabularius/tabularius
 *.log
 
 # iOS
-ios/Fieldworksdiary.xcodeproj/
+ios/Legulus.xcodeproj/
 ios/build/
 ios/.build/
 ios/DerivedData/

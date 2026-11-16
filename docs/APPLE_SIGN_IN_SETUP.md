@@ -75,7 +75,7 @@ cd ios && xcodegen generate
 ```
 
 Das Entitlement `com.apple.developer.applesignin` steht in
-`ios/Fieldworksdiary/Fieldworksdiary.entitlements`.
+`ios/Legulus/Legulus.entitlements`.
 
 ## 3. Tabularius
 
@@ -113,7 +113,7 @@ Admin-UI: `<TABULARIUS>/_/`.
    verwenden“. Apple liefert Name und E-Mail **nur beim allerersten**
    Login pro App. Ohne Reset legt Tabularius den User als
    `<sub>@apple.local` an.
-2. Scheme wählen (`Fieldworksdiary` = Dev, `-Staging`, `-Prod`), auf
+2. Scheme wählen (`Legulus` = Dev, `-Staging`, `-Prod`), auf
    dem Gerät starten. Für Dev muss der sish-Tunnel laufen.
 3. „Mit Apple anmelden“ tippen.
 4. Im Admin unter **users**: ein User mit gesetzter `apple_user_id`

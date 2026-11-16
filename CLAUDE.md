@@ -30,8 +30,8 @@ stoppen und Demo zeigen, nicht in die nächste Phase laufen.
 
 - `tabularius/` – Go + PocketBase. Hooks und Custom-Logik in
   `tabularius/internal/`. Migrations in `tabularius/migrations/`.
-- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Fieldworksdiary/Core/`,
-  Features in `ios/Fieldworksdiary/Features/`.
+- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Legulus/Core/`,
+  Features in `ios/Legulus/Features/`.
 - `docs/adr/` – Architecture Decision Records, eines pro Entscheidung.
 
 ## Drei-Ebenen-Datenmodell
@@ -159,7 +159,7 @@ cd ios && xcodegen generate
 # iOS bauen (CLI-Verifikation) - saubere Env + arm64, siehe unten
 env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  /usr/bin/xcodebuild -project ios/Fieldworksdiary.xcodeproj -scheme Fieldworksdiary \
+  /usr/bin/xcodebuild -project ios/Legulus.xcodeproj -scheme Legulus \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build \
   ARCHS=arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 ```
@@ -170,7 +170,7 @@ Nach erstem Backend-Start: PocketBase-Admin unter
 `https://tabularius.tunnel.legulus.app`, der auf die lokale Instanz
 weiterleitet. Stages und URLs: `docs/ENVIRONMENTS.md`.
 
-`ios/Fieldworksdiary.xcodeproj/` ist gitignored und wird aus
+`ios/Legulus.xcodeproj/` ist gitignored und wird aus
 `ios/project.yml` regeneriert (`xcodegen generate`). Quelle für
 Projekt-Änderungen ist immer `project.yml`, nicht das `.xcodeproj`.
 
@@ -196,7 +196,7 @@ bash scripts/reset-test-tabularius.sh     # Test-Instanz (localhost:8092) neu au
 bash scripts/test-ios-no-build.sh         # nur Tests auf vorhandenem Build
 ```
 
-Die Tests laufen im Scheme `Fieldworksdiary-Test` („Legulus Test“,
+Die Tests laufen im Scheme `Legulus-Test` („Legulus Test“,
 eigene Bundle-ID) gegen eine eigene Test-Instanz von Tabularius
 (`docker-compose.test.yml`, `localhost:8092`, frische Datenbank und
 fester Test-Nutzer pro Lauf); Details in `docs/ENVIRONMENTS.md`.

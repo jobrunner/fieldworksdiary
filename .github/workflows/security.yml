@@ -144,9 +144,9 @@ jobs:
             --exclude 'pb_data_staging' \
             --exclude 'pb_data_prod' \
             --exclude 'dist' \
-            --exclude 'ios/Fieldworksdiary.xcodeproj' \
+            --exclude 'ios/Legulus.xcodeproj' \
             --exclude 'ios/build' \
-            --exclude 'ios/FieldworksdiaryTests/__Snapshots__' \
+            --exclude 'ios/LegulusTests/__Snapshots__' \
             --severity ERROR \
             --error \
             --sarif --output semgrep.sarif

@@ -29,7 +29,7 @@ Website/PWA) in `docs/APPLE_SIGN_IN_SETUP.md`.
 ## 3. Xcode-Projekt
 
 - [x] `Sign in with Apple`-Entitlement in
-      `ios/Fieldworksdiary/Fieldworksdiary.entitlements`.
+      `ios/Legulus/Legulus.entitlements`.
 - [x] `CODE_SIGN_ENTITLEMENTS` in `ios/project.yml` gesetzt.
 - [x] `PrivacyInfo.xcprivacy` im App-Target.
 - [ ] In `ios/project.yml` (oder per Xcode → Signing & Capabilities)

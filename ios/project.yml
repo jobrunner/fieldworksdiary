@@ -1,4 +1,4 @@
-name: Fieldworksdiary
+name: Legulus
 options:
   bundleIdPrefix: app.legulus
   deploymentTarget:
@@ -32,26 +32,26 @@ packages:
   FliptClient:
     url: https://github.com/flipt-io/flipt-client-swift
     exactVersion: 1.5.5
-  FieldworksGeo:
-    path: Packages/FieldworksGeo
+  LegulusGeo:
+    path: Packages/LegulusGeo
 targets:
-  Fieldworksdiary:
+  Legulus:
     type: application
     platform: iOS
     sources:
-      - path: Fieldworksdiary
+      - path: Legulus
     dependencies:
       - package: GRDB
         product: GRDB
-      - package: FieldworksGeo
+      - package: LegulusGeo
       - package: FliptClient
         product: FliptClient
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "1,2"
-        INFOPLIST_FILE: Fieldworksdiary/Info.plist
+        INFOPLIST_FILE: Legulus/Info.plist
         CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: Fieldworksdiary/Fieldworksdiary.entitlements
+        CODE_SIGN_ENTITLEMENTS: Legulus/Legulus.entitlements
         DEVELOPMENT_TEAM: XS554Q5YY9
         # ↑ Trage hier deine Apple-Team-ID ein (Xcode →
         # Settings → Accounts → Team-ID), oder lass das Feld
@@ -85,7 +85,7 @@ targets:
           # an rohe IPs über HTTP rauf (z. B. http://192.168.x.x:8090).
           # Staging/Release laufen über HTTPS-Domains und brauchen die
           # Plist nicht.
-          INFOPLIST_FILE: Fieldworksdiary/Info.debug.plist
+          INFOPLIST_FILE: Legulus/Info.debug.plist
         Test:
           # Eigene Bundle-ID: eigener App-Container im Simulator, die
           # Tests sehen weder Daten noch gespeicherten Endpoint von
@@ -96,32 +96,32 @@ targets:
           TABULARIUS_ENDPOINT_DEFAULT: http://localhost:8092
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Dev
           # HTTP auf localhost braucht dieselbe ATS-Lockerung wie Debug.
-          INFOPLIST_FILE: Fieldworksdiary/Info.debug.plist
+          INFOPLIST_FILE: Legulus/Info.debug.plist
         Staging:
           PRODUCT_BUNDLE_IDENTIFIER: app.legulus.staging
           APP_DISPLAY_NAME: Legulus Beta
           APP_ENV: staging
           TABULARIUS_ENDPOINT_DEFAULT: https://tabularius-stage.legulus.app
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Staging
-          INFOPLIST_FILE: Fieldworksdiary/Info.plist
+          INFOPLIST_FILE: Legulus/Info.plist
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: app.legulus.prod
           APP_DISPLAY_NAME: Legulus
           APP_ENV: production
           TABULARIUS_ENDPOINT_DEFAULT: https://tabularius.legulus.app
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-          INFOPLIST_FILE: Fieldworksdiary/Info.plist
-  FieldworksdiaryTests:
+          INFOPLIST_FILE: Legulus/Info.plist
+  LegulusTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: FieldworksdiaryTests
+      - path: LegulusTests
         # Snapshot-Referenzen liest SnapshotTesting über den Quellpfad;
         # als Bundle-Ressource bräuchte es sie nicht.
         excludes:
           - "__Snapshots__/**"
     dependencies:
-      - target: Fieldworksdiary
+      - target: Legulus
       - package: SnapshotTesting
         product: SnapshotTesting
     settings:
@@ -129,47 +129,47 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.legulus.dev.tests
         GENERATE_INFOPLIST_FILE: YES
         BUNDLE_LOADER: $(TEST_HOST)
-        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Fieldworksdiary.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Fieldworksdiary
-  FieldworksdiaryUITests:
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Legulus.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Legulus
+  LegulusUITests:
     type: bundle.ui-testing
     platform: iOS
     sources:
-      - path: FieldworksdiaryUITests
+      - path: LegulusUITests
     dependencies:
-      - target: Fieldworksdiary
+      - target: Legulus
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.legulus.dev.uitests
         GENERATE_INFOPLIST_FILE: YES
-        TEST_TARGET_NAME: Fieldworksdiary
+        TEST_TARGET_NAME: Legulus
 schemes:
-  Fieldworksdiary:
+  Legulus:
     # Default-Scheme = Debug (lokal entwickeln, am Simulator laufen).
     # Getestet wird auch hier in der Test-Config, wie im Scheme
-    # `Fieldworksdiary-Test`: die UI-Tests brauchen die Test-Instanz
+    # `Legulus-Test`: die UI-Tests brauchen die Test-Instanz
     # und setzen die Sitzung der App neu - das darf „Legulus Dev“
     # nicht treffen.
     build:
       targets:
-        Fieldworksdiary: all
-        FieldworksdiaryTests: [test]
-        FieldworksdiaryUITests: [test]
+        Legulus: all
+        LegulusTests: [test]
+        LegulusUITests: [test]
       config: Debug
     run:
       config: Debug
     test:
       config: Test
       targets:
-        - FieldworksdiaryTests
-        - FieldworksdiaryUITests
+        - LegulusTests
+        - LegulusUITests
       preActions:
         - name: Test-Instanz von Tabularius neu aufsetzen
-          settingsTarget: Fieldworksdiary
+          settingsTarget: Legulus
           script: |
             "${PROJECT_DIR}/../scripts/reset-test-tabularius.sh"
     archive:
       config: Release
-  Fieldworksdiary-Test:
+  Legulus-Test:
     # Tests gegen die Test-Instanz (docker-compose.test.yml, Port 8092).
     # Die Pre-Action setzt sie vor jedem Testlauf neu auf: leere
     # Datenbank, Migrationen, fester Test-Nutzer. Xcode ignoriert den
@@ -177,39 +177,39 @@ schemes:
     # `TestTabulariusTests` fehl, wenn die Instanz nicht antwortet.
     build:
       targets:
-        Fieldworksdiary: all
-        FieldworksdiaryTests: [test]
-        FieldworksdiaryUITests: [test]
+        Legulus: all
+        LegulusTests: [test]
+        LegulusUITests: [test]
       config: Test
     run:
       config: Test
     test:
       config: Test
       targets:
-        - FieldworksdiaryTests
-        - FieldworksdiaryUITests
+        - LegulusTests
+        - LegulusUITests
       preActions:
         - name: Test-Instanz von Tabularius neu aufsetzen
-          settingsTarget: Fieldworksdiary
+          settingsTarget: Legulus
           script: |
             "${PROJECT_DIR}/../scripts/reset-test-tabularius.sh"
     archive:
       config: Test
-  Fieldworksdiary-Staging:
+  Legulus-Staging:
     # Für TestFlight-Beta-Builds, CI verwendet dieses Scheme.
     build:
       targets:
-        Fieldworksdiary: all
+        Legulus: all
       config: Staging
     run:
       config: Staging
     archive:
       config: Staging
-  Fieldworksdiary-Prod:
+  Legulus-Prod:
     # Für App-Store-Submits, CI verwendet dieses Scheme.
     build:
       targets:
-        Fieldworksdiary: all
+        Legulus: all
       config: Release
     run:
       config: Release

@@ -80,10 +80,10 @@ und vier Schemes:
 
 | Scheme | Config | Wofür |
 |---|---|---|
-| `Fieldworksdiary` | Debug | Lokale Entwicklung - „Legulus Dev“, DEV-Icon, Tunnel (Gerät) bzw. `http://localhost:8090` (Simulator) |
-| `Fieldworksdiary-Test` | Test | Testläufe gegen die Test-Instanz - „Legulus Test“ (`app.legulus.test`), DEV-Icon, `http://localhost:8092` |
-| `Fieldworksdiary-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
-| `Fieldworksdiary-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
+| `Legulus` | Debug | Lokale Entwicklung - „Legulus Dev“, DEV-Icon, Tunnel (Gerät) bzw. `http://localhost:8090` (Simulator) |
+| `Legulus-Test` | Test | Testläufe gegen die Test-Instanz - „Legulus Test“ (`app.legulus.test`), DEV-Icon, `http://localhost:8092` |
+| `Legulus-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
+| `Legulus-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
 
 Jede Config bekommt per Build-Setting:
 
@@ -105,7 +105,7 @@ Endpoint bleibt, er lässt sich in den Settings ändern.
 
 ### Tests gegen die Test-Instanz
 
-`Fieldworksdiary-Test` hat eine eigene Bundle-ID und damit im Simulator
+`Legulus-Test` hat eine eigene Bundle-ID und damit im Simulator
 einen eigenen App-Container, getrennt von „Legulus Dev“. Die App zeigt
 auf eine eigene Tabularius-Instanz aus `docker-compose.test.yml`
 (eigenständiges Compose-File, kein Overlay): Container
@@ -123,12 +123,12 @@ Xcode ignoriert den Exit-Code einer Pre-Action; deshalb schlägt
 zusätzlich `TestTabulariusTests.testTestInstanceIsReachable` fehl, wenn
 die Instanz fehlt. `scripts/check-ios.sh` testet in diesem Scheme.
 
-Auch das Scheme `Fieldworksdiary` testet in der Test-Config mit
+Auch das Scheme `Legulus` testet in der Test-Config mit
 derselben Pre-Action (Cmd-U trifft damit nie „Legulus Dev“).
 `scripts/test-ios-no-build.sh` ruft das Reset-Script selbst auf, weil
 `test-without-building` keine Pre-Action ausführt.
 
-Die UI-Tests (`ios/FieldworksdiaryUITests/`) steuern die Sitzung über
+Die UI-Tests (`ios/LegulusUITests/`) steuern die Sitzung über
 Launch-Argumente, die nur Debug-Builds auswerten
 (`AuthSession.applyUITestSession`): `-UITestsSignedOut true` startet
 abgemeldet, zusätzlich `-UITestsSignInEmail`/`-UITestsSignInPassword`

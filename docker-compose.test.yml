@@ -1,5 +1,5 @@
 # Test-Instanz von Tabularius für die iOS-Tests (Scheme
-# `Fieldworksdiary-Test`, App „Legulus Test“).
+# `Legulus-Test`, App „Legulus Test“).
 #
 # Eigenständig, kein Overlay:
 #   docker compose -f docker-compose.test.yml up -d --build

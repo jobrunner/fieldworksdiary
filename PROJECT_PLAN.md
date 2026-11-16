@@ -392,7 +392,7 @@ Korrektur von Zeit/Ort).
 Default-iOS-Verhalten: wartet auf Backend-Wert (Server-of-Truth). Falls
 Pre-Trip-Vorschau („Mond steht heute Nacht hoch, taugt nicht für
 Lichtfang") gewünscht wird, kann später eine Mini-Variante in
-`ios/Fieldworksdiary/Core/Astro/` ergänzt werden — bewusst **erst wenn das
+`ios/Legulus/Core/Astro/` ergänzt werden — bewusst **erst wenn das
 Bedürfnis konkret wird**, nicht prophylaktisch.
 
 ---
@@ -516,8 +516,8 @@ legulus/
 │   └── pb_data/                   (Volume mount, gitignored)
 │
 ├── ios/
-│   ├── Fieldworksdiary.xcodeproj
-│   ├── Fieldworksdiary/
+│   ├── Legulus.xcodeproj
+│   ├── Legulus/
 │   │   ├── App/                   (Entry-Point, AppConfig, Endpoint-Setting)
 │   │   ├── Features/
 │   │   │   ├── AddSample/         (das „+"-Sheet)
@@ -532,7 +532,7 @@ legulus/
 │   │   │   ├── Geo/               (CoreLocation-Wrapper, Codes-Logik lokal)
 │   │   │   └── Models/            (Domain-Modelle, mit Codable+GRDB-Mapping)
 │   │   └── UI/                    (geteilte Views, Karten-Komponente)
-│   └── FieldworksdiaryTests/
+│   └── LegulusTests/
 │
 └── docs/
     ├── adr/                       (Architecture Decision Records)

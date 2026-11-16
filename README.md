@@ -132,7 +132,7 @@ erzeugt:
 
 ```bash
 cd ios && xcodegen generate   # in der Nix-Shell
-open Fieldworksdiary.xcodeproj
+open Legulus.xcodeproj
 ```
 
 In der App unter "Einstellungen" den Backend-Endpoint setzen

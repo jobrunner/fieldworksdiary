@@ -5,11 +5,11 @@
 # Jeder Testlauf beginnt damit im selben Zustand.
 #
 # Aufrufer: `scripts/check-ios.sh` und die Test-Pre-Action des Schemes
-# `Fieldworksdiary-Test` (dort mit Xcodes Minimal-PATH, deshalb die
+# `Legulus-Test` (dort mit Xcodes Minimal-PATH, deshalb die
 # Docker-Pfade unten).
 #
 # Die Zugangsdaten des Test-Nutzers stehen auch in
-# `ios/FieldworksdiaryUITests/TestBackend.swift` - beide Stellen
+# `ios/LegulusUITests/TestBackend.swift` - beide Stellen
 # zusammen ändern.
 #
 # Aufruf: bash scripts/reset-test-tabularius.sh
@@ -36,7 +36,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-compose down >&2 || { say "docker compose down fehlgeschlagen"; exit 1; }
+compose down --remove-orphans >&2 || { say "docker compose down fehlgeschlagen"; exit 1; }
 rm -rf "$DATA_DIR"
 
 if ! compose up -d --build >&2; then

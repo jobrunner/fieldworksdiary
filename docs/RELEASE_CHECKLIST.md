@@ -86,7 +86,7 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
 - [ ] What's New: Top-Bullets aus CHANGELOG
 
 ### Build & Upload
-- [ ] In Xcode: Scheme **Fieldworksdiary**, Destination **Any iOS Device (arm64)**
+- [ ] In Xcode: Scheme **Legulus**, Destination **Any iOS Device (arm64)**
 - [ ] `Product → Archive`
 - [ ] Validation: 0 errors, Warnings (Privacy-Manifest etc.) reviewt
 - [ ] Distribute → **App Store Connect → Upload**
