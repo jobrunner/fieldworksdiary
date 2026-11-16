@@ -82,6 +82,16 @@ if [ -z "$SIM_UDID" ]; then
 fi
 ok "$SIM_UDID"
 
+section "Test-Instanz von Tabularius"
+# `test-without-building` führt die Pre-Action des Schemes nicht aus;
+# die Tests brauchen aber eine frische Test-Instanz (localhost:8092).
+if bash scripts/reset-test-tabularius.sh; then
+  ok "Test-Instanz antwortet auf localhost:8092, Test-Nutzer angelegt"
+else
+  bad "Test-Instanz nicht bereit"
+  exit 4
+fi
+
 section "xcodebuild test-without-building"
 TEST_LOG=$(mktemp)
 if xcb \

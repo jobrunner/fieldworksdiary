@@ -145,6 +145,10 @@ targets:
 schemes:
   Fieldworksdiary:
     # Default-Scheme = Debug (lokal entwickeln, am Simulator laufen).
+    # Getestet wird auch hier in der Test-Config, wie im Scheme
+    # `Fieldworksdiary-Test`: die UI-Tests brauchen die Test-Instanz
+    # und setzen die Sitzung der App neu - das darf „Legulus Dev“
+    # nicht treffen.
     build:
       targets:
         Fieldworksdiary: all
@@ -154,10 +158,15 @@ schemes:
     run:
       config: Debug
     test:
-      config: Debug
+      config: Test
       targets:
         - FieldworksdiaryTests
         - FieldworksdiaryUITests
+      preActions:
+        - name: Test-Instanz von Tabularius neu aufsetzen
+          settingsTarget: Fieldworksdiary
+          script: |
+            "${PROJECT_DIR}/../scripts/reset-test-tabularius.sh"
     archive:
       config: Release
   Fieldworksdiary-Test:

@@ -10,7 +10,10 @@ final class TestTabulariusTests: XCTestCase {
 
     /// Debug nimmt im Simulator die Dev-Instanz (8090), Test die
     /// Test-Instanz (8092) - nie den Tunnel.
-    func testSimulatorBuildDefaultsToLocalhost() {
+    func testSimulatorBuildDefaultsToLocalhost() throws {
+        #if !targetEnvironment(simulator)
+            throw XCTSkip("Auf dem Gerät bleibt der eingebackene Endpoint (Tunnel).")
+        #endif
         XCTAssertTrue(
             bakedEndpoint.hasPrefix("http://localhost:"),
             "Eingebackener Endpoint im Simulator: \(bakedEndpoint)"

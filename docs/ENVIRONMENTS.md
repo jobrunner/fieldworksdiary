@@ -123,6 +123,11 @@ Xcode ignoriert den Exit-Code einer Pre-Action; deshalb schlägt
 zusätzlich `TestTabulariusTests.testTestInstanceIsReachable` fehl, wenn
 die Instanz fehlt. `scripts/check-ios.sh` testet in diesem Scheme.
 
+Auch das Scheme `Fieldworksdiary` testet in der Test-Config mit
+derselben Pre-Action (Cmd-U trifft damit nie „Legulus Dev“).
+`scripts/test-ios-no-build.sh` ruft das Reset-Script selbst auf, weil
+`test-without-building` keine Pre-Action ausführt.
+
 Die UI-Tests (`ios/FieldworksdiaryUITests/`) steuern die Sitzung über
 Launch-Argumente, die nur Debug-Builds auswerten
 (`AuthSession.applyUITestSession`): `-UITestsSignedOut true` startet
