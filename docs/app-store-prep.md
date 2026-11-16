@@ -1,4 +1,4 @@
-# App-Store-Pre-Flight — Fieldworksdiary
+# App-Store-Pre-Flight — Legulus
 
 Checklist für TestFlight + App-Store-Submission. Was hier ohne Tick
 steht, ist menschlich vor der Submission zu erledigen — der Code
@@ -19,7 +19,7 @@ Services ID und kein OAuth2-Provider in PocketBase. Details (auch zu
 Website/PWA) in `docs/APPLE_SIGN_IN_SETUP.md`.
 
 - [ ] `app.legulus.prod` steht in den erlaubten Audiences von
-      Tabularius (Default in `backend/main.go`, sonst
+      Tabularius (Default in `tabularius/main.go`, sonst
       `APPLE_ALLOWED_AUDIENCES`).
 - [ ] Smoke-Test: in der iOS-App auf einem Gerät auf den
       „Sign in with Apple"-Button tippen → Login funktioniert.

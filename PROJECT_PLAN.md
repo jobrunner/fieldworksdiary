@@ -1,4 +1,4 @@
-# Projektplan: Käfer-Sammel-App (Arbeitstitel: `fieldworksdiary`)
+# Projektplan: Käfer-Sammel-App (Name: `legulus`)
 
 Dieser Plan ist als Eingabe für `claude /init` gedacht. Er beschreibt Vision,
 Architektur, Datenmodell und Implementierungsphasen so, dass Claude Code daraus
@@ -340,7 +340,7 @@ MTB ist das **reine Mathematik** — kein externer Service, kein Cache,
 kein Retry. Die Berechnung ist deterministisch und idempotent;
 Live-Updates sind nicht nötig.
 
-Wo die Logik sitzt: `backend/internal/astro/`. Pure Funktionen mit
+Wo die Logik sitzt: `tabularius/internal/astro/`. Pure Funktionen mit
 Tests, analog zu `codes/` und `grouping/`. Empfohlene Library:
 ein Go-Port von suncalc (`github.com/sixdouglas/suncalc` o. ä.) für
 Sun/Moon-Position; falls Lizenz/Wartung problematisch, Eigenbau
@@ -490,14 +490,14 @@ Uhrzeit.
 ## 10. Repository-Layout
 
 ```
-fieldworksdiary/
+legulus/
 ├── README.md
 ├── PROJECT_PLAN.md          (dieses Dokument)
 ├── CLAUDE.md                (Konventionen für Claude Code)
 ├── docker-compose.yml       (dev: backend + ggf. dev-DB)
 ├── docker-compose.prod.yml  (prod-Variante)
 │
-├── backend/
+├── tabularius/
 │   ├── Dockerfile
 │   ├── go.mod
 │   ├── main.go                    (PocketBase als Library, Hooks registrieren)

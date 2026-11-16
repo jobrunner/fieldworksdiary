@@ -42,12 +42,12 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
       Image des Release-Commits auf `X.Y.Z` setzt. Lauf grün und in
       der Job-Summary steht der Digest.
 - [ ] Attestation prüfen:
-      `gh attestation verify oci://ghcr.io/jobrunner/fieldworksdiary:X.Y.Z -R jobrunner/fieldworksdiary`
+      `gh attestation verify oci://ghcr.io/jobrunner/tabularius:X.Y.Z -R jobrunner/legulus`
 - [ ] Image-Scan im Security-Tab (Kategorie `trivy-release-image`)
       für den Release-Commit ohne neue HIGH/CRITICAL
 - [ ] **Dry-Run**: Image lokal hochfahren, Postman-Collection grün:
       ```
-      newman run tests/Fieldworksdiary.postman_collection.json \
+      newman run tests/Tabularius.postman_collection.json \
         --env-var baseUrl=http://localhost:8090 --delay-request 3000
       ```
 - [ ] Deploy auf dem Docker-Host (oder Ziel-Host):

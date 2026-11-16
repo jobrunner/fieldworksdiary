@@ -10,12 +10,11 @@
 !.claude/skills/**
 
 # Backend
-backend/pb_data/
-backend/pb_data_test/
+tabularius/pb_data/
+tabularius/pb_data_test/
 pb_data_staging/
 pb_data_prod/
-backend/fieldworksdiary
-backend/backend
+tabularius/tabularius
 *.log
 
 # iOS

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Online-Backup von `backend/pb_data/` — funktioniert auch, wenn das
+# Online-Backup von `tabularius/pb_data/` — funktioniert auch, wenn das
 # Backend gerade läuft (sqlite3 `.backup` ist transaktional sicher mit
 # WAL). Erzeugt einen einzelnen `.tar.gz` mit:
 #   - data.db  (online-konsistente Kopie via sqlite3 .backup)
@@ -7,7 +7,7 @@
 #   - storage/ (rsync-Schnappschuss; PB schreibt selten dort, kleine
 #                Race-Window-Lücke ist akzeptabel)
 #
-# Default-Ziel: `$HOME/Backups/fieldworksdiary/YYYY-MM-DDTHH-MM-SSZ.tar.gz`
+# Default-Ziel: `$HOME/Backups/legulus/YYYY-MM-DDTHH-MM-SSZ.tar.gz`
 # Überschreibbar mit Argument 1 (Verzeichnis).
 #
 # Retention: behält die letzten N Backups (Default 30). N via ENV
@@ -16,8 +16,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/backend/pb_data"
-DEST_DIR="${1:-$HOME/Backups/fieldworksdiary}"
+SRC="$ROOT/tabularius/pb_data"
+DEST_DIR="${1:-$HOME/Backups/legulus}"
 KEEP_LAST="${KEEP_LAST:-30}"
 
 if [ ! -d "$SRC" ]; then

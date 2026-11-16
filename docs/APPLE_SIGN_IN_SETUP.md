@@ -81,7 +81,7 @@ Das Entitlement `com.apple.developer.applesignin` steht in
 
 ### 3.1 — Erlaubte Audiences
 
-Default in `backend/main.go` (`defaultAppleAudiences`):
+Default in `tabularius/main.go` (`defaultAppleAudiences`):
 `app.legulus.dev`, `app.legulus.staging`, `app.legulus.prod`.
 
 Abweichend per Env-Variable im Compose-File (kommagetrennt):
@@ -97,11 +97,11 @@ Dev-/Stage-Instanzen gibt. Bis dahin ist der Default bequemer.
 ### 3.2 — Superuser auf frischer DB
 
 Beim ersten Start mit leerer DB schreibt PocketBase einen
-Installer-Link ins Log (`docker compose logs backend`). Alternativ:
+Installer-Link ins Log (`docker compose logs tabularius`). Alternativ:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend \
-  /app/fieldworksdiary superuser upsert <mail> <passwort>
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec tabularius \
+  /app/tabularius superuser upsert <mail> <passwort>
 ```
 
 Admin-UI: `<TABULARIUS>/_/`.
@@ -216,4 +216,4 @@ Nacharbeit. Beim Kopieren wandert aber mehr mit als die Daten:
 
 - [`docs/ENVIRONMENTS.md`](ENVIRONMENTS.md) — Stages, Bundle-IDs, URLs
 - [`docs/adr/0002-auth-and-owner-scoping.md`](adr/0002-auth-and-owner-scoping.md)
-- `backend/internal/api/apple_signin.go`, `backend/internal/services/apple.go`
+- `tabularius/internal/api/apple_signin.go`, `tabularius/internal/services/apple.go`

@@ -12,7 +12,7 @@ SEC_EXIT=0
 printf '\n\033[1;36m═══════════════════════════════════════════\033[0m\n'
 printf '\033[1;36m  Backend-Checks\033[0m\n'
 printf '\033[1;36m═══════════════════════════════════════════\033[0m\n'
-bash "$ROOT/scripts/check-backend.sh" || BACKEND_EXIT=$?
+bash "$ROOT/scripts/check-tabularius.sh" || BACKEND_EXIT=$?
 
 printf '\n\033[1;36m═══════════════════════════════════════════\033[0m\n'
 printf '\033[1;36m  iOS-Checks\033[0m\n'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Setzt die Test-Instanz von Tabularius neu auf (docker-compose.test.yml,
-# localhost:8092): Container stoppen, `backend/pb_data_test` leeren,
+# localhost:8092): Container stoppen, `tabularius/pb_data_test` leeren,
 # starten (die Migrationen bauen das Schema), festen Test-Nutzer anlegen.
 # Jeder Testlauf beginnt damit im selben Zustand.
 #
@@ -22,7 +22,7 @@ cd "$ROOT"
 
 PATH="$PATH:/usr/local/bin:/opt/homebrew/bin"
 BASE_URL="http://localhost:8092"
-DATA_DIR="$ROOT/backend/pb_data_test"
+DATA_DIR="$ROOT/tabularius/pb_data_test"
 WAIT_SECONDS="${TABULARIUS_WAIT_SECONDS:-120}"
 TEST_EMAIL="uitest@legulus.example"
 TEST_PASSWORD="legulus-uitest-1"

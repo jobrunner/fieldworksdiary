@@ -14,7 +14,7 @@ stehen in `gap-analysis.md`.
   (backend/go.mod:9).
 - `migratecmd.MustRegister(..., Automigrate: true)` in
   backend/main.go:28 — Migrationen laufen beim Start.
-- Blank-Import `_ "go.mett.io/fwd-backend/migrations"` registriert alle
+- Blank-Import `_ "go.mett.io/tabularius/migrations"` registriert alle
   Migrationen über `init()`-Funktionen.
 - Logging: `log/slog` mit JSON-Handler, Convention in
   `.claude/rules/LOGGING.md`.

@@ -3,14 +3,16 @@
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml pull
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --no-build
 #
-# Voraussetzung: das Image `${BACKEND_IMAGE:-ghcr.io/jobrunner/fieldworksdiary:staging}`
+# Voraussetzung: das Image `${TABULARIUS_IMAGE:-ghcr.io/jobrunner/tabularius:staging}`
 # liegt in der Registry — CI baut + pusht es nach jedem Push auf den
 # staging-Branch.
 
+name: legulus-staging
+
 services:
-  backend:
-    image: ${BACKEND_IMAGE:-ghcr.io/jobrunner/fieldworksdiary:staging}
-    container_name: fieldworksdiary-backend-staging
+  tabularius:
+    image: ${TABULARIUS_IMAGE:-ghcr.io/jobrunner/tabularius:staging}
+    container_name: tabularius-staging
     ports: !override
       - "8091:8090"
     volumes: !override

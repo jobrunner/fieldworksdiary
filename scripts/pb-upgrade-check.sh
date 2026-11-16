@@ -78,10 +78,13 @@ trap cleanup EXIT
 # --- Binaries ---------------------------------------------------------------
 echo "==> baue altes Backend ($OLD_REF)"
 rm -rf "$WORK/old-src" && mkdir -p "$WORK/old-src" "$WORK/bin"
-git -C "$ROOT" archive "$OLD_REF" backend | tar -x -C "$WORK/old-src"
-(cd "$WORK/old-src/backend" && CGO_ENABLED=0 go build -o "$WORK/bin/fwd-old" .)
+# Vor der Umbenennung hieß das Verzeichnis `backend`; ältere Refs haben nur das.
+OLD_DIR=tabularius
+git -C "$ROOT" cat-file -e "$OLD_REF:tabularius" 2>/dev/null || OLD_DIR=backend
+git -C "$ROOT" archive "$OLD_REF" "$OLD_DIR" | tar -x -C "$WORK/old-src"
+(cd "$WORK/old-src/$OLD_DIR" && CGO_ENABLED=0 go build -o "$WORK/bin/tabularius-old" .)
 echo "==> baue neues Backend (Arbeitsbaum)"
-(cd "$ROOT/backend" && CGO_ENABLED=0 go build -o "$WORK/bin/fwd-new" .)
+(cd "$ROOT/tabularius" && CGO_ENABLED=0 go build -o "$WORK/bin/tabularius-new" .)
 
 start() { # bin dir port log
   ORTUS_BASE_URL= "$1" --dir "$2" serve --http="127.0.0.1:$3" >"$4" 2>&1 &
@@ -109,9 +112,9 @@ if [ -z "$PB_DATA" ]; then
   USER_PASSWORD="UserPass-12345"
   echo "==> frische 0.22-DB mit Testdaten"
   rm -rf "$WORK/source"
-  ORTUS_BASE_URL= "$WORK/bin/fwd-old" --dir "$WORK/source" migrate up >"$WORK/old-migrate.log" 2>&1
-  "$WORK/bin/fwd-old" --dir "$WORK/source" admin create "$SU_EMAIL" "$SU_PASSWORD" >>"$WORK/old-migrate.log" 2>&1
-  start "$WORK/bin/fwd-old" "$WORK/source" "$PORT_OLD" "$WORK/old-seed.log"
+  ORTUS_BASE_URL= "$WORK/bin/tabularius-old" --dir "$WORK/source" migrate up >"$WORK/old-migrate.log" 2>&1
+  "$WORK/bin/tabularius-old" --dir "$WORK/source" admin create "$SU_EMAIL" "$SU_PASSWORD" >>"$WORK/old-migrate.log" 2>&1
+  start "$WORK/bin/tabularius-old" "$WORK/source" "$PORT_OLD" "$WORK/old-seed.log"
   python3 -I "$CHECK" seed --base "http://127.0.0.1:$PORT_OLD" \
     --user-a "$USER_A" --user-b "$USER_B" --password "$USER_PASSWORD" >"$WORK/seed.json"
   stop_last
@@ -135,14 +138,14 @@ USER_ARGS=()
 USER_ARGS+=(--password "$USER_PASSWORD")
 
 echo "==> Dump mit altem Binary"
-start "$WORK/bin/fwd-old" "$WORK/before-data" "$PORT_OLD" "$WORK/old-serve.log"
+start "$WORK/bin/tabularius-old" "$WORK/before-data" "$PORT_OLD" "$WORK/old-serve.log"
 python3 -I "$CHECK" dump --base "http://127.0.0.1:$PORT_OLD" "${USER_ARGS[@]}" \
   --su-email "$SU_EMAIL" --su-password "$SU_PASSWORD" \
   --out "$WORK/before.json" --tokens-out "$WORK/tokens-before.json"
 stop_last
 
 echo "==> Upgrade: neues Binary auf unberührter Kopie"
-start "$WORK/bin/fwd-new" "$WORK/after-data" "$PORT_NEW" "$WORK/new-serve.log"
+start "$WORK/bin/tabularius-new" "$WORK/after-data" "$PORT_NEW" "$WORK/new-serve.log"
 if grep -Eiq '"level":"(ERROR|FATAL)"|panic' "$WORK/new-serve.log"; then
   echo "Fehler im Start-Log des neuen Binarys:" >&2
   grep -Ei '"level":"(ERROR|FATAL)"|panic' "$WORK/new-serve.log" >&2
@@ -170,8 +173,8 @@ EOF
 
 echo "==> Schema: frische DB (neues Binary) gegen upgegradete DB"
 rm -rf "$WORK/fresh-data"
-"$WORK/bin/fwd-new" --dir "$WORK/fresh-data" superuser upsert "$SU_EMAIL" "$SU_PASSWORD" >"$WORK/fresh.log" 2>&1
-start "$WORK/bin/fwd-new" "$WORK/fresh-data" "$PORT_FRESH" "$WORK/fresh-serve.log"
+"$WORK/bin/tabularius-new" --dir "$WORK/fresh-data" superuser upsert "$SU_EMAIL" "$SU_PASSWORD" >"$WORK/fresh.log" 2>&1
+start "$WORK/bin/tabularius-new" "$WORK/fresh-data" "$PORT_FRESH" "$WORK/fresh-serve.log"
 set +e
 python3 -I "$CHECK" schema --base-a "http://127.0.0.1:$PORT_NEW" --base-b "http://127.0.0.1:$PORT_FRESH" \
   --su-email "$SU_EMAIL" --su-password "$SU_PASSWORD" --out "$WORK/schema.json"

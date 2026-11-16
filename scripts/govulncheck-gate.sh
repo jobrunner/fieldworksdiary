@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Läuft govulncheck gegen backend/, lässt aber nur tatsächlich neue
+# Läuft govulncheck gegen tabularius/, lässt aber nur tatsächlich neue
 # Findings failen — bekannte, bewusst akzeptierte Vulns stehen mit
-# Begründung in backend/govulncheck-allowlist.txt (siehe dort).
+# Begründung in tabularius/govulncheck-allowlist.txt (siehe dort).
 #
-# Genutzt von .github/workflows/backend.yml, .github/workflows/security.yml
-# und scripts/check-backend.sh — eine Quelle für die Allow-Logik statt
+# Genutzt von .github/workflows/tabularius.yml, .github/workflows/security.yml
+# und scripts/check-tabularius.sh — eine Quelle für die Allow-Logik statt
 # drei Kopien.
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ALLOWLIST="$ROOT/backend/govulncheck-allowlist.txt"
+ALLOWLIST="$ROOT/tabularius/govulncheck-allowlist.txt"
 
-cd "$ROOT/backend"
+cd "$ROOT/tabularius"
 
 if ! command -v govulncheck >/dev/null 2>&1; then
   echo "govulncheck nicht im PATH — 'go install golang.org/x/vuln/cmd/govulncheck@latest'" >&2

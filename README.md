@@ -1,4 +1,4 @@
-# Fieldworksdiary
+# Legulus
 
 Felderfassungs-App für entomologische Aufsammlungen (Schwerpunkt Rüsselkäfer).
 Backend: PocketBase als Go-Library im Docker-Container. Frontend: native
@@ -44,7 +44,7 @@ Die Skills unter `.claude/skills/` sind Symlinks ins Submodul
 (oder einmalig `git submodule update --init`), sonst zeigen die Symlinks ins Leere:
 
 ```bash
-git clone --recurse-submodules git@github.com:jobrunner/fieldworksdiary-ng.git
+git clone --recurse-submodules git@github.com:jobrunner/legulus.git
 # bestehender Checkout:
 git submodule update --init vendor/claude-skills
 # auf neueste Skills aktualisieren:
@@ -81,7 +81,7 @@ GitHub-Release automatisch an — nichts davon manuell anfassen.
 
 ```bash
 bash scripts/check.sh           # volle Suite (Backend + iOS + Security)
-bash scripts/check-backend.sh   # nur Go
+bash scripts/check-tabularius.sh   # nur Go
 bash scripts/check-ios.sh       # nur iOS
 bash scripts/check-security.sh  # gitleaks + zizmor + trivy fs
 ```
@@ -98,7 +98,7 @@ Workflows selbst) und nightly-CVE-Drift ab. Siehe
 ### Production-Backups (`pb_data/`)
 
 ```bash
-bash scripts/backup-pbdata.sh                       # ins Default-Ziel ~/Backups/fieldworksdiary/
+bash scripts/backup-pbdata.sh                       # ins Default-Ziel ~/Backups/legulus/
 bash scripts/backup-pbdata.sh /Volumes/Backup/wapp  # an einen anderen Ort
 KEEP_LAST=14 bash scripts/backup-pbdata.sh          # Retention auf 14 Backups beschränken
 ```
@@ -122,7 +122,7 @@ einrichten (Account erstellen).
 Tests:
 
 ```bash
-cd backend && go test ./...
+cd tabularius && go test ./...
 ```
 
 ### iOS

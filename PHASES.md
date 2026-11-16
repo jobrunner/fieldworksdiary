@@ -11,6 +11,8 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
+**Umbenennung Fieldworksdiary → Legulus/Tabularius (2026-11-16): in progress.** Teil 1 (Branch `refactor/rename-tabularius`): `backend/` → `tabularius/`, Go-Modul `go.mett.io/tabularius`, Image `ghcr.io/jobrunner/tabularius`, Compose-Service und Commit-Scope `tabularius`. Teil 2 (iOS: Projekt, Targets, Schemes, Package `LegulusGeo`, lokale DB `legulus.sqlite`) steht aus. Das GitHub-Repo wird vor dem Merge von Teil 1 in `legulus` umbenannt; nach Release 0.4.0 folgt der Umzug auf dem Server (`docs/ENVIRONMENTS.md`).
+
 **PocketBase-Update 0.22.42 → 0.40.6 implementiert – wartet auf Test durch Jo (Branch `feat/pocketbase-update`, nicht gemerged, siehe Abschnitt „PocketBase-Update“).** **Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
@@ -29,10 +31,10 @@ iOS-App lässt sich öffnen, Endpoint kann gesetzt und persistiert werden,
 Health-Indikator wird grün.
 
 Aufgaben:
-- [x] Repo-Layout (`backend/`, `ios/`, `docs/adr/`)
+- [x] Repo-Layout (`tabularius/`, `ios/`, `docs/adr/`)
 - [x] `docker-compose.yml` für Backend-Service
-- [x] Minimaler `backend/main.go` (PocketBase als Library, leeres Schema)
-- [x] `backend/Dockerfile` (multi-stage Go-Build)
+- [x] Minimaler `tabularius/main.go` (PocketBase als Library, leeres Schema)
+- [x] `tabularius/Dockerfile` (multi-stage Go-Build)
 - [x] iOS-Projekt via xcodegen (`ios/project.yml`)
 - [x] Endpoint-Konfigurations-Screen, persistiert in UserDefaults
 - [x] Health-Check ans `/api/health`, "verbunden / nicht verbunden"-Anzeige
@@ -831,7 +833,7 @@ Designentscheidungen (mit User abgestimmt 2026-05-12):
       Route-Middleware, plus `assertOwnerOnSamples` im Handler —
       DAO bypassed Rules, also explizit verifizieren
 - [x] Postman-Collection: Pre-Request-Script registriert+loggt
-      `newman@fieldworksdiary.local` ein, setzt `auth_token`,
+      `newman@tabularius.example` ein, setzt `auth_token`,
       Collection-Level-`Authorization`-Header trägt es überall an
 - [x] Verifiziert: zwei User-Curl-Test (eigene Codes /1, getrennte
       Fieldtrips, User B sieht User As Sample nicht). Newman gegen
@@ -968,7 +970,7 @@ Aufgaben:
       `SamplesHydrator` (0 % → > 60 %)
 - [ ] Tests für `Core/Auth/AuthSession` und `Core/Auth/AuthClient`
       (Token-Restore, Apple-Sign-In, Refresh-Pfad)
-- [ ] Tests für `backend/internal/services/geocache.go`
+- [ ] Tests für `tabularius/internal/services/geocache.go`
       (48 % → > 80 %): Cache-Hit/Miss/TTL-Ablauf, SHA-256-Key-Stabilität
 - [ ] Hydrator-Konsolidierung: gemeinsame Base oder Generic statt drei
       Quasi-Duplikate
@@ -1100,10 +1102,10 @@ Phase O3 – Backfill und Aufräumen — **implementiert, wartet auf Test durch 
 
 Deploy-Hinweise O3:
 - Migration `1700000027` übernimmt die manuellen Alt-Placemarks (`country` … `sub_locality`) selbst nach `country_iso`/`admin_*` (pro Besitzer ein Klon) und löscht erst danach die Altspalten; Prod kann also direkt von 22 auf 27 springen.
-- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec backend /app/fieldworksdiary ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
+- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec tabularius /app/tabularius ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
 - Migration 27 nutzt die Mapping-Logik aus `internal/geoplace`; eine spätere Umbenennung von Placemark-Spalten muss 27 lauffähig halten.
 
-Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `backend/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
+Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `tabularius/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
 
 ## Phase Z – Zeitzone, Sample-ID, Höhe
 

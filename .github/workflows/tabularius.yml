@@ -1,0 +1,91 @@
+name: Tabularius
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tabularius/**'
+      - '.github/workflows/tabularius.yml'
+  pull_request:
+    paths:
+      - 'tabularius/**'
+      - '.github/workflows/tabularius.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tabularius
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: tabularius/go.mod
+          cache: true
+          cache-dependency-path: tabularius/go.sum
+
+      - name: gofumpt (Format-Check)
+        run: |
+          go install mvdan.cc/gofumpt@v0.12.0
+          DIFF=$(gofumpt -l . | grep -v '^migrations/' || true)
+          if [ -n "$DIFF" ]; then
+            echo "::error::gofumpt findet Format-Diff in:"; echo "$DIFF"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          # Built from source with the go.mod toolchain (Go 1.27):
+          # prebuilt releases built with an older Go cannot load
+          # Go 1.27 export data.
+          version: v2.15.0
+          install-mode: goinstall
+          working-directory: tabularius
+          args: --timeout=5m
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          ../scripts/govulncheck-gate.sh
+
+      - name: go test (race + coverage)
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Coverage Gate — Kern-Packages > 80 %
+        run: |
+          for pkg in ./internal/codes ./internal/grouping; do
+            COV=$(go test -cover "$pkg" 2>/dev/null | grep -oE 'coverage: [0-9.]+%' | grep -oE '[0-9.]+' || echo "0")
+            if awk -v c="$COV" 'BEGIN{exit !(c >= 80)}'; then
+              echo "✓ $pkg: ${COV}%"
+            else
+              echo "::error::$pkg coverage ${COV}% < 80 %"
+              exit 1
+            fi
+          done
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tabularius-coverage
+          path: tabularius/coverage.out
+          retention-days: 14
+
+      - name: go build
+        run: go build -v ./...
