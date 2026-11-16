@@ -6,6 +6,9 @@ options:
   developmentLanguage: de
 configs:
   Debug: debug
+  # Wie Debug, aber eigene Bundle-ID und die Test-Instanz als Endpoint
+  # (docker-compose.test.yml, Port 8092).
+  Test: debug
   Staging: release
   Release: release
 settings:
@@ -74,11 +77,25 @@ targets:
           APP_DISPLAY_NAME: Legulus Dev
           APP_ENV: dev
           TABULARIUS_ENDPOINT_DEFAULT: https://tabularius.tunnel.legulus.app
+          # Der Simulator teilt sich das Netz mit dem Mac und nimmt die
+          # lokale Dev-Instanz direkt; den Tunnel braucht nur das Gerät.
+          "TABULARIUS_ENDPOINT_DEFAULT[sdk=iphonesimulator*]": http://localhost:8090
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Dev
           # Lockerung der App-Transport-Security: nur Debug-Builds dürfen
           # an rohe IPs über HTTP rauf (z. B. http://192.168.x.x:8090).
           # Staging/Release laufen über HTTPS-Domains und brauchen die
           # Plist nicht.
+          INFOPLIST_FILE: Fieldworksdiary/Info.debug.plist
+        Test:
+          # Eigene Bundle-ID: eigener App-Container im Simulator, die
+          # Tests sehen weder Daten noch gespeicherten Endpoint von
+          # „Legulus Dev“.
+          PRODUCT_BUNDLE_IDENTIFIER: app.legulus.test
+          APP_DISPLAY_NAME: Legulus Test
+          APP_ENV: dev
+          TABULARIUS_ENDPOINT_DEFAULT: http://localhost:8092
+          ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-Dev
+          # HTTP auf localhost braucht dieselbe ATS-Lockerung wie Debug.
           INFOPLIST_FILE: Fieldworksdiary/Info.debug.plist
         Staging:
           PRODUCT_BUNDLE_IDENTIFIER: app.legulus.staging
@@ -143,6 +160,32 @@ schemes:
         - FieldworksdiaryUITests
     archive:
       config: Release
+  Fieldworksdiary-Test:
+    # Tests gegen die Test-Instanz (docker-compose.test.yml, Port 8092).
+    # Die Pre-Action setzt sie vor jedem Testlauf neu auf: leere
+    # Datenbank, Migrationen, fester Test-Nutzer. Xcode ignoriert den
+    # Exit-Code einer Pre-Action; hart schlägt deshalb
+    # `TestTabulariusTests` fehl, wenn die Instanz nicht antwortet.
+    build:
+      targets:
+        Fieldworksdiary: all
+        FieldworksdiaryTests: [test]
+        FieldworksdiaryUITests: [test]
+      config: Test
+    run:
+      config: Test
+    test:
+      config: Test
+      targets:
+        - FieldworksdiaryTests
+        - FieldworksdiaryUITests
+      preActions:
+        - name: Test-Instanz von Tabularius neu aufsetzen
+          settingsTarget: Fieldworksdiary
+          script: |
+            "${PROJECT_DIR}/../scripts/reset-test-tabularius.sh"
+    archive:
+      config: Test
   Fieldworksdiary-Staging:
     # Für TestFlight-Beta-Builds, CI verwendet dieses Scheme.
     build:

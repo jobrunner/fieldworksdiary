@@ -100,6 +100,16 @@ else
   fi
 fi
 
+section "Test-Instanz von Tabularius"
+# Die Tests laufen im Scheme `Fieldworksdiary-Test` gegen localhost:8092.
+# Dessen Pre-Action setzt die Instanz vor jedem Lauf neu auf, meldet
+# einen Fehler aber nicht - deshalb hier einmal sichtbar.
+if bash scripts/reset-test-tabularius.sh; then
+  ok "Test-Instanz antwortet auf localhost:8092, Test-Nutzer angelegt"
+else
+  bad "Test-Instanz nicht bereit"
+fi
+
 section "xcodebuild test (Unit- + UI-Tests, iOS-Matrix)"
 # Getestet wird auf zwei Simulatoren: einem iPhone der ältesten und einem
 # der neuesten installierten iOS-Runtime (z. B. 18.6 und 26.5). So fallen
@@ -133,7 +143,7 @@ else
       TEST_LOG=$(mktemp)
       if xcb \
           -project ios/Fieldworksdiary.xcodeproj \
-          -scheme Fieldworksdiary \
+          -scheme Fieldworksdiary-Test \
           -destination "id=$SIM_DEST" \
           test \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO >"$TEST_LOG" 2>&1; then

@@ -192,8 +192,14 @@ arm64 → `ARCHS=arm64` setzen. Mit konkretem Simulator
 
 ```bash
 bash scripts/check-ios.sh                 # Lint + Build + Tests auf ältester und neuester iOS-Runtime
+bash scripts/reset-test-tabularius.sh     # Test-Instanz (localhost:8092) neu aufsetzen: leere DB, Test-Nutzer
 bash scripts/test-ios-no-build.sh         # nur Tests auf vorhandenem Build
 ```
+
+Die Tests laufen im Scheme `Fieldworksdiary-Test` („Legulus Test“,
+eigene Bundle-ID) gegen eine eigene Test-Instanz von Tabularius
+(`docker-compose.test.yml`, `localhost:8092`, frische Datenbank und
+fester Test-Nutzer pro Lauf); Details in `docs/ENVIRONMENTS.md`.
 
 Snapshot-Referenzen liegen pro iOS-Hauptversion vor
 (`testPrimaryButton.iOS18.png`, `….iOS26.png`), weil die Systemstile
