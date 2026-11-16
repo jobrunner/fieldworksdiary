@@ -75,12 +75,13 @@ BACKEND_IMAGE=ghcr.io/.../fieldworksdiary:staging-abc1234 \
 
 ## iOS-Schemes
 
-`ios/project.yml` definiert drei Configs (Debug, Staging, Release) und
-drei Schemes:
+`ios/project.yml` definiert vier Configs (Debug, Test, Staging, Release)
+und vier Schemes:
 
 | Scheme | Config | Wofür |
 |---|---|---|
-| `Fieldworksdiary` | Debug | Lokale Entwicklung, Tests, Simulator - „Legulus Dev“, DEV-Icon, Tunnel |
+| `Fieldworksdiary` | Debug | Lokale Entwicklung - „Legulus Dev“, DEV-Icon, Tunnel (Gerät) bzw. `http://localhost:8090` (Simulator) |
+| `Fieldworksdiary-Test` | Test | Testläufe gegen die Test-Instanz - „Legulus Test“ (`app.legulus.test`), DEV-Icon, `http://localhost:8092` |
 | `Fieldworksdiary-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
 | `Fieldworksdiary-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
 
@@ -96,6 +97,50 @@ Jede Config bekommt per Build-Setting:
 - `TABULARIUS_ENDPOINT_DEFAULT` → wird beim ersten App-Launch als
   Default-Endpoint übernommen (kann vom User in Settings überschrieben
   werden, aber baked-in für Tester)
+
+Im Simulator bekommt die Debug-Config `http://localhost:8090` statt des
+Tunnels eingebacken (`TABULARIUS_ENDPOINT_DEFAULT[sdk=iphonesimulator*]`):
+der Simulator teilt sich das Netz mit dem Mac. Ein bereits gespeicherter
+Endpoint bleibt, er lässt sich in den Settings ändern.
+
+### Tests gegen die Test-Instanz
+
+`Fieldworksdiary-Test` hat eine eigene Bundle-ID und damit im Simulator
+einen eigenen App-Container, getrennt von „Legulus Dev“. Die App zeigt
+auf eine eigene Tabularius-Instanz aus `docker-compose.test.yml`
+(eigenständiges Compose-File, kein Overlay): Container
+`fieldworksdiary-backend-test`, Port 8092, Daten in
+`backend/pb_data_test`. Sie läuft neben der Dev-Instanz.
+
+Vor jedem Testlauf ruft das Scheme `scripts/reset-test-tabularius.sh`
+auf. Das Script stoppt den Container, leert `backend/pb_data_test`,
+startet neu (die Migrationen bauen das Schema) und legt den festen
+Test-Nutzer an. Jeder Lauf beginnt so im selben Zustand. Das
+Datenverzeichnis ist gitignored: im Repo stehen die Migrationen und
+das Script, aus denen die Datenbank entsteht, nicht die SQLite-Datei.
+
+Xcode ignoriert den Exit-Code einer Pre-Action; deshalb schlägt
+zusätzlich `TestTabulariusTests.testTestInstanceIsReachable` fehl, wenn
+die Instanz fehlt. `scripts/check-ios.sh` testet in diesem Scheme.
+
+Auch das Scheme `Fieldworksdiary` testet in der Test-Config mit
+derselben Pre-Action (Cmd-U trifft damit nie „Legulus Dev“).
+`scripts/test-ios-no-build.sh` ruft das Reset-Script selbst auf, weil
+`test-without-building` keine Pre-Action ausführt.
+
+Die UI-Tests (`ios/FieldworksdiaryUITests/`) steuern die Sitzung über
+Launch-Argumente, die nur Debug-Builds auswerten
+(`AuthSession.applyUITestSession`): `-UITestsSignedOut true` startet
+abgemeldet, zusätzlich `-UITestsSignInEmail`/`-UITestsSignInPassword`
+meldet die App beim Start selbst als Test-Nutzer an. Durch das
+Login-Formular geht nur der Login-Test. Grund: nach einer Eingabe ins
+Passwortfeld bietet iOS 26 „Passwort sichern?“ an; das System-Sheet
+erscheint verzögert und verdeckt, was ein Test danach bedienen will.
+
+Den Standort simuliert der Test selbst über
+`XCUIDevice.shared.location`; die angelegte Probe löscht er am Ende
+wieder. Die Zugangsdaten des Test-Nutzers stehen im Script und in
+`TestBackend.swift`.
 
 Sichtbares Zeichen für Tester: **`EnvBadge`** auf WelcomeView und in
 SettingsView. Prod-Builds zeigen kein Badge.
