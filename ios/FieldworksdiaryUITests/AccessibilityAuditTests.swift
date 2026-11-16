@@ -21,13 +21,10 @@ final class AccessibilityAuditTests: XCTestCase {
 
     @MainActor
     func testWelcomeScreenAccessibility() throws {
-        let app = XCUIApplication()
-        app.launchArguments += ["-UITests", "true"]
-        app.launch()
+        let app = TestBackend.launchApp()
 
-        // Warten, bis WelcomeView gerendert hat. Wenn der User schon
-        // eingeloggt ist, landen wir stattdessen in den MainTabs —
-        // beides ist auditfähig, der Audit prüft was sichtbar ist.
+        // Warten, bis WelcomeView gerendert hat (die App startet
+        // abgemeldet, siehe `TestBackend.launchApp`).
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
 
         // Baseline-Audit: alles außer drei Design-getriebene Kategorien.

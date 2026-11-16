@@ -48,6 +48,9 @@ final class AuthSession: ObservableObject {
     /// unreachable; we keep the cached user alive so the user doesn't
     /// have to re-authenticate every time the backend is down.
     func restoreOnLaunch() async {
+        #if DEBUG
+            if await applyUITestSession() { return }
+        #endif
         guard let token = currentToken else { return }
         do {
             let resp = try await AuthClient(endpoint: endpointProvider())
@@ -67,6 +70,32 @@ final class AuthSession: ObservableObject {
             restoreUserFromKeychain()
         }
     }
+
+    #if DEBUG
+        /// UI tests set the session by launch argument. The Keychain
+        /// outlives a simulator run and a reinstall, so
+        /// `-UITestsSignedOut true` starts signed out. With
+        /// `-UITestsSignInEmail`/`-UITestsSignInPassword` the app signs
+        /// in right away: typing a password into the login form makes
+        /// iOS 26 offer to save it, and that system sheet shows up
+        /// late and covers whatever the test does next. Only the login
+        /// test itself goes through the form.
+        private func applyUITestSession() async -> Bool {
+            let defaults = UserDefaults.standard
+            guard defaults.bool(forKey: "UITestsSignedOut") else { return false }
+            clearLocal()
+            if let email = defaults.string(forKey: "UITestsSignInEmail"),
+               let password = defaults.string(forKey: "UITestsSignInPassword")
+            {
+                do {
+                    try await signInWithPassword(email: email, password: password)
+                } catch {
+                    Log.auth.error("UI test sign-in failed: \(error.localizedDescription)")
+                }
+            }
+            return true
+        }
+    #endif
 
     private func restoreUserFromKeychain() {
         guard
