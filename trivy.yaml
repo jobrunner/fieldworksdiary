@@ -15,13 +15,13 @@ scan:
   # Verzeichnisse, die nichts zum Audit beitragen — keine Quellen,
   # keine Manifests, nur Runtime- oder Build-Artefakte.
   skip-dirs:
-    - backend/pb_data
+    - tabularius/pb_data
     - pb_data_staging
     - pb_data_prod
-    - ios/Fieldworksdiary.xcodeproj
+    - ios/Legulus.xcodeproj
     - ios/DerivedData
     - ios/build
-    - ios/FieldworksdiaryTests/__Snapshots__
+    - ios/LegulusTests/__Snapshots__
     - dist
 
 # Severity-Filter — gilt für alle Scan-Typen.

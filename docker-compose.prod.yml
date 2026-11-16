@@ -5,14 +5,16 @@
 #
 # Erwartet, dass das Image bereits in der Registry liegt (CI baut bei
 # jedem Push auf main, ein Release setzt X.Y.Z). Die Version kommt aus
-# FWD_VERSION (z.B. in der .env neben dieser Datei: `FWD_VERSION=0.1.0`).
+# TABULARIUS_VERSION (z.B. in der .env neben dieser Datei: `TABULARIUS_VERSION=0.1.0`).
 # Ohne gesetzte Version bricht compose ab, damit nie still ein falsches
 # Image läuft.
 
+name: legulus-prod
+
 services:
-  backend:
-    image: ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION:?FWD_VERSION setzen, z.B. 0.1.0}
-    container_name: fieldworksdiary-backend-prod
+  tabularius:
+    image: ghcr.io/jobrunner/tabularius:${TABULARIUS_VERSION:?TABULARIUS_VERSION setzen, z.B. 0.1.0}
+    container_name: tabularius-prod
     ports: !override
       - "8090:8090"
     volumes: !override

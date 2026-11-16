@@ -11,6 +11,8 @@ Datei trägt nur den Status, die Akzeptanzkriterien und offene Punkte.
 
 Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
+**Umbenennung Fieldworksdiary → Legulus/Tabularius (2026-11-16): in progress.** Teil 1 (Branch `refactor/rename-tabularius`): `backend/` → `tabularius/`, Go-Modul `go.mett.io/tabularius`, Image `ghcr.io/jobrunner/tabularius`, Compose-Service und Commit-Scope `tabularius`. Teil 2 (Branch `refactor/rename-ios-legulus`, baut auf Teil 1 auf): Xcode-Projekt, Targets und Schemes `Legulus`, Package `LegulusGeo`, lokale DB `legulus.sqlite` (die alte Datei `fieldworksdiary.sqlite` wird beim ersten Start übernommen), Sync-Cursor-Keys neu. Das GitHub-Repo wird vor dem Merge von Teil 1 in `legulus` umbenannt; nach Release 0.4.0 folgt der Umzug auf dem Server (`docs/ENVIRONMENTS.md`).
+
 **PocketBase-Update 0.22.42 → 0.40.6 implementiert – wartet auf Test durch Jo (Branch `feat/pocketbase-update`, nicht gemerged, siehe Abschnitt „PocketBase-Update“).** **Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
 ---
@@ -29,10 +31,10 @@ iOS-App lässt sich öffnen, Endpoint kann gesetzt und persistiert werden,
 Health-Indikator wird grün.
 
 Aufgaben:
-- [x] Repo-Layout (`backend/`, `ios/`, `docs/adr/`)
+- [x] Repo-Layout (`tabularius/`, `ios/`, `docs/adr/`)
 - [x] `docker-compose.yml` für Backend-Service
-- [x] Minimaler `backend/main.go` (PocketBase als Library, leeres Schema)
-- [x] `backend/Dockerfile` (multi-stage Go-Build)
+- [x] Minimaler `tabularius/main.go` (PocketBase als Library, leeres Schema)
+- [x] `tabularius/Dockerfile` (multi-stage Go-Build)
 - [x] iOS-Projekt via xcodegen (`ios/project.yml`)
 - [x] Endpoint-Konfigurations-Screen, persistiert in UserDefaults
 - [x] Health-Check ans `/api/health`, "verbunden / nicht verbunden"-Anzeige
@@ -156,7 +158,7 @@ End-to-end-Smoke-Test verifiziert (Würzburg 2026-05-10 Tag-Fieldtrip):
 - [x] `Core/Models/`: `Sample`, `Fieldtrip`, `Astro`, `AdminUnits`,
       `MTB` als Decodable-Structs. `try?` für JSON-Felder, weil PB für
       ungesetzte JSON-Felder `""` statt `null` zurückgibt.
-- [x] `Core/Models/Decoder.swift`: `JSONDecoder.fieldworks` mit
+- [x] `Core/Models/Decoder.swift`: `JSONDecoder.legulus` mit
       Custom-DateStrategy, die sowohl PB-Format
       (`"yyyy-MM-dd HH:mm:ss.SSS'Z'"`) als auch ISO-8601-mit-Offset
       (Astro-Felder) parst.
@@ -212,10 +214,10 @@ Akzeptanzkriterium: Flugmodus → 10 Samples anlegen → Internet wieder da
 ### 3a – Local DB + lokale Code-Vergabe (done am 2026-05-11)
 
 - [x] GRDB 6.29+ als SPM-Dep im `ios/project.yml`
-- [x] FieldworksdiaryTests-Target in xcodegen mit `GENERATE_INFOPLIST_FILE=YES`
+- [x] LegulusTests-Target in xcodegen mit `GENERATE_INFOPLIST_FILE=YES`
 - [x] `Core/Geo/Codes/Codes.swift`: Swift-Port von `internal/codes`
       (`collectingDay`, `formatCode`, `collectingDayKey`)
-- [x] `FieldworksdiaryTests/CodesTests.swift`: 9 Test-Cases parallel zu den
+- [x] `LegulusTests/CodesTests.swift`: 9 Test-Cases parallel zu den
       Go-Tests (Cutoff-Edges, Format, Jahreswechsel) — 9/9 grün
 - [x] `Core/Persistence/Database.swift`: GRDB-DatabasePool,
       Migration `v1_local_samples_and_sequences`, Test-Init
@@ -463,7 +465,7 @@ Phase-5a-Limitierungen (in 5c oder später):
       wenn Filter aktiv), Filter-Chip unter dem Header zeigt
       "n von m gefiltert" mit Aufheben-Button, separater Empty-State
       "Keine Treffer" wenn Filter alle ausschließt.
-- [x] `FieldworksdiaryTests/FieldtripsFilterTests.swift`: 7 Test-Cases
+- [x] `LegulusTests/FieldtripsFilterTests.swift`: 7 Test-Cases
       inkl. seasonal wrap und kombinierter Filter; alle grün.
 
 End-to-end: iOS-Build + Test grün (16 Tests gesamt), Newman gegen
@@ -831,7 +833,7 @@ Designentscheidungen (mit User abgestimmt 2026-05-12):
       Route-Middleware, plus `assertOwnerOnSamples` im Handler —
       DAO bypassed Rules, also explizit verifizieren
 - [x] Postman-Collection: Pre-Request-Script registriert+loggt
-      `newman@fieldworksdiary.local` ein, setzt `auth_token`,
+      `newman@tabularius.example` ein, setzt `auth_token`,
       Collection-Level-`Authorization`-Header trägt es überall an
 - [x] Verifiziert: zwei User-Curl-Test (eigene Codes /1, getrennte
       Fieldtrips, User B sieht User As Sample nicht). Newman gegen
@@ -921,10 +923,10 @@ laufen, ohne sich gegenseitig zu killen.
       `AuthSession.signInWithApple`)
 - [x] `WelcomeView` zeigt Apple-Button oben, dann Trenner, dann
       E-Mail-Flow
-- [x] `ios/Fieldworksdiary/Fieldworksdiary.entitlements` mit
+- [x] `ios/Legulus/Legulus.entitlements` mit
       `com.apple.developer.applesignin`
 - [x] `ios/project.yml`: `CODE_SIGN_ENTITLEMENTS` gesetzt
-- [x] `ios/Fieldworksdiary/PrivacyInfo.xcprivacy` (Email/Name/Precise
+- [x] `ios/Legulus/PrivacyInfo.xcprivacy` (Email/Name/Precise
       Location als „linked, not tracking, App Functionality"; API-
       Reasons für UserDefaults/FileTimestamp/SystemBootTime/DiskSpace)
 - [x] `docs/datenschutz.md` (DE, DSGVO-konform; Verantwortlicher-
@@ -968,7 +970,7 @@ Aufgaben:
       `SamplesHydrator` (0 % → > 60 %)
 - [ ] Tests für `Core/Auth/AuthSession` und `Core/Auth/AuthClient`
       (Token-Restore, Apple-Sign-In, Refresh-Pfad)
-- [ ] Tests für `backend/internal/services/geocache.go`
+- [ ] Tests für `tabularius/internal/services/geocache.go`
       (48 % → > 80 %): Cache-Hit/Miss/TTL-Ablauf, SHA-256-Key-Stabilität
 - [ ] Hydrator-Konsolidierung: gemeinsame Base oder Generic statt drei
       Quasi-Duplikate
@@ -1085,7 +1087,7 @@ Demo O1 (lokaler Ortus-Lauf, 2026-11-09):
   vor der O2-UI.
 
 Phase O2 – iOS — **implementiert, wartet auf Test durch Jo** (gestartet 2026-11-09; App-Unit-Tests auf Tahoe nur via Xcode-IDE lauffähig, daher noch ungelaufen)
-- [x] Task 12: Swift-Package `FieldworksGeo` – Label-Tabelle und TK25
+- [x] Task 12: Swift-Package `LegulusGeo` – Label-Tabelle und TK25
 - [x] Task 13: Swift – Ortus-Modelle, Mapping, Hash, Labels
 - [x] Task 14: GRDB-Migration v13 und Stores
 - [x] Task 15: Ortus-Client und Ortsauflösung beim Anlegen
@@ -1100,10 +1102,10 @@ Phase O3 – Backfill und Aufräumen — **implementiert, wartet auf Test durch 
 
 Deploy-Hinweise O3:
 - Migration `1700000027` übernimmt die manuellen Alt-Placemarks (`country` … `sub_locality`) selbst nach `country_iso`/`admin_*` (pro Besitzer ein Klon) und löscht erst danach die Altspalten; Prod kann also direkt von 22 auf 27 springen.
-- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec backend /app/fieldworksdiary ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
+- Nach dem Deploy einmal `ortus-backfill` laufen lassen (`docker compose exec tabularius /app/tabularius ortus-backfill`, `ORTUS_BASE_URL` muss gesetzt sein): B reichert Samples an, B2 trägt die Ortus-Zeitzone bei schon angereicherten Samples nach, B' reichert Fundorte an, C ordnet nach Label-Tabellenänderungen neu zu (`--remap-only`). Zweiter Lauf ändert nichts.
 - Migration 27 nutzt die Mapping-Logik aus `internal/geoplace`; eine spätere Umbenennung von Placemark-Spalten muss 27 lauffähig halten.
 
-Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `backend/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
+Demo O3 (lokal, 2026-11-10): Migration 27 auf Jos DB durchgelaufen (Backup `tabularius/pb_data/backups/data-vor-o3-2026-11-10.db`); Backfill B 9 Samples, B2 7 Zeitzonen, B' 3 Fundorte; zweiter Lauf 0 Änderungen; alle 16 Samples mit Ortus-Zeitzone. App-Suite in Xcode 259/259 grün.
 
 ## Phase Z – Zeitzone, Sample-ID, Höhe
 
@@ -1120,7 +1122,7 @@ Sample-ID wird nach dem Speichern nie mehr umnummeriert, nur noch eine Höhe.
 - [x] Task 1: Backend-Migration `1700000026`
 - [x] Task 2: Backend-Hook – ID nie anfassen, Sammeltag aus Client/Zeitzone
 - [x] Task 3: Backend-Anreicherung – Zeitzone und eine Höhe
-- [x] Task 4: FieldworksGeo – reine Zeit- und ID-Logik
+- [x] Task 4: LegulusGeo – reine Zeit- und ID-Logik
 - [x] Task 5: iOS-Persistenz und Sync-Schema
 - [x] Task 6: iOS-Einstellungen – Format, Präfix, Offset, Rollover
 - [x] Task 7: iOS-Anlegen – Zeitfenster, Sammeltag, Vorschlag, Eindeutigkeit
@@ -1164,7 +1166,7 @@ Nacharbeiten (nicht in Phase E): später Fix während laufendem Create überspri
 - Plan: `docs/superpowers/plans/2026-11-10-nachtragen-und-formular.md`
 
 - [x] Task 0: Phasenstatus
-- [x] Task 1: GEOTRANS in FieldworksGeo — Formatieren und Parsen
+- [x] Task 1: GEOTRANS in LegulusGeo — Formatieren und Parsen
 - [x] Task 2: Ortus-Anfrage mit Koordinatensystem
 - [x] Task 3: Backend — nachgetragene Samples, Fieldtrip-Neuzuordnung
 - [x] Task 4: iOS-Modell, Sammeltag-Regel, Einstellung Koordinatenformat

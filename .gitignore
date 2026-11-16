@@ -10,16 +10,19 @@
 !.claude/skills/**
 
 # Backend
-backend/pb_data/
-backend/pb_data_test/
+tabularius/pb_data/
+tabularius/pb_data_test/
 pb_data_staging/
 pb_data_prod/
-backend/fieldworksdiary
-backend/backend
+tabularius/tabularius
+# Bis zur Umbenennung lag das Backend in `backend/`. Bestehende Checkouts
+# behalten dort ihre lokalen Datenbanken, die nie ins Repo gehören.
+backend/pb_data/
+backend/pb_data_test/
 *.log
 
 # iOS
-ios/Fieldworksdiary.xcodeproj/
+ios/Legulus.xcodeproj/
 ios/build/
 ios/.build/
 ios/DerivedData/

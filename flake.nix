@@ -1,5 +1,5 @@
 {
-  description = "fieldworksdiary-ng — Dev-Shell für Backend (Go/PocketBase) und iOS (SwiftUI)";
+  description = "legulus — Dev-Shell für Tabularius (Go/PocketBase) und iOS (SwiftUI)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -13,7 +13,7 @@
         isDarwin = pkgs.stdenv.hostPlatform.isDarwin;
 
         # Tools, die auf allen Plattformen verfügbar sind.
-        # backend/go.mod verlangt go 1.27.4. Liegt in nixpkgs nur eine
+        # tabularius/go.mod verlangt go 1.27.4. Liegt in nixpkgs nur eine
         # ältere Patch-Version, lädt Go die passende Toolchain selbst nach
         # (GOTOOLCHAIN=auto).
         commonTools = with pkgs; [
@@ -82,13 +82,13 @@
         # zieht weder Compiler noch Nix-apple-sdk, dadurch bleibt der
         # Download in der CI klein.
         devShells.ios-lint = pkgs.mkShellNoCC {
-          name = "fieldworksdiary-ios-lint";
+          name = "legulus-ios-lint";
           packages = iosLintTools;
           shellHook = xcodeHook;
         };
 
         devShells.default = pkgs.mkShell {
-          name = "fieldworksdiary-ng";
+          name = "legulus";
 
           packages = commonTools ++ darwinTools;
 
@@ -108,7 +108,7 @@
               unset _system_sdk
             fi
 
-            echo "fieldworksdiary-ng dev-shell"
+            echo "legulus dev-shell"
             echo "  go:             $(go version 2>/dev/null | awk '{print $3}')"
             echo "  golangci-lint:  $(golangci-lint --version 2>/dev/null | head -1 | awk '{print $4}')"
             echo "  govulncheck:    $(govulncheck -version 2>/dev/null | head -1 || echo 'n/a')"

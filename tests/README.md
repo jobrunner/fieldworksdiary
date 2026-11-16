@@ -21,9 +21,9 @@ Excursion-Refs aus früheren Antworten in Folge-Requests einzusetzen
 
 Gut für: schnell mal was probieren, Edge-Cases im Code-Review prüfen.
 
-## `Fieldworksdiary.postman_collection.json` — Postman v2.1
+## `Tabularius.postman_collection.json` — Postman v2.1
 
-In Postman: **Import → File → Fieldworksdiary.postman_collection.json**.
+In Postman: **Import → File → Tabularius.postman_collection.json**.
 Variablen:
 
 - `baseUrl` (default `http://localhost:8090`) — zur Not auf
@@ -41,7 +41,7 @@ Headless ausführen mit Newman:
 
 ```bash
 npm install -g newman
-newman run tests/Fieldworksdiary.postman_collection.json \
+newman run tests/Tabularius.postman_collection.json \
   --env-var baseUrl=http://localhost:8090 \
   --delay-request 1500
 ```
@@ -57,6 +57,6 @@ Für einen sauberen Lauf:
 
 ```bash
 docker compose down
-rm -rf backend/pb_data
+rm -rf tabularius/pb_data
 docker compose up --build
 ```

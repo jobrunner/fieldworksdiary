@@ -1,4 +1,4 @@
-# Fieldworksdiary — API-Smoke- und Regressionstests
+# Tabularius — API-Smoke- und Regressionstests
 #
 # Format: VSCode REST Client / IntelliJ HTTP Client / Helix REST.
 # Top-down ausführbar; Variablen-Verkettung über `@name`-Anker.

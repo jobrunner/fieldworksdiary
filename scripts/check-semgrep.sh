@@ -29,13 +29,13 @@ if command -v semgrep >/dev/null 2>&1; then
       --config p/swift \
       --config p/security-audit \
       --config p/secrets \
-      --exclude 'backend/pb_data' \
+      --exclude 'tabularius/pb_data' \
       --exclude 'pb_data_staging' \
       --exclude 'pb_data_prod' \
       --exclude 'dist' \
-      --exclude 'ios/Fieldworksdiary.xcodeproj' \
+      --exclude 'ios/Legulus.xcodeproj' \
       --exclude 'ios/build' \
-      --exclude 'ios/FieldworksdiaryTests/__Snapshots__' \
+      --exclude 'ios/LegulusTests/__Snapshots__' \
       --severity ERROR \
       --error \
       --quiet 2>&1; then

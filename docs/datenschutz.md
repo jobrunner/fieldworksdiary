@@ -1,8 +1,8 @@
-# Datenschutzerklärung — Fieldworksdiary
+# Datenschutzerklärung — Legulus
 
 **Stand:** 2026-05-13
 
-Diese Erklärung beschreibt, welche Daten die App „Fieldworksdiary"
+Diese Erklärung beschreibt, welche Daten die App „Legulus"
 verarbeitet, zu welchem Zweck, auf welcher Rechtsgrundlage und wie
 lange. Sie ergänzt — nicht ersetzt — die Datenschutzerklärung auf der
 Web-Präsenz des Verantwortlichen.

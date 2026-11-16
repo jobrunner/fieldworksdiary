@@ -8,18 +8,20 @@
 #   - `image:` für prod/staging zeigt auf eine Registry-Referenz; lokal
 #     benutzen wir `build:` direkt vom Source-Tree.
 
+name: legulus
+
 services:
-  backend:
-    build: ./backend
-    container_name: fieldworksdiary-backend-dev
+  tabularius:
+    build: ./tabularius
+    container_name: tabularius-dev
     ports:
       - "8090:8090"
     volumes:
-      - ./backend/pb_data:/app/pb_data
+      - ./tabularius/pb_data:/app/pb_data
     restart: unless-stopped
     environment:
       APP_ENV: dev
-      APPLE_ALLOWED_AUDIENCES: app.legulus.prod,app.legulus.dev,app.legulus.staging,org.fieldworksdiary.prod,org.fieldworksdiary.staging
+      APPLE_ALLOWED_AUDIENCES: app.legulus.prod,app.legulus.dev,app.legulus.staging
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]

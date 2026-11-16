@@ -10,7 +10,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-STATE_DIR="${TMPDIR:-/tmp}/claude-fwd-hook"
+STATE_DIR="${TMPDIR:-/tmp}/claude-legulus-hook"
 mkdir -p "$STATE_DIR"
 
 # --- jq finden (Nix-Shell hat es; sonst Brew/system) ---
@@ -63,7 +63,7 @@ lint_go() {
   if command -v golangci-lint >/dev/null 2>&1; then
     # Einzeldatei-Lint braucht den Package-Kontext. Wir laufen vom
     # Backend-Modul-Root und filtern danach auf die geänderte Datei.
-    out=$( (cd "$ROOT/backend" && golangci-lint run --path-mode=abs --timeout=120s "$f" 2>&1) )
+    out=$( (cd "$ROOT/tabularius" && golangci-lint run --path-mode=abs --timeout=120s "$f" 2>&1) )
     # Nur ausgeben, wenn echte Findings drin sind (keine reine Info/Cache-Meldung).
     if printf '%s' "$out" | grep -qE '^[^:]+:[0-9]+:[0-9]+:'; then
       printf '\n--- golangci-lint: %s ---\n%s\n' "$rel" "$out"

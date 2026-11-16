@@ -42,7 +42,7 @@ fi
 
 section "Periphery (Dead-Code-Detection, warn-only)"
 if command -v periphery >/dev/null 2>&1; then
-  if [ ! -d ios/Fieldworksdiary.xcodeproj ]; then
+  if [ ! -d ios/Legulus.xcodeproj ]; then
     missing "Xcode-Projekt fehlt — 'xcodegen generate' im ios/-Dir"
   else
     P_OUT=$(periphery scan --config .periphery.yml --quiet 2>&1 || true)
@@ -78,15 +78,15 @@ fi
 section "Xcode-Build"
 if [ ! -d /Applications/Xcode.app ]; then
   missing "Xcode (App-Bundle fehlt — 'xcodes install <version>' oder App Store)"
-elif [ ! -d ios/Fieldworksdiary.xcodeproj ]; then
-  bad "ios/Fieldworksdiary.xcodeproj fehlt — 'xcodegen generate' im ios/-Dir ausführen"
+elif [ ! -d ios/Legulus.xcodeproj ]; then
+  bad "ios/Legulus.xcodeproj fehlt — 'xcodegen generate' im ios/-Dir ausführen"
 else
   BUILD_LOG=$(mktemp)
   # ARCHS=arm64: `generic/platform=iOS Simulator` baut sonst auch x86_64,
   # FliptClients `libfliptengine.a` gibt es aber nur für arm64.
   if xcb \
-      -project ios/Fieldworksdiary.xcodeproj \
-      -scheme Fieldworksdiary \
+      -project ios/Legulus.xcodeproj \
+      -scheme Legulus \
       -sdk iphonesimulator \
       -destination 'generic/platform=iOS Simulator' \
       build \
@@ -105,7 +105,7 @@ section "xcodebuild test (Unit- + UI-Tests, iOS-Matrix)"
 # der neuesten installierten iOS-Runtime (z. B. 18.6 und 26.5). So fallen
 # Unterschiede zwischen altem und neuem System-Rendering auf, bevor ein
 # Tester sie findet. Override: IOS_TEST_SIM_IDS="<udid> <udid>".
-if [ ! -d /Applications/Xcode.app ] || [ ! -d ios/Fieldworksdiary.xcodeproj ]; then
+if [ ! -d /Applications/Xcode.app ] || [ ! -d ios/Legulus.xcodeproj ]; then
   missing "Xcode oder Projektdatei fehlt"
 else
   if [ -n "${IOS_TEST_SIM_IDS:-}" ]; then
@@ -126,7 +126,7 @@ else
   if [ -z "${SIM_IDS// /}" ]; then
     missing "Kein iOS-Simulator verfügbar — Test übersprungen"
   else
-    # Die Tests laufen im Scheme `Fieldworksdiary-Test` gegen die
+    # Die Tests laufen im Scheme `Legulus-Test` gegen die
     # Test-Instanz (localhost:8092). Dessen Pre-Action setzt sie vor
     # jedem Lauf neu auf, meldet einen Fehler aber nicht - deshalb hier
     # einmal sichtbar, und nur wenn auch wirklich getestet wird.
@@ -141,8 +141,8 @@ else
             | select(.udid == $id) | "\(.name) (\($rt | sub(".*SimRuntime\\.iOS-"; "iOS ") | gsub("-"; ".")))"')
       TEST_LOG=$(mktemp)
       if xcb \
-          -project ios/Fieldworksdiary.xcodeproj \
-          -scheme Fieldworksdiary-Test \
+          -project ios/Legulus.xcodeproj \
+          -scheme Legulus-Test \
           -destination "id=$SIM_DEST" \
           test \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO >"$TEST_LOG" 2>&1; then

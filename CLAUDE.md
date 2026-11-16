@@ -28,10 +28,10 @@ stoppen und Demo zeigen, nicht in die nächste Phase laufen.
 
 ## Projekt-Layout (geplant, siehe PROJECT_PLAN §10)
 
-- `backend/` – Go + PocketBase. Hooks und Custom-Logik in
-  `backend/internal/`. Migrations in `backend/migrations/`.
-- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Fieldworksdiary/Core/`,
-  Features in `ios/Fieldworksdiary/Features/`.
+- `tabularius/` – Go + PocketBase. Hooks und Custom-Logik in
+  `tabularius/internal/`. Migrations in `tabularius/migrations/`.
+- `ios/` – SwiftUI-App. Domänen-Logik in `ios/Legulus/Core/`,
+  Features in `ios/Legulus/Features/`.
 - `docs/adr/` – Architecture Decision Records, eines pro Entscheidung.
 
 ## Drei-Ebenen-Datenmodell
@@ -48,8 +48,8 @@ Locality (Fundort)  ──>  Excursion (Sammeltag)  ──>  Sample (Aufsammlung
 - Fundorte sind manuell kuratiert; Exkursionen werden ihnen zugeordnet
   (auto-Vorschlag bei räumlichem Match, User akzeptiert/verwirft).
 
-Die Logik dafür sitzt im Backend (`backend/internal/codes/` und
-`backend/internal/grouping/`). Der iOS-Client repliziert nur das
+Die Logik dafür sitzt im Backend (`tabularius/internal/codes/` und
+`tabularius/internal/grouping/`). Der iOS-Client repliziert nur das
 Mindeste für Offline-Betrieb: provisorische Code-Vergabe und
 provisorische Exkursionszuordnung.
 
@@ -73,7 +73,7 @@ provisorische Exkursionszuordnung.
 
 ### Backend (Go)
 
-- Modul-Pfad in `go.mod`: `github.com/<dein-user>/fieldworksdiary/backend`.
+- Modul-Pfad in `go.mod`: `go.mett.io/tabularius`.
 - Logik **niemals** im `main.go`. Dort nur Hook-Registrierung und Wiring.
 - Pure Funktionen in `internal/codes/` und `internal/grouping/` mit
   Tests (das ist die Kernlogik – ohne Tests nichts mergen, > 80 % Coverage).
@@ -124,7 +124,7 @@ provisorische Exkursionszuordnung.
   Default `https://ortus.legulus.app` — immer gegen diese Instanz
   entwickeln, dort liegt der aktuelle Feature-Stand).
 
-Der Wrapper liegt in `backend/internal/services/ortus.go` (Retry,
+Der Wrapper liegt in `tabularius/internal/services/ortus.go` (Retry,
 Timeout). Antworten werden in `geocache` (eine PocketBase-Collection)
 für 7 Tage gecacht. Die MTB-Angabe stammt ausschließlich aus der Quelle
 `tk25-blattschnitt-de`; der Quadrant wird lokal in `internal/mtb`
@@ -148,10 +148,10 @@ Anreicherung läuft asynchron und darf das Sample-Insert nie blockieren.
 docker compose up --build
 
 # Backend Tests
-cd backend && go test ./...
+cd tabularius && go test ./...
 
 # Einzelner Go-Test
-cd backend && go test ./internal/codes -run TestCollectingDay
+cd tabularius && go test ./internal/codes -run TestCollectingDay
 
 # iOS-Projekt erzeugen (xcodegen, einmalig nötig oder nach project.yml-Änderung)
 cd ios && xcodegen generate
@@ -159,7 +159,7 @@ cd ios && xcodegen generate
 # iOS bauen (CLI-Verifikation) - saubere Env + arm64, siehe unten
 env -i HOME="$HOME" USER="$USER" PATH=/usr/bin:/bin:/usr/sbin:/sbin \
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-  /usr/bin/xcodebuild -project ios/Fieldworksdiary.xcodeproj -scheme Fieldworksdiary \
+  /usr/bin/xcodebuild -project ios/Legulus.xcodeproj -scheme Legulus \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build \
   ARCHS=arm64 CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
 ```
@@ -170,7 +170,7 @@ Nach erstem Backend-Start: PocketBase-Admin unter
 `https://tabularius.tunnel.legulus.app`, der auf die lokale Instanz
 weiterleitet. Stages und URLs: `docs/ENVIRONMENTS.md`.
 
-`ios/Fieldworksdiary.xcodeproj/` ist gitignored und wird aus
+`ios/Legulus.xcodeproj/` ist gitignored und wird aus
 `ios/project.yml` regeneriert (`xcodegen generate`). Quelle für
 Projekt-Änderungen ist immer `project.yml`, nicht das `.xcodeproj`.
 
@@ -196,7 +196,7 @@ bash scripts/reset-test-tabularius.sh     # Test-Instanz (localhost:8092) neu au
 bash scripts/test-ios-no-build.sh         # nur Tests auf vorhandenem Build
 ```
 
-Die Tests laufen im Scheme `Fieldworksdiary-Test` („Legulus Test“,
+Die Tests laufen im Scheme `Legulus-Test` („Legulus Test“,
 eigene Bundle-ID) gegen eine eigene Test-Instanz von Tabularius
 (`docker-compose.test.yml`, `localhost:8092`, frische Datenbank und
 fester Test-Nutzer pro Lauf); Details in `docs/ENVIRONMENTS.md`.

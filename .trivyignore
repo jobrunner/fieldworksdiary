@@ -14,7 +14,7 @@
 # ── Misconfigs ────────────────────────────────────────────────
 
 # DS-0002 (Dockerfile ohne USER directive) — siehe TODO im
-# backend/Dockerfile. Nicht-Root-Switch braucht koordiniertes Setup
+# tabularius/Dockerfile. Nicht-Root-Switch braucht koordiniertes Setup
 # der pb_data-Bind-Mount-Owner auf den Docker-Hosts. Eigener
 # Workstream geplant.
 AVD-DS-0002 exp:2026-09-01  # Tracked als Non-Root-Runtime-Workstream

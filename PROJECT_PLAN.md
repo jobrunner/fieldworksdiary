@@ -1,4 +1,4 @@
-# Projektplan: Käfer-Sammel-App (Arbeitstitel: `fieldworksdiary`)
+# Projektplan: Käfer-Sammel-App (Name: `legulus`)
 
 Dieser Plan ist als Eingabe für `claude /init` gedacht. Er beschreibt Vision,
 Architektur, Datenmodell und Implementierungsphasen so, dass Claude Code daraus
@@ -340,7 +340,7 @@ MTB ist das **reine Mathematik** — kein externer Service, kein Cache,
 kein Retry. Die Berechnung ist deterministisch und idempotent;
 Live-Updates sind nicht nötig.
 
-Wo die Logik sitzt: `backend/internal/astro/`. Pure Funktionen mit
+Wo die Logik sitzt: `tabularius/internal/astro/`. Pure Funktionen mit
 Tests, analog zu `codes/` und `grouping/`. Empfohlene Library:
 ein Go-Port von suncalc (`github.com/sixdouglas/suncalc` o. ä.) für
 Sun/Moon-Position; falls Lizenz/Wartung problematisch, Eigenbau
@@ -392,7 +392,7 @@ Korrektur von Zeit/Ort).
 Default-iOS-Verhalten: wartet auf Backend-Wert (Server-of-Truth). Falls
 Pre-Trip-Vorschau („Mond steht heute Nacht hoch, taugt nicht für
 Lichtfang") gewünscht wird, kann später eine Mini-Variante in
-`ios/Fieldworksdiary/Core/Astro/` ergänzt werden — bewusst **erst wenn das
+`ios/Legulus/Core/Astro/` ergänzt werden — bewusst **erst wenn das
 Bedürfnis konkret wird**, nicht prophylaktisch.
 
 ---
@@ -490,14 +490,14 @@ Uhrzeit.
 ## 10. Repository-Layout
 
 ```
-fieldworksdiary/
+legulus/
 ├── README.md
 ├── PROJECT_PLAN.md          (dieses Dokument)
 ├── CLAUDE.md                (Konventionen für Claude Code)
 ├── docker-compose.yml       (dev: backend + ggf. dev-DB)
 ├── docker-compose.prod.yml  (prod-Variante)
 │
-├── backend/
+├── tabularius/
 │   ├── Dockerfile
 │   ├── go.mod
 │   ├── main.go                    (PocketBase als Library, Hooks registrieren)
@@ -516,8 +516,8 @@ fieldworksdiary/
 │   └── pb_data/                   (Volume mount, gitignored)
 │
 ├── ios/
-│   ├── Fieldworksdiary.xcodeproj
-│   ├── Fieldworksdiary/
+│   ├── Legulus.xcodeproj
+│   ├── Legulus/
 │   │   ├── App/                   (Entry-Point, AppConfig, Endpoint-Setting)
 │   │   ├── Features/
 │   │   │   ├── AddSample/         (das „+"-Sheet)
@@ -532,7 +532,7 @@ fieldworksdiary/
 │   │   │   ├── Geo/               (CoreLocation-Wrapper, Codes-Logik lokal)
 │   │   │   └── Models/            (Domain-Modelle, mit Codable+GRDB-Mapping)
 │   │   └── UI/                    (geteilte Views, Karten-Komponente)
-│   └── FieldworksdiaryTests/
+│   └── LegulusTests/
 │
 └── docs/
     ├── adr/                       (Architecture Decision Records)

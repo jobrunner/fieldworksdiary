@@ -7,17 +7,17 @@ Crash, versehentliches `rm`, korrupte Migration, gestohlene Docker-Maschine).
 
 ```bash
 # 1. Letztes Backup finden
-ls -1t ~/Backups/fieldworksdiary/pbdata-*.tar.gz | head -1
+ls -1t ~/Backups/legulus/pbdata-*.tar.gz | head -1
 
 # 2. Backend stoppen
 docker compose down
 
 # 3. Aktuelles pb_data wegsichern (falls noch da)
-mv backend/pb_data backend/pb_data.broken-$(date +%s) 2>/dev/null || true
+mv tabularius/pb_data tabularius/pb_data.broken-$(date +%s) 2>/dev/null || true
 
 # 4. Backup entpacken
-mkdir -p backend/pb_data
-tar -xzf ~/Backups/fieldworksdiary/pbdata-2026-…Z.tar.gz -C backend/pb_data
+mkdir -p tabularius/pb_data
+tar -xzf ~/Backups/legulus/pbdata-2026-…Z.tar.gz -C tabularius/pb_data
 
 # 5. Backend wieder hoch
 docker compose up -d
@@ -33,7 +33,7 @@ Backend-Image-Stand nicht zusammenpasst (siehe „Migrations-Drift" unten).
 ## Backup-Strategie (Soll-Stand)
 
 - **Lokal**: tägliche Snapshots via `scripts/backup-pbdata.sh` →
-  `~/Backups/fieldworksdiary/`, Retention 30.
+  `~/Backups/legulus/`, Retention 30.
 - **Offsite**: rsync-Spiegel auf separates Volume (NAS, externe SSD).
   TODO: Cron-Eintrag fürs Offsite-Sync etablieren, sobald Ziel-Volume
   feststeht. Mindeste Anforderung: **2 verschiedene physische Geräte**.
@@ -73,10 +73,10 @@ malformed` oder ähnlich.
 
 ```bash
 # 1. Versuch: SQLite-Integrity prüfen
-sqlite3 backend/pb_data/data.db 'PRAGMA integrity_check;'
+sqlite3 tabularius/pb_data/data.db 'PRAGMA integrity_check;'
 
 # 2a. Wenn nur einzelne Pages defekt:
-sqlite3 backend/pb_data/data.db '.recover' > recovered.sql
+sqlite3 tabularius/pb_data/data.db '.recover' > recovered.sql
 # Vorsicht: .recover bricht Foreign-Key-Konsistenz möglicherweise auf —
 # besser direkt zu Restore wechseln (2b).
 
@@ -108,9 +108,9 @@ noch Referenzen. Symptom: Download-Endpoint liefert 404.
 ```bash
 # Restore nur storage/ aus Backup:
 TMP=$(mktemp -d)
-tar -xzf ~/Backups/fieldworksdiary/pbdata-…tar.gz -C "$TMP"
+tar -xzf ~/Backups/legulus/pbdata-…tar.gz -C "$TMP"
 docker compose down
-rsync -av "$TMP/storage/" backend/pb_data/storage/
+rsync -av "$TMP/storage/" tabularius/pb_data/storage/
 docker compose up -d
 ```
 
@@ -119,8 +119,8 @@ docker compose up -d
 ```bash
 # 1. Neuen Host (Mac/Linux mit Docker) bereitstellen.
 # 2. Repo clonen:
-git clone https://gitlab.com/fieldworksdiary/fieldworksdiary-ng.git
-cd fieldworksdiary-ng
+git clone git@github.com:jobrunner/legulus.git
+cd legulus
 # 3. Backup-Volume mounten oder Backup-Datei runterladen.
 # 4. Restore wie TL;DR.
 # 5. iOS-Clients: Endpoint-URL in der App auf neuen Host umstellen
@@ -139,7 +139,7 @@ funktionieren.
 
 ```bash
 # Aus dem produktivsten Backup ein Test-pb_data_restored/ bauen:
-LATEST=$(ls -1t ~/Backups/fieldworksdiary/pbdata-*.tar.gz | head -1)
+LATEST=$(ls -1t ~/Backups/legulus/pbdata-*.tar.gz | head -1)
 TESTDIR=$(mktemp -d)
 mkdir -p "$TESTDIR/pb_data"
 tar -xzf "$LATEST" -C "$TESTDIR/pb_data"

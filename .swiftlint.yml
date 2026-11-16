@@ -1,9 +1,9 @@
 included:
-  - ios/Fieldworksdiary
-  - ios/FieldworksdiaryTests
+  - ios/Legulus
+  - ios/LegulusTests
 
 excluded:
-  - ios/Fieldworksdiary.xcodeproj
+  - ios/Legulus.xcodeproj
   - ios/.build
   - ios/DerivedData
 

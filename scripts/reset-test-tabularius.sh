@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Setzt die Test-Instanz von Tabularius neu auf (docker-compose.test.yml,
-# localhost:8092): Container stoppen, `backend/pb_data_test` leeren,
+# localhost:8092): Container stoppen, `tabularius/pb_data_test` leeren,
 # starten (die Migrationen bauen das Schema), festen Test-Nutzer anlegen.
 # Jeder Testlauf beginnt damit im selben Zustand.
 #
 # Aufrufer: `scripts/check-ios.sh` und die Test-Pre-Action des Schemes
-# `Fieldworksdiary-Test` (dort mit Xcodes Minimal-PATH, deshalb die
+# `Legulus-Test` (dort mit Xcodes Minimal-PATH, deshalb die
 # Docker-Pfade unten).
 #
 # Die Zugangsdaten des Test-Nutzers stehen auch in
-# `ios/FieldworksdiaryUITests/TestBackend.swift` - beide Stellen
+# `ios/LegulusUITests/TestBackend.swift` - beide Stellen
 # zusammen ändern.
 #
 # Aufruf: bash scripts/reset-test-tabularius.sh
@@ -22,7 +22,7 @@ cd "$ROOT"
 
 PATH="$PATH:/usr/local/bin:/opt/homebrew/bin"
 BASE_URL="http://localhost:8092"
-DATA_DIR="$ROOT/backend/pb_data_test"
+DATA_DIR="$ROOT/tabularius/pb_data_test"
 WAIT_SECONDS="${TABULARIUS_WAIT_SECONDS:-120}"
 TEST_EMAIL="uitest@legulus.example"
 TEST_PASSWORD="legulus-uitest-1"
@@ -36,7 +36,7 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-compose down >&2 || { say "docker compose down fehlgeschlagen"; exit 1; }
+compose down --remove-orphans >&2 || { say "docker compose down fehlgeschlagen"; exit 1; }
 rm -rf "$DATA_DIR"
 
 if ! compose up -d --build >&2; then

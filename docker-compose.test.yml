@@ -1,5 +1,5 @@
 # Test-Instanz von Tabularius für die iOS-Tests (Scheme
-# `Fieldworksdiary-Test`, App „Legulus Test“).
+# `Legulus-Test`, App „Legulus Test“).
 #
 # Eigenständig, kein Overlay:
 #   docker compose -f docker-compose.test.yml up -d --build
@@ -7,20 +7,20 @@
 # Läuft neben der Dev-Instanz (docker-compose.yml): eigener
 # Projektname, eigener Container, Port 8092, eigenes Datenverzeichnis.
 # `scripts/reset-test-tabularius.sh` setzt sie vor jedem Testlauf neu
-# auf (leeres `backend/pb_data_test`, Migrationen, Test-Nutzer).
+# auf (leeres `tabularius/pb_data_test`, Migrationen, Test-Nutzer).
 
 name: legulus-test
 
 services:
-  backend:
-    build: ./backend
-    container_name: fieldworksdiary-backend-test
+  tabularius:
+    build: ./tabularius
+    container_name: tabularius-test
     ports:
       # Nur Loopback: Simulator und Tests laufen auf diesem Rechner, und
       # die Zugangsdaten des Test-Nutzers stehen im Repo.
       - "127.0.0.1:8092:8090"
     volumes:
-      - ./backend/pb_data_test:/app/pb_data
+      - ./tabularius/pb_data_test:/app/pb_data
     environment:
       APP_ENV: test
       APPLE_ALLOWED_AUDIENCES: app.legulus.test

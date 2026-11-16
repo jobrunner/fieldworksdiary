@@ -5,13 +5,13 @@ füllt die Details. Deployt wird manuell (siehe „Build und Deploy“).
 
 | Stage | Branch | Bundle-ID (iOS) | Tabularius-URL | Port | Volume | TestFlight-Track |
 |---|---|---|---|---|---|---|
-| **Dev** | beliebig (lokal) | `app.legulus.dev` | `https://tabularius.tunnel.legulus.app` (sish-Tunnel auf localhost) | 8090 | `./backend/pb_data/` | — |
+| **Dev** | beliebig (lokal) | `app.legulus.dev` | `https://tabularius.tunnel.legulus.app` (sish-Tunnel auf localhost) | 8090 | `./tabularius/pb_data/` | — |
 | **Staging** | `staging` | `app.legulus.staging` | `https://tabularius-stage.legulus.app` (noch nicht aufgesetzt) | 8091 | `./pb_data_staging/` | Internal Beta |
 | **Production** | `main` | `app.legulus.prod` | `https://tabularius.legulus.app` | 8090 | `./pb_data_prod/` | External / App Store |
 
 Die iOS-App heißt **Legulus**, das Backend (PocketBase als Go-Library)
-**Tabularius**. Repo-, Image- und Container-Namen tragen noch den alten
-Namen `fieldworksdiary`; das zieht ein eigener Schritt nach.
+**Tabularius** und liegt in `tabularius/`. Das Repo heißt `legulus`, das
+Image `ghcr.io/jobrunner/tabularius`.
 
 Der Dev-Tunnel ist ein SSH-Tunnel über sish auf die lokale Instanz
 (Port 8090). Ein Gerät erreicht sie damit per HTTPS, ohne ATS-Ausnahme
@@ -19,14 +19,14 @@ und ohne gemeinsames WLAN. Läuft der Tunnel nicht, antwortet die
 Tunnel-URL mit 404.
 
 Staging und Production laufen **isoliert** in eigenen Docker-Containern
-(`fieldworksdiary-backend-staging` vs `fieldworksdiary-backend-prod`) mit eigenen
+(`tabularius-staging` vs `tabularius-prod`) mit eigenen
 SQLite-Volumes. Ein Crash der Staging-Datenbank kann Prod nicht treffen.
 
 ## Build und Deploy
 
 - Jeder Push auf `main` baut über `.github/workflows/docker-release.yml`
   das Backend-Image (amd64 + arm64) und legt es in der GitHub Container
-  Registry ab: `ghcr.io/jobrunner/fieldworksdiary`. Ein main-Build
+  Registry ab: `ghcr.io/jobrunner/tabularius`. Ein main-Build
   bekommt nur den Short-SHA (`<kurz>`, ohne Präfix) und `edge`, das
   bewusst auf den neuesten Stand von `main` wandert. Jedes Image erhält
   eine signierte Build-Provenance (`gh attestation verify`). Ein
@@ -61,15 +61,15 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 ```
 
-Prod zieht `ghcr.io/jobrunner/fieldworksdiary:${FWD_VERSION}`, die
-Version steht in der `.env` auf der Docker-Maschine (`FWD_VERSION=0.1.0`).
+Prod zieht `ghcr.io/jobrunner/tabularius:${TABULARIUS_VERSION}`, die
+Version steht in der `.env` auf der Docker-Maschine (`TABULARIUS_VERSION=0.1.0`).
 Fehlt sie, bricht compose ab. X.Y.Z gibt es nur für Releases und zeigt
 immer auf dasselbe Image; jeder main-Build bekommt seinen Short-SHA und
-`edge` (wandert mit). Staging nutzt `BACKEND_IMAGE` mit Default
+`edge` (wandert mit). Staging nutzt `TABULARIUS_IMAGE` mit Default
 `:staging`, Override per ENV:
 
 ```bash
-BACKEND_IMAGE=ghcr.io/.../fieldworksdiary:staging-abc1234 \
+TABULARIUS_IMAGE=ghcr.io/.../tabularius:staging-abc1234 \
   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --no-build
 ```
 
@@ -80,10 +80,10 @@ und vier Schemes:
 
 | Scheme | Config | Wofür |
 |---|---|---|
-| `Fieldworksdiary` | Debug | Lokale Entwicklung - „Legulus Dev“, DEV-Icon, Tunnel (Gerät) bzw. `http://localhost:8090` (Simulator) |
-| `Fieldworksdiary-Test` | Test | Testläufe gegen die Test-Instanz - „Legulus Test“ (`app.legulus.test`), DEV-Icon, `http://localhost:8092` |
-| `Fieldworksdiary-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
-| `Fieldworksdiary-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
+| `Legulus` | Debug | Lokale Entwicklung - „Legulus Dev“, DEV-Icon, Tunnel (Gerät) bzw. `http://localhost:8090` (Simulator) |
+| `Legulus-Test` | Test | Testläufe gegen die Test-Instanz - „Legulus Test“ (`app.legulus.test`), DEV-Icon, `http://localhost:8092` |
+| `Legulus-Staging` | Staging | TestFlight-Beta-Builds - „Legulus Beta“, BETA-Icon, tabularius-stage |
+| `Legulus-Prod` | Release | App-Store-Submits - „Legulus“, Prod-Icon, tabularius |
 
 Jede Config bekommt per Build-Setting:
 
@@ -105,15 +105,15 @@ Endpoint bleibt, er lässt sich in den Settings ändern.
 
 ### Tests gegen die Test-Instanz
 
-`Fieldworksdiary-Test` hat eine eigene Bundle-ID und damit im Simulator
+`Legulus-Test` hat eine eigene Bundle-ID und damit im Simulator
 einen eigenen App-Container, getrennt von „Legulus Dev“. Die App zeigt
 auf eine eigene Tabularius-Instanz aus `docker-compose.test.yml`
 (eigenständiges Compose-File, kein Overlay): Container
-`fieldworksdiary-backend-test`, Port 8092, Daten in
-`backend/pb_data_test`. Sie läuft neben der Dev-Instanz.
+`tabularius-test`, Port 8092, Daten in
+`tabularius/pb_data_test`. Sie läuft neben der Dev-Instanz.
 
 Vor jedem Testlauf ruft das Scheme `scripts/reset-test-tabularius.sh`
-auf. Das Script stoppt den Container, leert `backend/pb_data_test`,
+auf. Das Script stoppt den Container, leert `tabularius/pb_data_test`,
 startet neu (die Migrationen bauen das Schema) und legt den festen
 Test-Nutzer an. Jeder Lauf beginnt so im selben Zustand. Das
 Datenverzeichnis ist gitignored: im Repo stehen die Migrationen und
@@ -123,12 +123,12 @@ Xcode ignoriert den Exit-Code einer Pre-Action; deshalb schlägt
 zusätzlich `TestTabulariusTests.testTestInstanceIsReachable` fehl, wenn
 die Instanz fehlt. `scripts/check-ios.sh` testet in diesem Scheme.
 
-Auch das Scheme `Fieldworksdiary` testet in der Test-Config mit
+Auch das Scheme `Legulus` testet in der Test-Config mit
 derselben Pre-Action (Cmd-U trifft damit nie „Legulus Dev“).
 `scripts/test-ios-no-build.sh` ruft das Reset-Script selbst auf, weil
 `test-without-building` keine Pre-Action ausführt.
 
-Die UI-Tests (`ios/FieldworksdiaryUITests/`) steuern die Sitzung über
+Die UI-Tests (`ios/LegulusUITests/`) steuern die Sitzung über
 Launch-Argumente, die nur Debug-Builds auswerten
 (`AuthSession.applyUITestSession`): `-UITestsSignedOut true` startet
 abgemeldet, zusätzlich `-UITestsSignInEmail`/`-UITestsSignInPassword`
@@ -153,8 +153,8 @@ ssh <user>@<host>
 
 # 2. Repo klonen
 cd /srv
-git clone https://gitlab.com/fieldworksdiary/fieldworksdiary-ng.git fieldworksdiary
-cd fieldworksdiary
+git clone git@github.com:jobrunner/legulus.git legulus
+cd legulus
 
 # 3. Verzeichnisse für DB-Volumes anlegen
 mkdir -p pb_data_staging pb_data_prod
@@ -197,13 +197,13 @@ Die ASC-API-Key (`AuthKey_*.p8`) hat Zugriff auf **beide** Apps
 
 ```bash
 # Auf der Docker-Maschine, im Repo-Verzeichnis:
-cd /srv/fieldworksdiary
+cd /srv/legulus
 git pull                                   # compose-Files aktuell halten
 
 # Backup der Prod-DB vor jedem Update (Migrationen laufen beim Start)
 cp -a pb_data_prod "pb_data_prod_backups/$(date +%Y%m%d-%H%M%S)"
 
-# Zielversion in .env eintragen (FWD_VERSION=X.Y.Z)
+# Zielversion in .env eintragen (TABULARIUS_VERSION=X.Y.Z)
 docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build
 curl -fsS http://localhost:8090/api/health

@@ -4,11 +4,11 @@
 # Aufruf:   periphery scan
 # Erwartet: ein gebautes Xcode-Projekt unter ios/.
 
-project: ios/Fieldworksdiary.xcodeproj
+project: ios/Legulus.xcodeproj
 schemes:
-  - Fieldworksdiary
+  - Legulus
 targets:
-  - Fieldworksdiary
+  - Legulus
 
 # SwiftUI- und ObjC-Lifecycle-Methoden, die der Build-System
 # über `@main`, `@StateObject` oder das System-Runtime aufruft,
@@ -39,4 +39,4 @@ report_exclude:
 
 # False-Positive-Klassen, die wir bewusst behalten:
 retain_files:
-  - ios/Fieldworksdiary/Core/Observability/Log.swift   # einzelne Logger werden je nach Feature genutzt
+  - ios/Legulus/Core/Observability/Log.swift   # einzelne Logger werden je nach Feature genutzt

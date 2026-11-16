@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /backend
+    directory: /tabularius
     schedule:
       interval: weekly
       day: monday
@@ -26,7 +26,7 @@ updates:
       default-days: 7
 
   - package-ecosystem: docker
-    directory: /backend
+    directory: /tabularius
     schedule:
       interval: weekly
       day: monday

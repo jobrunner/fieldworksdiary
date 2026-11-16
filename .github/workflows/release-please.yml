@@ -15,7 +15,7 @@
 # version always matches what both components report at runtime.
 #
 # No goreleaser job here — the backend ships as a Docker image (see
-# deploy-*.yml), not as a standalone binary release, and iOS ships via
+# docker-release.yml), not as a standalone binary release, and iOS ships via
 # TestFlight/App Store, not a GitHub Release asset.
 name: release-please
 

@@ -50,7 +50,7 @@ xcb() {
 
 section "Finde jüngste .xctestrun in DerivedData"
 XCTESTRUN="$(find "$HOME/Library/Developer/Xcode/DerivedData" \
-  -path '*Fieldworksdiary-*/Build/Products/*.xctestrun' \
+  -path '*Legulus-*/Build/Products/*.xctestrun' \
   -print 2>/dev/null \
   | xargs -I{} stat -f '%m {}' 2>/dev/null \
   | sort -rn \

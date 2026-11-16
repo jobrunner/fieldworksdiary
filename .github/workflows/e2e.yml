@@ -24,10 +24,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build backend image
+      - name: Build tabularius image
         run: docker compose build
 
-      - name: Start backend
+      - name: Start tabularius
         run: docker compose up -d
 
       - name: Wait for /api/health
@@ -52,7 +52,7 @@ jobs:
 
       - name: Run Postman collection
         run: |
-          newman run tests/Fieldworksdiary.postman_collection.json \
+          newman run tests/Tabularius.postman_collection.json \
             --env-var baseUrl=http://localhost:8090 \
             --delay-request 3000 \
             --reporters cli,junit \
@@ -66,6 +66,6 @@ jobs:
           path: newman-results.xml
           retention-days: 14
 
-      - name: Stop backend
+      - name: Stop tabularius
         if: always()
         run: docker compose down -v

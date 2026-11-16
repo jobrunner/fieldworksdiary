@@ -89,13 +89,13 @@ if ! printf '%s' "$FIRST_LINE" | grep -qE "$PATTERN"; then
 
   Format:  type(scope)?!?: subject
   Types:   feat|fix|chore|docs|refactor|perf|test|build|ci|style|revert
-  Scope:   optional, kleinbuchstaben/digits/`-` (z. B. ios, backend, sync, deps)
+  Scope:   optional, kleinbuchstaben/digits/`-` (z. B. ios, tabularius, sync, deps)
   !        optional, kennzeichnet Breaking-Change
   Subject: 1–100 Zeichen, kein Punkt am Ende
 
   Beispiele:
     feat(ios): Datenschutz-Link in SettingsView
-    fix(backend): SHA-256 statt SHA-1 für Cache-Keys
+    fix(tabularius): SHA-256 statt SHA-1 für Cache-Keys
     chore(deps): bump x/oauth2 → v0.36.0
     refactor(grouping)!: Coordinate-Type-Signature gewechselt
 

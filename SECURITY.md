@@ -1,6 +1,6 @@
 # Security Policy
 
-Diese Datei beschreibt, wie Sicherheitsprobleme in Fieldworksdiary gemeldet
+Diese Datei beschreibt, wie Sicherheitsprobleme in Legulus gemeldet
 werden und welche Versionen unterstützt sind. GitHub greift den Inhalt
 im **Security**-Tab des Repositories auf.
 
@@ -25,7 +25,7 @@ Stattdessen:
    `Security → Advisories → Report a vulnerability` im Repo.
    Funktioniert auch ohne dass Issues für dich sichtbar sind.
 2. **Per E-Mail**: `jo@brunner.io` mit Betreff
-   `[fieldworksdiary-security]`. PGP-Key auf Anfrage.
+   `[legulus-security]`. PGP-Key auf Anfrage.
 
 Worauf du zählen kannst:
 - Empfangsbestätigung **innerhalb 72 Stunden**.
@@ -48,8 +48,8 @@ Analyse: `docs/PRIVACY-DATA-FLOW.md` (TODO, Phase ⩾ 12).
 | User-Account (E-Mail, Password-Hash) | hoch | PocketBase `users` (bcrypt) |
 | Apple-Sign-in Identity-Token | mittel | nicht persistiert, nur als Austausch-Material gegen PB-JWT |
 | PB-JWT (Access-Token) | hoch | iOS Keychain, `kSecAttrAccessibleAfterFirstUnlock` |
-| Sample-Records (lat/lon, Determinations) | hoch (PII) | PB-SQLite (`backend/pb_data/data.db`) |
-| Storage (Permit-PDFs, Labels) | mittel | PB-Filesystem (`backend/pb_data/storage/`) |
+| Sample-Records (lat/lon, Determinations) | hoch (PII) | PB-SQLite (`tabularius/pb_data/data.db`) |
+| Storage (Permit-PDFs, Labels) | mittel | PB-Filesystem (`tabularius/pb_data/storage/`) |
 | Ortus-Cache (lat/lon → Ortsname) | niedrig | PB-`geocache`, 7-Tage-TTL |
 
 ### Vertrauensgrenzen

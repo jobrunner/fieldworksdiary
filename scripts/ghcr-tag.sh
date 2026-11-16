@@ -12,7 +12,7 @@
 # Digest geprüft (z.B. seine Attestation), immer den Digest übergeben:
 # Ein Tag kann sich zwischen Prüfung und Kopie ändern.
 #
-# <repo> ohne Registry, z.B. jobrunner/fieldworksdiary. Zugangsdaten
+# <repo> ohne Registry, z.B. jobrunner/tabularius. Zugangsdaten
 # kommen aus GHCR_USER und GHCR_TOKEN (in Actions: github.actor und
 # GITHUB_TOKEN mit packages: write). Ohne beide wird anonym gelesen.
 #
@@ -80,7 +80,14 @@ copy() {
       -H "Authorization: Bearer ${tok}" -H "Content-Type: ${ct}" \
       --data-binary @"$dir/manifest" \
       "https://ghcr.io/v2/${repo}/manifests/${tag}"
-    got=$(digest "$repo" "$tag" "$tok")
+    # ghcr.io liefert einen neu angelegten Tag direkt nach dem PUT
+    # gelegentlich noch als 404 aus. Deshalb ein paar Mal nachlesen,
+    # bevor die Prüfung als gescheitert gilt.
+    for _ in 1 2 3 4 5 6; do
+      got=$(digest "$repo" "$tag" "$tok")
+      [[ "$got" == "$want" ]] && break
+      sleep 5
+    done
     if [[ "$got" != "$want" ]]; then
       echo "ghcr-tag: ${repo}:${tag} zeigt auf ${got}, erwartet ${want}" >&2
       rm -rf "$dir"; return 1

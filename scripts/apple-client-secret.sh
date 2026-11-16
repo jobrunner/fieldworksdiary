@@ -7,7 +7,7 @@
 #   bash scripts/apple-client-secret.sh \
 #     --team-id  AB12CD34E5 \
 #     --key-id   7XK4F9D2AB \
-#     --client   org.fieldworksdiary.dev \
+#     --client   app.legulus.dev \
 #     --key-file ~/Keys/AuthKey_7XK4F9D2AB.p8
 #
 # Gibt den JWT auf stdout aus. Pro Stage gesondert generieren —
