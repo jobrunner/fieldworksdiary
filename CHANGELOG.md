@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.4.0](https://github.com/jobrunner/fieldworksdiary/compare/v0.3.1...v0.4.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ios:** Die lokale Datenbank heißt legulus.sqlite, ohne Migration von fieldworksdiary.sqlite. Bestehende Installationen starten mit leerer DB und laden die Daten neu vom Server. Nicht synchronisierte Proben sind danach nicht mehr sichtbar, deshalb vor dem Update synchronisieren.
+* **tabularius:** Das Image liegt jetzt unter ghcr.io/jobrunner/tabularius, die Version kommt aus TABULARIUS_VERSION (vorher FWD_VERSION), Staging nutzt TABULARIUS_IMAGE. Compose-Service und Container heißen tabularius bzw. tabularius-{dev,test,staging,prod}, die Projekte legulus, legulus-staging und legulus-prod. Auf dem Server vor dem Update die alten Container stoppen und .env sowie deploy.sh anpassen. Lokal wandert pb_data nach tabularius/pb_data.
+
+### Bug Fixes
+
+* **ci:** ghcr-tag liest neuen Tag nach dem PUT mehrfach nach ([7302614](https://github.com/jobrunner/fieldworksdiary/commit/7302614e0fe2a0b932cc77092d2fe32b5a77bd78))
+* **ios:** alte Datenbankdatei beim ersten Start übernehmen ([15ca93c](https://github.com/jobrunner/fieldworksdiary/commit/15ca93c7d56c0815db027f4dbb56c54f7fdbce36))
+
+
+### Code Refactoring
+
+* **ios:** Projekt, Targets und Package heißen Legulus ([45beb25](https://github.com/jobrunner/fieldworksdiary/commit/45beb252a533d41c0f16d4e64e9a5e93908f5a28))
+
+
+### Build System
+
+* **tabularius:** Backend heißt tabularius, Image ghcr.io/jobrunner/tabularius ([d86b951](https://github.com/jobrunner/fieldworksdiary/commit/d86b9517cf9520b80d9965e52b079e291edcfbf6))
+
 ## [0.3.1](https://github.com/jobrunner/fieldworksdiary/compare/v0.3.0...v0.3.1) (2026-11-16)
 
 
