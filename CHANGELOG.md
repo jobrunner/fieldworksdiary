@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/jobrunner/fieldworksdiary/compare/v0.2.0...v0.3.0) (2026-11-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **backend:** Tokens für org.fieldworksdiary.* werden ohne APPLE_ALLOWED_AUDIENCES-Override nicht mehr akzeptiert.
+* **ios:** Bundle-IDs wechseln von org.fieldworksdiary.* auf app.legulus.*. Bestehende Installationen werden nicht aktualisiert, sondern stehen als eigene App daneben; Keychain-Service und Log-Subsystem heißen app.legulus.*.
+
+### Features
+
+* **backend:** Apple-Audiences und Ortus-Default auf legulus.app ([957aad9](https://github.com/jobrunner/fieldworksdiary/commit/957aad932103d652b16ae712f258001d08825275))
+* **ios:** Rebranding auf Legulus mit eigenen Icons und Endpoints pro Stage ([1353367](https://github.com/jobrunner/fieldworksdiary/commit/135336767c33bb9ec3d9eefa92a209087f26ba5b))
+
+
+### Bug Fixes
+
+* **build:** commit-msg-Hook nutzt gebautes commitlint auch ohne Nix im PATH ([1c5148d](https://github.com/jobrunner/fieldworksdiary/commit/1c5148d70724b75d0ee667f66c9afe4a1500a69e))
+
 ## [0.2.0](https://github.com/jobrunner/fieldworksdiary/compare/v0.1.0...v0.2.0) (2026-11-14)
 
 
