@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1](https://github.com/jobrunner/fieldworksdiary/compare/v0.3.0...v0.3.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **backend:** Test-Instanz nur auf Loopback veröffentlichen ([59f5226](https://github.com/jobrunner/fieldworksdiary/commit/59f5226d70a50f98eca2da8124919b291151b86f))
+* **ios:** Sample-Ansicht bei Anzeigezoom nicht mehr nach links verschoben ([0309186](https://github.com/jobrunner/fieldworksdiary/commit/03091867456e747e5b4f9766b873b5a2249b02d2))
+* **ios:** Sample-Ansicht bei Anzeigezoom nicht mehr nach links verschoben ([38da18a](https://github.com/jobrunner/fieldworksdiary/commit/38da18adc06f8e5195f6aa8431f29df4d7fdbdc8))
+* **ios:** Test-Instanz an allen Test-Einstiegen einheitlich vorbereiten ([1912efd](https://github.com/jobrunner/fieldworksdiary/commit/1912efdad28a8a3349cb09146d52a26946a9c220))
+
 ## [0.3.0](https://github.com/jobrunner/fieldworksdiary/compare/v0.2.0...v0.3.0) (2026-11-16)
 
 
