@@ -287,7 +287,7 @@
     "Centroid" : {
 
     },
-    "Das Backend schickt einen Link an deine E-Mail. SMTP muss auf der Synology eingerichtet sein, sonst kommt nichts an." : {
+    "Das Backend schickt einen Link an deine E-Mail. SMTP muss auf der Docker-Maschine eingerichtet sein, sonst kommt nichts an." : {
 
     },
     "Daten" : {
@@ -360,9 +360,6 @@
 
     },
     "Felderfassung für entomologische Aufsammlungen" : {
-
-    },
-    "Legulus" : {
 
     },
     "Format" : {
@@ -545,6 +542,9 @@
 
     },
     "Lege im Tab 'Neu' deine erste Probe an." : {
+
+    },
+    "Legulus" : {
 
     },
     "Lokale Daten bleiben erhalten. Der Token wird aus dem Schlüsselbund entfernt." : {
