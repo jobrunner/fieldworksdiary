@@ -24,7 +24,7 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X go.mett.io/tabularius/internal/version.Version=${VERSION} -X go.mett.io/tabularius/internal/version.Commit=${COMMIT}" -o /out/tabularius .
 
-FROM alpine:3.24.3
+FROM alpine:3.24.4
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /out/tabularius /app/tabularius
