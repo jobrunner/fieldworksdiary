@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/jobrunner/legulus/compare/v0.4.0...v0.4.1) (2026-11-17)
+
+
+### Documentation
+
+* Changelog 0.4.0 zur Datenbank-Übernahme korrigieren ([3e3c55b](https://github.com/jobrunner/legulus/commit/3e3c55bb8d2564a5ac235f1b060ea8d0e499461a))
+
 ## [0.4.0](https://github.com/jobrunner/fieldworksdiary/compare/v0.3.1...v0.4.0) (2026-11-16)
 
 
