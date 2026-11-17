@@ -43,6 +43,9 @@ PR auf `main` → manueller Approval-Gate → Prod-Deploy.
       der Job-Summary steht der Digest.
 - [ ] Attestation prüfen:
       `gh attestation verify oci://ghcr.io/jobrunner/tabularius:X.Y.Z -R jobrunner/legulus`
+      Ausnahme 0.4.0: Das Image entstand vor der Umbenennung des Repos
+      und besteht die Prüfung nur mit `-R jobrunner/fieldworksdiary`.
+      Ab 0.4.1 gilt `-R jobrunner/legulus`.
 - [ ] Image-Scan im Security-Tab (Kategorie `trivy-release-image`)
       für den Release-Commit ohne neue HIGH/CRITICAL
 - [ ] **Dry-Run**: Image lokal hochfahren, Postman-Collection grün:

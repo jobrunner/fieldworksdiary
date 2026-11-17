@@ -5,7 +5,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* **ios:** Die lokale Datenbank heißt legulus.sqlite, ohne Migration von fieldworksdiary.sqlite. Bestehende Installationen starten mit leerer DB und laden die Daten neu vom Server. Nicht synchronisierte Proben sind danach nicht mehr sichtbar, deshalb vor dem Update synchronisieren.
+* **ios:** Die lokale Datenbank heißt legulus.sqlite. Die alte Datei fieldworksdiary.sqlite wird beim ersten Start übernommen (15ca93c), bestehende Installationen behalten ihre Daten. Die Sync-Cursor haben neue Keys, deshalb gleicht die App nach dem Update einmalig vollständig mit dem Server ab.
 * **tabularius:** Das Image liegt jetzt unter ghcr.io/jobrunner/tabularius, die Version kommt aus TABULARIUS_VERSION (vorher FWD_VERSION), Staging nutzt TABULARIUS_IMAGE. Compose-Service und Container heißen tabularius bzw. tabularius-{dev,test,staging,prod}, die Projekte legulus, legulus-staging und legulus-prod. Auf dem Server vor dem Update die alten Container stoppen und .env sowie deploy.sh anpassen. Lokal wandert pb_data nach tabularius/pb_data.
 
 ### Bug Fixes
