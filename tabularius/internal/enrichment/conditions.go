@@ -214,6 +214,41 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 	e.enrich(ctx, sampleID, false)
 }
 
+// BackfillSample fills a sample from before Phase T: one with a
+// coordinate whose conditions_status is still empty. It marks the
+// sample pending (no version bump: nothing a client holds changes yet)
+// and asks Tempus. It reports false when the sample does not qualify
+// (any more), e.g. because the app delivered values in the meantime.
+// A failed query leaves the sample pending for the refresh job.
+func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string) bool {
+	if e.Tempus == nil {
+		return false
+	}
+	marked := false
+	err := e.App.RunInTransaction(func(tx core.App) error {
+		rec, err := tx.FindRecordById("samples", sampleID)
+		if err != nil {
+			return err
+		}
+		if rec.GetString("conditions_status") != "" || !hasCoordinate(rec) {
+			return nil
+		}
+		conditions.Clear(rec)
+		marked = true
+		return tx.SaveNoValidate(rec)
+	})
+	if err != nil {
+		e.log().Warn("conditions: backfill mark failed",
+			slog.String("sample_id", sampleID), slog.String("service", tempusServiceName), slog.Any("err", err))
+		return false
+	}
+	if !marked {
+		return false
+	}
+	e.refreshSafely(ctx, sampleID)
+	return true
+}
+
 // refreshSample is EnrichSample for the refresh job: it also asks again
 // for a provisional sample.
 func (e *ConditionsEnricher) refreshSample(ctx context.Context, sampleID string) {
