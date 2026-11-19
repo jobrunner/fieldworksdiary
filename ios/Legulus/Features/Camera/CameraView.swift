@@ -22,6 +22,13 @@ struct CameraView: View {
     @State private var count = 0
     @State private var lastPhoto: UIImage?
     @State private var errorMessage: String?
+    /// The last fix of this session; survives the provider going back
+    /// to „locating“ for the next one.
+    @State private var lastFix = FixBox()
+
+    /// How often the position is refreshed while the camera is open;
+    /// below `LocationThreshold.staleness`.
+    private let fixRefreshInterval: Duration = .seconds(10)
 
     @ScaledMetric(relativeTo: .body) private var shutterSize: CGFloat = 76
     @ScaledMetric(relativeTo: .body) private var lastPhotoSize: CGFloat = 56
@@ -41,12 +48,25 @@ struct CameraView: View {
         .task {
             camera.onPhoto = store
             camera.onCaptureError = { errorMessage = $0 }
-            camera.locationProvider = { [location] in
-                if case let .fixed(fix) = location.status { return fix }
-                return nil
+            camera.locationProvider = { [lastFix] in
+                // Only a fix that is still fresh: a series can last
+                // minutes and metres. Without one the photo carries no
+                // GPS rather than the place the series began at.
+                guard let fix = lastFix.location, LocationThreshold.accepts(fix) else { return nil }
+                return fix
             }
             location.requestFix()
             await camera.start()
+            // The provider stops after each fix; keep asking while the
+            // camera is open.
+            while !Task.isCancelled {
+                try? await Task.sleep(for: fixRefreshInterval)
+                if Task.isCancelled { break }
+                location.requestFix()
+            }
+        }
+        .onChange(of: location.status) { _, status in
+            if case let .fixed(fix) = status { lastFix.location = fix }
         }
         .onDisappear { camera.stop() }
         .accessibilityAddTraits(.isModal)
@@ -92,12 +112,28 @@ struct CameraView: View {
             }
             .accessibilityLabel(CameraSession.flashLabel(camera.flashMode))
             .accessibilityHint("Schaltet zwischen automatischem Blitz und ohne Blitz um.")
+            // Zoom and focus by button as well: pinch and tap on the
+            // picture are gestures VoiceOver and Switch Control cannot
+            // perform.
+            iconButton("minus.magnifyingglass", label: "Herauszoomen") { camera.zoomOut() }
+            iconButton("plus.magnifyingglass", label: "Hineinzoomen") { camera.zoomIn() }
+            iconButton("scope", label: "In der Bildmitte scharfstellen") { camera.focusCenter() }
             Spacer(minLength: AppSpacing.sm)
             doneButton
         }
         .foregroundStyle(.white)
         .padding(.horizontal, AppSpacing.lg)
         .padding(.vertical, AppSpacing.sm)
+    }
+
+    private func iconButton(_ systemName: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(AppFont.sectionTitle)
+                .frame(minWidth: minTapTarget, minHeight: minTapTarget)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
     }
 
     private var doneButton: some View {
@@ -218,6 +254,12 @@ struct CameraView: View {
         lastPhoto = PhotoStorage.thumbnail(data: data, maxPixel: lastPhotoPixels)
         AccessibilityNotification.Announcement("Foto \(count) aufgenommen").post()
     }
+}
+
+/// Holds the latest fix for the capture closure, which outlives the
+/// view value that created it.
+private final class FixBox {
+    var location: CLLocation?
 }
 
 #Preview("Ohne Kamera") {

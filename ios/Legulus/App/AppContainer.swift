@@ -107,6 +107,7 @@ final class AppContainer: ObservableObject {
             photoUploadAllowed: { [networkStatus] in
                 PhotoUploadPolicy.mayUpload(wifiOnly: config.photosWiFiOnly, onWiFi: networkStatus.isOnWiFi)
             },
+            photoWiFiOnly: { config.photosWiFiOnly },
             onSampleSynced: { fieldtripID in
                 Task { await hydrator.pullOne(fieldtripID) }
             },

@@ -377,6 +377,9 @@ final class SyncRunner: ObservableObject {
     /// False holds photo uploads back („Fotos nur im WLAN hochladen“
     /// without Wi-Fi). Sample data syncs regardless.
     private let photoUploadAllowed: () -> Bool
+    /// „Fotos nur im WLAN hochladen“ is on: the upload request itself
+    /// refuses cellular.
+    private let photoWiFiOnly: () -> Bool
     private let now: () -> Date
     /// Photos whose upload failed for good (file too large, rejected):
     /// not retried until the app starts again.
@@ -408,6 +411,7 @@ final class SyncRunner: ObservableObject {
              PhotoClient(endpoint: $0, auth: $1)
          },
          photoUploadAllowed: @escaping () -> Bool = { true },
+         photoWiFiOnly: @escaping () -> Bool = { false },
          now: @escaping () -> Date = Date.init,
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
@@ -429,6 +433,7 @@ final class SyncRunner: ObservableObject {
         self.featuresClientFactory = featuresClientFactory
         self.photoClientFactory = photoClientFactory
         self.photoUploadAllowed = photoUploadAllowed
+        self.photoWiFiOnly = photoWiFiOnly
         self.now = now
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
@@ -1285,6 +1290,9 @@ final class SyncRunner: ObservableObject {
         let client = photoClientFactory(endpoint, authProvider())
         var backendIDs: [String: String?] = [:]
         for photo in due {
+            // Checked before every photo: Wi-Fi may drop, or the user
+            // may switch „nur im WLAN“ on, in the middle of a batch.
+            guard photoUploadAllowed() else { return }
             let backendID: String?
             if let known = backendIDs[photo.sampleId] {
                 backendID = known
@@ -1314,7 +1322,8 @@ final class SyncRunner: ObservableObject {
                 sampleBackendID: backendSampleID,
                 clientUUID: photo.clientUuid,
                 clientUpdatedAt: photo.clientUpdatedAt,
-                fileURL: fileURL
+                fileURL: fileURL,
+                allowsCellularAccess: !photoWiFiOnly()
             )
             // Deleted while the upload was on the wire: take the record
             // the server just created away again.
@@ -1340,25 +1349,33 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// Server-side delete of a photo that was already uploaded. The
-    /// mutation's `entityId` is the backend id; 404 means already gone.
+    /// Server-side delete of a photo. With a backend id in `entityId`
+    /// the record is deleted directly. Without one the mutation is a
+    /// tombstone (`PhotoDeletePayload`): the photo was deleted before
+    /// its upload was confirmed, so the record is looked up by client
+    /// uuid first — nothing found means nothing arrived. 404 counts as
+    /// already gone.
     private func executePhotoDelete(_ mutation: PendingMutation) async {
-        guard let backendID = mutation.entityId, !backendID.isEmpty else {
-            try? mutationsStore.dequeue(mutation.id)
-            return
-        }
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         let client = photoClientFactory(endpoint, authProvider())
         do {
             inFlight += 1
             defer { inFlight -= 1 }
-            do {
-                try await client.delete(id: backendID)
-            } catch SampleClientError.http(status: 404, _) {
-                // Already gone on the server.
+            var backendID = mutation.entityId ?? ""
+            if backendID.isEmpty,
+               let tombstone = try? JSONDecoder().decode(PhotoDeletePayload.self, from: mutation.payloadJson)
+            {
+                backendID = try await client.findID(clientUUID: tombstone.clientUUID) ?? ""
+            }
+            if !backendID.isEmpty {
+                do {
+                    try await client.delete(id: backendID)
+                } catch SampleClientError.http(status: 404, _) {
+                    // Already gone on the server.
+                }
+                Log.sync.info("photo deleted on server \(backendID, privacy: .public)")
             }
             try? mutationsStore.dequeue(mutation.id)
-            Log.sync.info("photo deleted on server \(backendID, privacy: .public)")
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             try? mutationsStore.recordFailure(mutation.id, error: message)

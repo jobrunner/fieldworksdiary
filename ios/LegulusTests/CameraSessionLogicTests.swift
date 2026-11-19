@@ -44,6 +44,26 @@ final class CameraSessionLogicTests: XCTestCase {
         XCTAssertEqual(gps[kCGImagePropertyGPSLongitude as String] as? Double, 10.031340)
     }
 
+    /// On the virtual devices factor 1 is the ultra-wide lens. The
+    /// camera opens on the main lens, like the system camera.
+    func testInitialZoom_StartsOnTheMainLens() {
+        XCTAssertEqual(CameraSession.initialZoom(deviceType: .builtInTripleCamera, switchOverFactors: [2, 6]), 2)
+        XCTAssertEqual(CameraSession.initialZoom(deviceType: .builtInDualWideCamera, switchOverFactors: [2]), 2)
+        XCTAssertEqual(
+            CameraSession.initialZoom(deviceType: .builtInDualCamera, switchOverFactors: [2]),
+            1,
+            "Weitwinkel + Tele: 1 ist die Hauptlinse"
+        )
+        XCTAssertEqual(CameraSession.initialZoom(deviceType: .builtInWideAngleCamera, switchOverFactors: []), 1)
+        XCTAssertEqual(CameraSession.initialZoom(deviceType: .builtInTripleCamera, switchOverFactors: []), 1)
+    }
+
+    func testZoomStep() {
+        XCTAssertEqual(CameraSession.zoomStep, 1.5)
+        XCTAssertEqual(CameraSession.clampedZoom(2 * CameraSession.zoomStep, min: 1, max: 15), 3)
+        XCTAssertEqual(CameraSession.clampedZoom(1 / CameraSession.zoomStep, min: 1, max: 15), 1)
+    }
+
     func testFlashLabel() {
         XCTAssertEqual(CameraSession.flashLabel(.auto), "Blitz: automatisch")
         XCTAssertEqual(CameraSession.flashLabel(.off), "Blitz: aus")

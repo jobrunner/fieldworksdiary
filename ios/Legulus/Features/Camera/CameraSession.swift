@@ -76,6 +76,19 @@ final class CameraSession: NSObject, ObservableObject {
         return settings
     }
 
+    /// Factor of one tap on the zoom buttons.
+    nonisolated static let zoomStep: CGFloat = 1.5
+
+    /// The zoom factor the camera opens with. On the virtual devices
+    /// that start with the ultra-wide lens, factor 1 is that lens; the
+    /// first switch-over factor is the main lens.
+    nonisolated static func initialZoom(deviceType: AVCaptureDevice.DeviceType, switchOverFactors: [CGFloat]) -> CGFloat {
+        guard [.builtInTripleCamera, .builtInDualWideCamera].contains(deviceType),
+              let main = switchOverFactors.first
+        else { return 1 }
+        return main
+    }
+
     nonisolated static func flashLabel(_ mode: AVCaptureDevice.FlashMode) -> String {
         mode == .off ? "Blitz: aus" : "Blitz: automatisch"
     }
@@ -151,6 +164,30 @@ final class CameraSession: NSObject, ObservableObject {
         let core = core
         core.queue.async { core.zoomEnded() }
     }
+
+    /// One step in or out — the button path next to the pinch, which
+    /// VoiceOver and Switch Control cannot perform.
+    func zoomIn() {
+        stepZoom(Self.zoomStep)
+    }
+
+    func zoomOut() {
+        stepZoom(1 / Self.zoomStep)
+    }
+
+    private func stepZoom(_ factor: CGFloat) {
+        let core = core
+        core.queue.async {
+            core.zoom(by: factor)
+            core.zoomEnded()
+        }
+    }
+
+    /// Focus and expose for the centre of the picture — the button path
+    /// next to tap-to-focus.
+    func focusCenter() {
+        focus(at: CGPoint(x: 0.5, y: 0.5))
+    }
 }
 
 /// The AVFoundation objects of `CameraSession`. Everything except
@@ -188,6 +225,16 @@ private final class CameraCore: @unchecked Sendable {
             session.commitConfiguration()
             device = camera
             rotationCoordinator = AVCaptureDevice.RotationCoordinator(device: camera, previewLayer: nil)
+            let initial = CameraSession.initialZoom(
+                deviceType: camera.deviceType,
+                switchOverFactors: camera.virtualDeviceSwitchOverVideoZoomFactors.map { CGFloat(truncating: $0) }
+            )
+            if initial != camera.videoZoomFactor, (try? camera.lockForConfiguration()) != nil {
+                camera.videoZoomFactor = CameraSession.clampedZoom(
+                    initial, min: camera.minAvailableVideoZoomFactor, max: camera.maxAvailableVideoZoomFactor
+                )
+                camera.unlockForConfiguration()
+            }
             zoomAtGestureStart = camera.videoZoomFactor
         }
         if !session.isRunning { session.startRunning() }

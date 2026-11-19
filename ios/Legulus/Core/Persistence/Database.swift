@@ -600,5 +600,10 @@ final class Database {
             t.add(column: "attempts", .integer).notNull().defaults(to: 0)
             t.add(column: "last_attempt_at", .datetime)
         }
+        // The uploader used to store `syncing` before the request; an
+        // app killed mid-upload left such rows behind and no pass ever
+        // picked them up again. Uploads are repeatable, so they just
+        // start over.
+        try db.execute(sql: "UPDATE local_photos SET sync_status = 'pending' WHERE sync_status = 'syncing'")
     }
 }

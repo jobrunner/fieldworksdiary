@@ -126,6 +126,28 @@ final class SampleEditorPhotoTests: XCTestCase {
         XCTAssertEqual(queued.first?.entityId, "pbphoto00000001")
     }
 
+    /// Never confirmed, but the sample is on the server: an upload may
+    /// have arrived without its answer. The delete leaves a tombstone
+    /// with the client uuid, so the sync can look the record up.
+    func testDeletePhoto_UnconfirmedOnPushedSampleLeavesTombstone() throws {
+        let vm = try makeVM()
+        var sample = try XCTUnwrap(samples.fetchById(vm.sampleID))
+        sample.backendId = "pbsample0000001"
+        sample.syncStatus = .synced
+        try samples.update(sample)
+        try vm.addCapturedPhoto(PhotoStorageTests.jpeg(width: 40, height: 30))
+        let row = try XCTUnwrap(photos.fetchBySample(vm.sampleID).first)
+
+        vm.deletePhoto(id: row.id)
+
+        let queued = try photoMutations()
+        XCTAssertEqual(queued.count, 1)
+        XCTAssertEqual(queued.first?.op, .delete)
+        XCTAssertNil(queued.first?.entityId)
+        let payload = try XCTUnwrap(queued.first.map { try JSONDecoder().decode(PhotoDeletePayload.self, from: $0.payloadJson) })
+        XCTAssertEqual(payload.clientUUID, row.clientUuid)
+    }
+
     func testDeletePhoto_UnknownIDDoesNothing() throws {
         let vm = try makeVM()
         try vm.addCapturedPhoto(PhotoStorageTests.jpeg(width: 40, height: 30))

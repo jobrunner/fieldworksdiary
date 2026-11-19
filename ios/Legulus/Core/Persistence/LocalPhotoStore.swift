@@ -31,6 +31,19 @@ final class LocalPhotoStore {
     }
 
     /// All photos newest-first. Backs the top-level Photos gallery.
+    /// Deletes the photo's row and, in the same transaction, queues the
+    /// mutation that removes it from the server. Either both happen or
+    /// neither: a delete that lost its mutation would leave the server
+    /// copy behind for good.
+    func delete(id: String, queueing mutation: PendingMutation?) throws {
+        try database.writer.write { db in
+            _ = try LocalPhoto.deleteOne(db, key: id)
+            if var mutation {
+                try mutation.insert(db)
+            }
+        }
+    }
+
     func fetchAll() throws -> [LocalPhoto] {
         try database.reader.read { db in
             try LocalPhoto

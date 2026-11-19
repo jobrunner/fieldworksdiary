@@ -276,6 +276,32 @@ final class SampleEditorViewModel: ObservableObject {
         sync.kick()
     }
 
+    /// The mutation that removes `photo` from the server, or nil when it
+    /// cannot be there:
+    ///
+    ///   - uploaded (backend id known): delete by id
+    ///   - not confirmed, but its sample is on the server: an upload may
+    ///     have arrived without its answer — a tombstone with the client
+    ///     uuid lets the sync look the record up
+    ///   - its sample was never pushed: nothing to do
+    private func serverDelete(for photo: LocalPhoto) -> PendingMutation? {
+        var entityID: String?
+        var payload = Data("{}".utf8)
+        if let backendID = photo.backendId, !backendID.isEmpty {
+            entityID = backendID
+        } else {
+            let sampleOnServer = !((try? store.fetchById(photo.sampleId))?.backendId ?? "").isEmpty
+            guard sampleOnServer,
+                  let tombstone = try? JSONEncoder().encode(PhotoDeletePayload(clientUUID: photo.clientUuid))
+            else { return nil }
+            payload = tombstone
+        }
+        return PendingMutation(
+            id: UUID().uuidString, entityType: .samplePhoto, entityId: entityID, op: .delete,
+            payloadJson: payload, createdAt: Date(), attempts: 0, lastAttemptAt: nil, lastError: nil
+        )
+    }
+
     /// Deletes a photo: row and file right away. A photo that is already
     /// on the server is removed there through the outbox (works
     /// offline); one that was never uploaded leaves nothing to do.
@@ -284,22 +310,15 @@ final class SampleEditorViewModel: ObservableObject {
         // since `savedPhotos` was loaded.
         guard let photo = (try? photoStore.fetchBySample(sampleID))?.first(where: { $0.id == id }) else { return }
         do {
-            try photoStore.delete(id: photo.id)
+            // Row and server mutation in one transaction, the file after
+            // the commit (like `LocalSampleStore.deleteSample`).
+            try photoStore.delete(id: photo.id, queueing: serverDelete(for: photo))
         } catch {
             Log.persistence.error("photo delete failed: \(error.localizedDescription)")
             saveError = "Das Foto konnte nicht gelöscht werden."
             return
         }
         PhotoStorage.delete(relativePath: photo.localPath)
-        if let backendID = photo.backendId, !backendID.isEmpty {
-            do {
-                _ = try mutationsStore.enqueue(entityType: .samplePhoto, entityId: backendID, op: .delete, payload: Data("{}".utf8))
-            } catch {
-                // The local photo is gone; the server copy stays until
-                // the sample itself is deleted.
-                Log.persistence.error("photo delete not queued: \(error.localizedDescription)")
-            }
-        }
         savedPhotos = (try? photoStore.fetchBySample(sampleID)) ?? []
         sync.kick()
     }

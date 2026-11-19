@@ -13,6 +13,8 @@ final class SyncRunnerPhotoTests: XCTestCase {
     private var client: FakePhotoClient!
     private var now = Date(timeIntervalSince1970: 1_800_000_000)
     private var uploadAllowed = true
+    private var wifiOnly = false
+    private var lastSampleID: String?
     private var sampleIDs: [String] = []
     // swiftlint:disable:next force_unwrapping
     private let berlin = TimeZone(identifier: "Europe/Berlin")!
@@ -48,6 +50,7 @@ final class SyncRunnerPhotoTests: XCTestCase {
             clientFactory: { _, _ in NoSampleClient() },
             photoClientFactory: { [client] _, _ in client! }, // swiftlint:disable:this force_unwrapping
             photoUploadAllowed: { [unowned self] in self.uploadAllowed },
+            photoWiFiOnly: { [unowned self] in self.wifiOnly },
             now: { [unowned self] in self.now }
         )
     }
@@ -63,14 +66,20 @@ final class SyncRunnerPhotoTests: XCTestCase {
 
     /// A sample that is already on the server (or not), with one photo
     /// on disk and no pending mutation of its own.
-    private func seed(pushed: Bool) throws -> LocalPhoto {
-        var sample = try store.createLocal(lat: 49.79, lon: 9.94, notes: "")
-        sampleIDs.append(sample.id)
-        if pushed {
-            sample.backendId = "pbsample0000001"
-            sample.syncStatus = .synced
-            try store.update(sample)
+    private func seed(pushed: Bool, sameSample: Bool = false) throws -> LocalPhoto {
+        var sample: LocalSample
+        if sameSample, let lastSampleID, let existing = try store.fetchById(lastSampleID) {
+            sample = existing
+        } else {
+            sample = try store.createLocal(lat: 49.79, lon: 9.94, notes: "")
+            sampleIDs.append(sample.id)
+            if pushed {
+                sample.backendId = "pbsample0000001"
+                sample.syncStatus = .synced
+                try store.update(sample)
+            }
         }
+        lastSampleID = sample.id
         for mutation in try mutations.fetchAllOrdered() {
             try mutations.dequeue(mutation.id)
         }
@@ -123,6 +132,29 @@ final class SyncRunnerPhotoTests: XCTestCase {
         uploadAllowed = true
         await run(runner)
         XCTAssertEqual(client.uploads.count, 1)
+    }
+
+    /// Wi-Fi drops (or the setting is switched on) in the middle of a
+    /// batch: the remaining photos wait.
+    func testPermissionIsCheckedBeforeEveryPhoto() async throws {
+        _ = try seed(pushed: true)
+        _ = try seed(pushed: true, sameSample: true)
+        client.duringUpload = { [unowned self] in self.uploadAllowed = false }
+        await run(makeRunner())
+        XCTAssertEqual(client.uploads.count, 1, "nach dem ersten Foto war der Upload nicht mehr erlaubt")
+    }
+
+    /// With „nur im WLAN“ the request itself must not fall back to
+    /// cellular when the network changes between check and transfer.
+    func testWiFiOnly_RequestForbidsCellular() async throws {
+        _ = try seed(pushed: true)
+        wifiOnly = true
+        await run(makeRunner())
+        XCTAssertEqual(client.cellularAllowed, [false])
+        _ = try seed(pushed: true, sameSample: true)
+        wifiOnly = false
+        await run(makeRunner())
+        XCTAssertEqual(client.cellularAllowed, [false, true])
     }
 
     func testTransientFailure_RetriesOnlyAfterTheDelay() async throws {
@@ -180,6 +212,35 @@ final class SyncRunnerPhotoTests: XCTestCase {
         XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
     }
 
+    /// Tombstone of a photo deleted before its upload was confirmed:
+    /// the record is looked up by client uuid and removed.
+    func testTombstone_LooksTheRecordUpAndDeletesIt() async throws {
+        let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-lost"))
+        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        client.known["uuid-lost"] = "pbphoto-lost"
+        await run(makeRunner())
+        XCTAssertEqual(client.lookups, ["uuid-lost"])
+        XCTAssertEqual(client.deleted, ["pbphoto-lost"])
+        XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
+    }
+
+    func testTombstone_NothingOnTheServerIsDone() async throws {
+        let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-never"))
+        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        await run(makeRunner())
+        XCTAssertEqual(client.lookups, ["uuid-never"])
+        XCTAssertTrue(client.deleted.isEmpty)
+        XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
+    }
+
+    func testTombstone_LookupFailureKeepsItForRetry() async throws {
+        let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-lost"))
+        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        client.lookupError = URLError(.notConnectedToInternet)
+        await run(makeRunner())
+        XCTAssertEqual(try mutations.fetch(entityType: .samplePhoto).count, 1)
+    }
+
     func testDeleteMutation_404CountsAsDone() async throws {
         _ = try mutations.enqueue(entityType: .samplePhoto, entityId: "pbphoto-9", op: .delete, payload: Data("{}".utf8))
         client.deleteError = SampleClientError.http(status: 404, body: "")
@@ -210,8 +271,23 @@ private final class FakePhotoClient: PhotoSyncClient, @unchecked Sendable {
     var deleteError: Error?
     var duringUpload: (() -> Void)?
 
-    func upload(sampleBackendID: String, clientUUID: String, clientUpdatedAt _: Date, fileURL: URL) async throws -> SamplePhotoResponse {
+    var cellularAllowed: [Bool] = []
+    var lookups: [String] = []
+    /// client uuid → backend id of records "on the server".
+    var known: [String: String] = [:]
+    var lookupError: Error?
+
+    func findID(clientUUID: String) async throws -> String? {
+        lookups.append(clientUUID)
+        if let lookupError { throw lookupError }
+        return known[clientUUID]
+    }
+
+    func upload(
+        sampleBackendID: String, clientUUID: String, clientUpdatedAt _: Date, fileURL: URL, allowsCellularAccess: Bool
+    ) async throws -> SamplePhotoResponse {
         attempts += 1
+        cellularAllowed.append(allowsCellularAccess)
         duringUpload?()
         if let error = nextError {
             nextError = nil
