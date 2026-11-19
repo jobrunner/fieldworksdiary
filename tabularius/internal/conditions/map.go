@@ -286,13 +286,12 @@ func Kinds(rec *core.Record) []string {
 }
 
 // Snapshot renders the conditions of a sample as one comparable string.
-// conditions_fetched_at is left out: a re-query that changes nothing
-// else is not a change.
+// conditions_fetched_at and conditions_retry_at are left out: a re-query
+// that only moves them is no change a client has to hear about.
 func Snapshot(rec *core.Record) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "status=%s\x00", rec.GetString("conditions_status"))
 	fmt.Fprintf(&b, "for=%s\x00", rec.GetDateTime("conditions_queried_for").String())
-	fmt.Fprintf(&b, "retry=%s\x00", rec.GetDateTime("conditions_retry_at").String())
 	fmt.Fprintf(&b, "kinds=%s\x00", strings.Join(Kinds(rec), ","))
 	for _, spec := range valueSpecs {
 		switch spec.typ {

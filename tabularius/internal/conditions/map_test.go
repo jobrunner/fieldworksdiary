@@ -329,6 +329,10 @@ func TestSnapshot_IgnoresFetchedAt(t *testing.T) {
 	if Snapshot(rec) != before {
 		t.Error("fetched_at must not count as a change")
 	}
+	rec.Set("conditions_retry_at", pastFetch.Add(time.Hour))
+	if Snapshot(rec) != before {
+		t.Error("retry_at must not count as a change")
+	}
 	rec.Set("weather_temperature_c", 17)
 	if Snapshot(rec) == before {
 		t.Error("a changed value must change the snapshot")
