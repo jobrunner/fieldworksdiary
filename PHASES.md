@@ -15,6 +15,8 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
 **PocketBase-Update 0.22.42 → 0.40.6 implementiert – wartet auf Test durch Jo (Branch `feat/pocketbase-update`, nicht gemerged, siehe Abschnitt „PocketBase-Update“).** **Aktive Phase: Phase N (Probe nachtragen, Bearbeiten-Formular, Koordinatenformate) implementiert – wartet auf Test durch Jo (Branch `feat/nachtragen`, auf `feat/sofort-anlage`, nicht gemerged). Phase E (Sofort-Anlage, Hintergrund-Ortung, Feature-Flags) implementiert – wartet auf Test durch Jo (Branch `feat/sofort-anlage`, nicht gemerged). Ebenfalls implementiert und lokal nach `main` gemerged, Test durch Jo ausstehend: Phase O (O1 done, O2 und O3 implementiert) und Phase Z (Zeitzone, Sample-ID, Höhe). Parallel offen: Phase 14 in progress (UI-Redesign Home + Sample-Foto, gestartet 2026-05-20). Phasen 0–11 + 10 done. Pending: Phase 12 (Production-Härtung — Color-Tokens/A11y-Audit wandern in 14) und Phase 13 (Tile-Caching / Offline-Map). Vor App-Store-Submit stehen menschliche Setup-Schritte (Apple-Dev-Konto, Privacy-URL etc.) — siehe Ende von Phase 11d. Phase 9 (FloraIncognita) zurückgestellt — derzeit nicht eingeplant.**
 
+**Phase S (Sample-Ansicht: Kopieren, Stift-Icon, Datumszeile, Serienkamera, Sample-Nummer, Foto-Import im Original, gestartet 2026-11-19): in progress.** Sechs PRs auf eigenen Feature-Branches, siehe Abschnitt „Phase S“.
+
 ---
 
 ## Phase 0 – Bootstrap
@@ -1219,3 +1221,17 @@ Deploy (manuell, siehe `docs/ENVIRONMENTS.md` „Manuelles Deploy“):
 3. Image bauen/pullen und `docker compose … up -d --no-build` wie gewohnt; beim ersten Start migriert PocketBase die DB selbst. Admin-Login heißt jetzt Superuser (`/_/`, gleiche Zugangsdaten).
 4. Zurück nur mit Backup: auf einer einmal migrierten pb_data startet das alte Image zwar, aber Login und Listen scheitern (geprüft) – Rollback = altes Image + Backup zurückspielen.
 
+## Phase S – Sample-Ansicht
+
+**Status: in progress** (gestartet 2026-11-19; Design `docs/superpowers/specs/2026-11-18-sample-ansicht-design.md`, Plan für die kleinen PRs `docs/superpowers/plans/2026-11-19-sample-ansicht-kleine-prs.md`)
+
+Sechs Verbesserungen rund um die Sample-Ansicht, jede auf einem eigenen Feature-Branch mit eigenem PR:
+
+- [ ] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
+- [ ] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
+- [ ] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
+- [ ] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2)
+- [ ] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
+- [ ] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
+
+Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lässt sich nur auf einem Gerät prüfen.
