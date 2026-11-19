@@ -44,20 +44,26 @@ struct CopyableValueButton<Content: View>: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Kopiert in die Zwischenablage")
         .accessibilityAddTraits(.isButton)
-        .onDisappear { resetTask?.cancel() }
+        .onDisappear {
+            // Der abgebrochene Timer setzt den Hinweis nicht mehr zurück;
+            // ohne das stünde nach der Rückkehr dauerhaft „Kopiert“ da.
+            resetTask?.cancel()
+            showsCopied = false
+        }
     }
 
-    @ViewBuilder
+    /// Beide Beschriftungen liegen übereinander im Layout und werden nur
+    /// ein- und ausgeblendet. So ändert der Tap die Breite des Buttons
+    /// nicht und das umgebende `ViewThatFits` springt nicht um.
     private var captionLine: some View {
-        if showsCopied {
-            Label("Kopiert", systemImage: "checkmark")
-                .font(AppFont.footnote)
-                .foregroundStyle(.secondary)
-        } else {
+        ZStack(alignment: Alignment(horizontal: alignment, vertical: .center)) {
             Text(caption)
-                .font(AppFont.footnote)
-                .foregroundStyle(.secondary)
+                .opacity(showsCopied ? 0 : 1)
+            Label("Kopiert", systemImage: "checkmark")
+                .opacity(showsCopied ? 1 : 0)
         }
+        .font(AppFont.footnote)
+        .foregroundStyle(.secondary)
     }
 
     private func copy() {

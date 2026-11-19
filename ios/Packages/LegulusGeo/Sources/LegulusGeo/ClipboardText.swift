@@ -28,7 +28,7 @@ public enum ClipboardText {
     /// Höhe in ganzen Metern ohne Leerzeichen („276m“).
     public static func altitude(meters: Double) -> String {
         // `+ 0` macht aus einer gerundeten -0 eine 0.
-        String(format: "%.0fm", locale: posix, meters.rounded() + 0)
+        String(format: "%.0fm", locale: posix, meters.rounded(.toNearestOrEven) + 0)
     }
 
     private static func decimal(_ lat: Double, _ lon: Double) -> String {

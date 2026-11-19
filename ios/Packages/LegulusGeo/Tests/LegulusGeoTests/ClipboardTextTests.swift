@@ -55,4 +55,17 @@ final class ClipboardTextTests: XCTestCase {
         XCTAssertEqual(ClipboardText.altitude(meters: -3.2), "-3m")
         XCTAssertEqual(ClipboardText.altitude(meters: -0.2), "0m")
     }
+
+    /// Die Anzeige („%.0f m“) rundet halbe Meter zur geraden Zahl; die
+    /// Kopie muss denselben Wert liefern.
+    func testAltitudeRoundsHalfMetersLikeTheDisplay() {
+        for meters in [276.5, 277.5, -2.5, 0.5] {
+            XCTAssertEqual(ClipboardText.altitude(meters: meters),
+                           String(format: "%.0fm", locale: Locale(identifier: "en_US_POSIX"), meters + 0)
+                               .replacingOccurrences(of: "-0m", with: "0m"),
+                           "\(meters)")
+        }
+        XCTAssertEqual(ClipboardText.altitude(meters: 276.5), "276m")
+        XCTAssertEqual(ClipboardText.altitude(meters: -2.5), "-2m")
+    }
 }
