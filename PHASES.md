@@ -1232,7 +1232,7 @@ Sechs Verbesserungen rund um die Sample-Ansicht, jede auf einem eigenen Feature-
 - [x] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
 - [x] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
 - [x] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
-- [ ] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2)
+- [ ] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2); Plan `docs/superpowers/plans/2026-11-19-foto-serienkamera.md`
 - [x] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
 - [ ] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
 
@@ -1244,9 +1244,9 @@ Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lä
 
 Jede Probe mit Koordinate bekommt Wetter, Klima, Sonne und Mond zu ihrem Zeitpunkt vom Dienst Tempus. Die App holt die Daten, wenn sie online ist, sonst reichert das Backend an. Die eigene Astronomie-Berechnung entfällt am Ende.
 
-- [ ] PR 7 – Backend: Felder am Sample, Tempus-Wrapper, Anreicherung, stündliches Nachziehen, Features quellenbezogen ersetzen (`feat/tempus-backend`)
+- [x] PR 7 – Backend: Felder am Sample, Tempus-Wrapper, Anreicherung, stündliches Nachziehen, Features quellenbezogen ersetzen (`feat/tempus-backend`)
 - [ ] PR 8 – App: Abfrage, lokale Speicherung, Sync, Bereich „Wetter und Klima“ mit Detailseite (`feat/tempus-ios`, nach Phase S)
-- [ ] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7): Kommando `tempus-backfill`, Plan `docs/superpowers/plans/2026-11-19-tempus-backfill.md`
+- [x] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7): Kommando `tempus-backfill`, Plan `docs/superpowers/plans/2026-11-19-tempus-backfill.md`
 - [ ] PR 10 – Ablösung der eigenen Astronomie (`feat/astro-aus-tempus`, erst nach gelaufenem Backfill mergen)
 
 Bestehende Proben behalten bis zum Backfill einen leeren `conditions_status`. Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht (0 °C ist ein echter Wert).

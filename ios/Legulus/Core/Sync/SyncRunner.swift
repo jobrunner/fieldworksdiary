@@ -373,6 +373,15 @@ final class SyncRunner: ObservableObject {
     /// doesn't wait for the enrichment sample by sample.
     private var enrichmentTargets: [EnrichmentTarget] = []
 
+    private let photoClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient
+    /// False holds photo uploads back („Fotos nur im WLAN hochladen“
+    /// without Wi-Fi). Sample data syncs regardless.
+    private let photoUploadAllowed: () -> Bool
+    private let now: () -> Date
+    /// Photos whose upload failed for good (file too large, rejected):
+    /// not retried until the app starts again.
+    private var permanentlyFailedPhotos: Set<String> = []
+
     init(store: LocalSampleStore,
          mutationsStore: PendingMutationsStore,
          photoStore: LocalPhotoStore? = nil,
@@ -395,6 +404,11 @@ final class SyncRunner: ObservableObject {
          featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
              SampleFeaturesClient(endpoint: $0, auth: $1)
          },
+         photoClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient = {
+             PhotoClient(endpoint: $0, auth: $1)
+         },
+         photoUploadAllowed: @escaping () -> Bool = { true },
+         now: @escaping () -> Date = Date.init,
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
     {
@@ -413,6 +427,9 @@ final class SyncRunner: ObservableObject {
         self.localityClientFactory = localityClientFactory
         self.placemarkClientFactory = placemarkClientFactory
         self.featuresClientFactory = featuresClientFactory
+        self.photoClientFactory = photoClientFactory
+        self.photoUploadAllowed = photoUploadAllowed
+        self.now = now
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
         startRetryLoop()
@@ -436,7 +453,9 @@ final class SyncRunner: ObservableObject {
                 guard let self else { return }
                 try? await Task.sleep(for: self.retryInterval)
                 if Task.isCancelled { return }
-                if let count = try? self.mutationsStore.activeCount(), count > 0 {
+                let queued = (try? self.mutationsStore.activeCount()) ?? 0
+                let photos = (try? self.photoStore?.fetchPending().count) ?? 0
+                if queued > 0 || photos > 0 {
                     self.kick()
                 }
             }
@@ -459,14 +478,17 @@ final class SyncRunner: ObservableObject {
             Log.sync.error("outbox fetch failed: \(error.localizedDescription)")
             return
         }
-        if mutations.isEmpty { return }
-
-        let client = clientFactory(endpoint, authProvider())
-        enrichmentTargets = []
-        for mutation in mutations {
-            await execute(mutation, via: client)
+        if !mutations.isEmpty {
+            let client = clientFactory(endpoint, authProvider())
+            enrichmentTargets = []
+            for mutation in mutations {
+                await execute(mutation, via: client)
+            }
+            await pollPendingEnrichment(via: client)
         }
-        await pollPendingEnrichment(via: client)
+        // Photos travel on their own: a photo added to a sample that is
+        // already on the server queues no sample mutation.
+        await pushDuePhotos(endpoint: endpoint)
     }
 
     /// Dispatch by (entityType, op). Sample create/update + locality
@@ -485,6 +507,8 @@ final class SyncRunner: ObservableObject {
             await executeLocalityCreate(mutation)
         case (.locality, .delete):
             await executeLocalityDelete(mutation)
+        case (.samplePhoto, .delete):
+            await executePhotoDelete(mutation)
         default:
             // Unsupported op — record once so the row isn't silently
             // stuck forever, but don't burn the queue on it.
@@ -624,11 +648,6 @@ final class SyncRunner: ObservableObject {
                 )
             }
 
-            // Push any photos that were captured for this sample
-            // before the sync round-trip. We have the backend id now,
-            // so each photo gets its own multipart POST.
-            await pushPhotos(for: fresh, backendSampleID: created.id, endpoint: endpointProvider())
-
             if location.locationStatus != .backendService {
                 awaitEnrichment(localID: localId, backendID: created.id, baseVersion: created.version)
             }
@@ -737,11 +756,6 @@ final class SyncRunner: ObservableObject {
             }
             try? mutationsStore.dequeue(mutation.id)
             absorbed.forEach { try? mutationsStore.dequeue($0) }
-
-            // Pick up any photos that the edit added on top of an
-            // already-synced sample (same best-effort semantics as
-            // the create path).
-            await pushPhotos(for: outcome.fresh, backendSampleID: backendID, endpoint: endpointProvider())
 
             if let snapshot = outcome.serverSnapshot {
                 await makeLocationHydration()?.hydrate([snapshot])
@@ -1248,56 +1262,107 @@ final class SyncRunner: ObservableObject {
         }
     }
 
-    /// Uploads every pending photo for `sample` to the backend. Each
-    /// photo is its own multipart POST; we mark them `.synced`
-    /// individually so a partial network failure leaves the rest as
-    /// `.failed` for the retry loop. Idempotency is via the per-photo
-    /// `client_uuid` — re-uploading the same photo doesn't duplicate.
-    private func pushPhotos(for sample: LocalSample, backendSampleID: String, endpoint: String) async {
-        guard let photoStore else { return }
-        let pending: [LocalPhoto]
+    /// Uploads every photo that is due: pending or failed, its sample
+    /// already on the server, its retry delay passed, not failed for
+    /// good in this run — and only while uploads are allowed (see
+    /// `photoUploadAllowed`). One multipart POST per photo; a partial
+    /// failure leaves the rest untouched. Repeating an upload is safe:
+    /// the backend answers a known `client_uuid` with the existing
+    /// record.
+    private func pushDuePhotos(endpoint: String) async {
+        guard let photoStore, photoUploadAllowed() else { return }
+        let candidates: [LocalPhoto]
         do {
-            pending = try photoStore.fetchBySample(sample.id)
-                .filter { $0.syncStatus == .pending || $0.syncStatus == .failed }
+            candidates = try photoStore.fetchPending()
         } catch {
             Log.sync.error("photo fetch failed: \(error.localizedDescription)")
             return
         }
-        if pending.isEmpty { return }
-
-        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        let client = PhotoClient(endpoint: trimmed, auth: authProvider())
-
-        for photo in pending {
-            await pushOnePhoto(photo, backendSampleID: backendSampleID, via: client)
+        let due = candidates.filter {
+            !permanentlyFailedPhotos.contains($0.id) && PhotoUploadPolicy.isDue($0, now: now())
+        }
+        if due.isEmpty { return }
+        let client = photoClientFactory(endpoint, authProvider())
+        var backendIDs: [String: String?] = [:]
+        for photo in due {
+            let backendID: String?
+            if let known = backendIDs[photo.sampleId] {
+                backendID = known
+            } else {
+                backendID = (try? store.fetchById(photo.sampleId))?.backendId
+                backendIDs[photo.sampleId] = backendID
+            }
+            // The sample itself is not on the server yet; its create
+            // mutation comes first, the photo follows in a later pass.
+            guard let backendID, !backendID.isEmpty else { continue }
+            await pushOnePhoto(photo, backendSampleID: backendID, via: client)
         }
     }
 
-    private func pushOnePhoto(_ photo: LocalPhoto, backendSampleID: String, via client: PhotoClient) async {
-        guard let photoStore else { return }
+    private func pushOnePhoto(_ photo: LocalPhoto, backendSampleID: String, via client: PhotoSyncClient) async {
+        guard let photoStore, let fileURL = PhotoStorage.absoluteURL(forRelative: photo.localPath) else { return }
+        // The row stays `pending` while the upload runs: a photo left in
+        // an in-between state by a killed app would never be picked up
+        // again.
         var working = photo
-        working.syncStatus = .syncing
         working.syncError = nil
-        try? photoStore.update(working)
 
         do {
-            let data = try PhotoStorage.readData(relativePath: photo.localPath)
-            let resp = try await client.upload(
+            inFlight += 1
+            defer { inFlight -= 1 }
+            let response = try await client.upload(
                 sampleBackendID: backendSampleID,
                 clientUUID: photo.clientUuid,
                 clientUpdatedAt: photo.clientUpdatedAt,
-                jpegData: data
+                fileURL: fileURL
             )
-            working.backendId = resp.id
+            // Deleted while the upload was on the wire: take the record
+            // the server just created away again.
+            guard try photoStore.fetchBySample(photo.sampleId).contains(where: { $0.id == photo.id }) else {
+                _ = try? mutationsStore.enqueue(entityType: .samplePhoto, entityId: response.id, op: .delete, payload: Data("{}".utf8))
+                Log.sync.info("photo deleted during upload, server copy queued for removal")
+                return
+            }
+            working.backendId = response.id
             working.syncStatus = .synced
             try photoStore.update(working)
         } catch {
             working.syncStatus = .failed
-            working.syncError = (error as? LocalizedError)?.errorDescription
-                ?? error.localizedDescription
+            working.syncError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            working.attempts = photo.attempts + 1
+            working.lastAttemptAt = now()
+            // A row deleted meanwhile is gone; `update` then changes nothing.
             try? photoStore.update(working)
+            if PhotoUploadPolicy.isPermanent(error) {
+                permanentlyFailedPhotos.insert(photo.id)
+            }
             Log.sync.error("photo push failed: \(working.syncError ?? "")")
+        }
+    }
+
+    /// Server-side delete of a photo that was already uploaded. The
+    /// mutation's `entityId` is the backend id; 404 means already gone.
+    private func executePhotoDelete(_ mutation: PendingMutation) async {
+        guard let backendID = mutation.entityId, !backendID.isEmpty else {
+            try? mutationsStore.dequeue(mutation.id)
+            return
+        }
+        let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
+        let client = photoClientFactory(endpoint, authProvider())
+        do {
+            inFlight += 1
+            defer { inFlight -= 1 }
+            do {
+                try await client.delete(id: backendID)
+            } catch SampleClientError.http(status: 404, _) {
+                // Already gone on the server.
+            }
+            try? mutationsStore.dequeue(mutation.id)
+            Log.sync.info("photo deleted on server \(backendID, privacy: .public)")
+        } catch {
+            let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            try? mutationsStore.recordFailure(mutation.id, error: message)
+            Log.sync.error("photo delete failed: \(message)")
         }
     }
 
