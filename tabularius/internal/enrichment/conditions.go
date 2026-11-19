@@ -201,8 +201,9 @@ func (e *ConditionsEnricher) refreshSafely(ctx context.Context, sampleID string)
 }
 
 // enrichSafely runs enrich inside the caller's context with the
-// per-sample timeout and panic recovery.
-func (e *ConditionsEnricher) enrichSafely(ctx context.Context, sampleID string, provisionalToo bool) {
+// per-sample timeout and panic recovery. It reports whether Tempus was
+// asked.
+func (e *ConditionsEnricher) enrichSafely(ctx context.Context, sampleID string, provisionalToo bool) bool {
 	defer e.recoverPanic(sampleID)
 	timeout := e.Timeout
 	if timeout == 0 {
@@ -210,7 +211,7 @@ func (e *ConditionsEnricher) enrichSafely(ctx context.Context, sampleID string, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	e.enrich(ctx, sampleID, provisionalToo)
+	return e.enrich(ctx, sampleID, provisionalToo)
 }
 
 // EnrichSample asks Tempus for one pending sample and writes the answer
@@ -225,9 +226,10 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 // BackfillSample fills a sample from before Phase T: one with a
 // coordinate whose conditions_status is still empty. It marks the
 // sample pending (no version bump: nothing a client holds changes yet)
-// and asks Tempus. It reports false when the sample does not qualify
-// (any more), e.g. because the app delivered values in the meantime.
-// A failed query leaves the sample pending for the refresh job.
+// and asks Tempus. It reports whether Tempus was asked: false when the
+// sample does not qualify (any more), e.g. because the app delivered
+// values in the meantime; true also for a failed query, which leaves
+// the sample pending for the refresh job.
 func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string) bool {
 	if e.Tempus == nil {
 		return false
@@ -257,9 +259,8 @@ func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string
 		e.afterBackfillMark()
 	}
 	// Pending only: values the app saved since the mark are provisional
-	// or final and stay.
-	e.enrichSafely(ctx, sampleID, false)
-	return true
+	// or final and stay; Tempus is not asked then.
+	return e.enrichSafely(ctx, sampleID, false)
 }
 
 // refreshSample is EnrichSample for the refresh job: it also asks again
@@ -268,8 +269,8 @@ func (e *ConditionsEnricher) refreshSample(ctx context.Context, sampleID string)
 	e.enrich(ctx, sampleID, true)
 }
 
-// enrich does the work of EnrichSample and refreshSample. Failures are
-// logged, never returned:
+// enrich does the work of EnrichSample and refreshSample and reports
+// whether Tempus was asked. Failures are logged, never returned:
 //
 //   - no coordinate, another status, no Tempus: nothing to do
 //
@@ -284,9 +285,9 @@ func (e *ConditionsEnricher) refreshSample(ctx context.Context, sampleID string)
 //
 // The version is bumped only when values or features changed, so a
 // re-query with the same answer sends no client into a 409.
-func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provisionalToo bool) {
+func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provisionalToo bool) bool {
 	if e.Tempus == nil {
-		return
+		return false
 	}
 	defer e.lockSample(sampleID)()
 	log := e.log().With(slog.String("sample_id", sampleID))
@@ -294,11 +295,11 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	rec, err := app.FindRecordById("samples", sampleID)
 	if err != nil {
 		log.Warn("conditions: sample disappeared", slog.Any("err", err))
-		return
+		return false
 	}
 	status := rec.GetString("conditions_status")
 	if !hasCoordinate(rec) || !refreshable(status, provisionalToo) {
-		return
+		return false
 	}
 	seen := conditions.Snapshot(rec)
 	seenFetched := rec.GetDateTime("conditions_fetched_at").Time()
@@ -308,7 +309,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	release, ok := e.acquireSlot(ctx)
 	if !ok {
 		log.Warn("conditions: no free query slot, sample stays as it is", slog.String("service", tempusServiceName))
-		return
+		return false
 	}
 	resp, err := e.Tempus.Query(ctx, lat, lon, want)
 	release()
@@ -320,7 +321,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		if status == conditions.StatusPending {
 			e.dropStaleFeatures(sampleID, lat, lon, want, log)
 		}
-		return
+		return true
 	}
 	res := conditions.FromTempus(resp, want, e.now())
 
@@ -366,10 +367,10 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	switch {
 	case errors.Is(err, errSkip):
 		log.Debug("conditions: sample changed during query, skipping")
-		return
+		return true
 	case err != nil:
 		log.Warn("conditions: write failed", slog.Any("err", err))
-		return
+		return true
 	}
 	log.Info(
 		"conditions: sample enriched",
@@ -378,6 +379,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		slog.Int("features", len(res.Features)),
 		slog.Bool("changed", bumped),
 	)
+	return true
 }
 
 // refreshable reports whether a sample in this status is asked: a

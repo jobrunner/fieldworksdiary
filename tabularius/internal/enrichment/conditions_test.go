@@ -590,7 +590,9 @@ func TestBackfillSample_KeepsValuesSavedAfterTheMark(t *testing.T) {
 	f := newFakeTempus(t, "query_past_all_ok.json")
 	e := newConditionsEnricher(app, f, condNow)
 	e.afterBackfillMark = func() { makeProvisional(t, app, sampleID, condNow.Add(time.Hour)) }
-	e.BackfillSample(context.Background(), sampleID)
+	if e.BackfillSample(context.Background(), sampleID) {
+		t.Error("reported as queried although Tempus was never asked")
+	}
 	s := loadSample(t, app, sampleID)
 	if f.hits() != 0 || s.GetFloat("weather_temperature_c") != 11 {
 		t.Errorf("tempus hits = %d, temperature %v: the app's provisional values were overwritten",
@@ -619,5 +621,16 @@ func TestBackfillSample_FillsLegacySampleAndSkipsOthers(t *testing.T) {
 	}
 	if f.hits() != 1 {
 		t.Errorf("tempus hits = %d, want 1", f.hits())
+	}
+}
+
+// A failed query still counts as an attempt.
+func TestBackfillSample_FailedQueryCountsAsQueried(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	f.fail = true
+	if !newConditionsEnricher(app, f, condNow).BackfillSample(context.Background(), sampleID) {
+		t.Error("a failed Tempus query was not counted")
 	}
 }
