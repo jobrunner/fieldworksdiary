@@ -122,6 +122,9 @@ private struct SampleEditorContent: View {
     /// deshalb hier als benannte Konstante statt Magic-Number inline.
     private let notesTextContainerCorrection: CGFloat = -5
 
+    /// Mindestgröße eines Tap-Targets (Apple HIG).
+    private let minTapTarget: CGFloat = 44
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -162,39 +165,20 @@ private struct SampleEditorContent: View {
                             .accessibilityHidden(true)
                         Text("Zurück")
                     }
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: minTapTarget, minHeight: minTapTarget)
                     .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Zurück")
             }
+            // Exactly one trailing item: with more, iOS 26 folds them
+            // into a „…“ menu. Star and camera sit in the content.
             if viewModel.isExistingSample {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Bearbeiten", action: openForm)
-                        .accessibilityHint("Öffnet Koordinate, Zeit und Ortsdaten zum Bearbeiten.")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingCamera = true
-                } label: {
-                    Image(systemName: "camera.fill")
-                        .foregroundStyle(AppColor.brandPrimaryText)
-                        .accessibilityLabel("Foto aufnehmen")
-                }
-            }
-            if viewModel.isExistingSample, let sample = viewModel.savedSample {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        viewModel.toggleMarked(
-                            endpoint: container.config.endpointURL,
-                            auth: container.auth
-                        )
-                    } label: {
-                        Image(systemName: sample.marked ? "star.fill" : "star")
-                            .foregroundStyle(sample.marked ? .yellow : .secondary)
-                            .accessibilityLabel(sample.marked ? "Markierung entfernen" : "Probe markieren")
+                    Button(action: openForm) {
+                        Image(systemName: "pencil")
                     }
-                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel("Bearbeiten")
+                    .accessibilityHint("Öffnet Koordinate, Zeit und Ortsdaten zum Bearbeiten.")
                 }
             }
         }
@@ -289,16 +273,21 @@ private struct SampleEditorContent: View {
 
     private var editableSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.lg) {
-            TextField("Code", text: $viewModel.code)
-                .font(.title2.weight(.semibold).monospaced())
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-                .submitLabel(.next)
-                .focused($codeFocused)
-                .accessibilityLabel("Sample-Code")
-                .accessibilityHint(
-                    "Vorschlag nach deinem ID-Format. Anpassbar oder leer lassbar, falls du eine andere Nummer auf dem Röhrchen hast."
-                )
+            HStack(alignment: .center, spacing: AppSpacing.sm) {
+                TextField("Code", text: $viewModel.code)
+                    .font(.title2.weight(.semibold).monospaced())
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .focused($codeFocused)
+                    .accessibilityLabel("Sample-Code")
+                    .accessibilityHint(
+                        "Vorschlag nach deinem ID-Format. Anpassbar oder leer lassbar, falls du eine andere Nummer auf dem Röhrchen hast."
+                    )
+                if viewModel.isExistingSample, let sample = viewModel.savedSample {
+                    markButton(marked: sample.marked)
+                }
+            }
 
             if let codeError = viewModel.codeValidationError {
                 Text(codeError)
@@ -326,9 +315,7 @@ private struct SampleEditorContent: View {
                     .accessibilityLabel("Notizen zur Probe")
             }
 
-            if !viewModel.pendingPhotos.isEmpty || !viewModel.savedPhotos.isEmpty {
-                photoStrip
-            }
+            photoSection
 
             if let saveError = viewModel.saveError {
                 Text(saveError)
@@ -342,6 +329,53 @@ private struct SampleEditorContent: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, AppSpacing.md)
         .padding(.bottom, AppSpacing.lg)
+    }
+
+    /// The star: filled when marked, so the state shows in the shape
+    /// and not only in the colour.
+    private func markButton(marked: Bool) -> some View {
+        Button {
+            viewModel.toggleMarked(
+                endpoint: container.config.endpointURL,
+                auth: container.auth
+            )
+        } label: {
+            Image(systemName: marked ? "star.fill" : "star")
+                .font(AppFont.sectionTitle)
+                .foregroundStyle(marked ? .yellow : .secondary)
+                .frame(minWidth: minTapTarget, minHeight: minTapTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(marked ? "Markierung entfernen" : "Probe markieren")
+    }
+
+    /// „Fotos“ with the camera button, always visible; the strip
+    /// follows once there are photos.
+    private var photoSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            HStack(alignment: .center, spacing: AppSpacing.sm) {
+                Text("Fotos")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: AppSpacing.sm)
+                Button {
+                    showingCamera = true
+                } label: {
+                    Image(systemName: "camera.fill")
+                        .font(AppFont.sectionTitle)
+                        .foregroundStyle(AppColor.brandPrimaryText)
+                        .frame(minWidth: minTapTarget, minHeight: minTapTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Foto aufnehmen")
+            }
+            if !viewModel.pendingPhotos.isEmpty || !viewModel.savedPhotos.isEmpty {
+                photoStrip
+            }
+        }
     }
 
     private var photoStrip: some View {
