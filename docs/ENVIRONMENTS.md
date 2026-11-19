@@ -58,6 +58,26 @@ sich über die Umgebung überschreiben. Ein ausdrücklich leerer Wert
 Der Nachzieh-Lauf startet stündlich zur Minute 7 und fragt höchstens
 200 Proben pro Lauf ab.
 
+### Bestehende Proben nachfüllen (`tempus-backfill`)
+
+Proben, die vor der Tempus-Anbindung angelegt wurden, haben einen leeren
+`conditions_status` und werden vom stündlichen Lauf nicht angefasst. Das
+Kommando füllt sie nach, älteste zuerst:
+
+```bash
+docker compose exec tabularius /app/tabularius tempus-backfill
+docker compose exec tabularius /app/tabularius tempus-backfill --limit 500 --interval 1s
+```
+
+Ein Lauf bearbeitet höchstens `--limit` Proben (Default 200) mit einer
+Pause von `--interval` (Default 2 s) und gibt am Ende aus, wie viele
+abgefragt wurden und wie viele noch warten. Er lässt sich jederzeit
+abbrechen und wiederholen. Jede Probe kostet Tempus und die Wetterquelle
+dahinter eine volle Abfrage (die Klima-Normalen sind der teure Teil);
+bei vielen Proben deshalb über mehrere Tage verteilen. Scheitert eine
+Abfrage, bleibt die Probe `pending` und der stündliche Lauf versucht sie
+erneut. Der Pfad des Binaries im Container steht im `Dockerfile`.
+
 ## Compose-Overlays
 
 Drei Compose-Files, kombiniert per `-f`:

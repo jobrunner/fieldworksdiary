@@ -213,6 +213,7 @@ func main() {
 	})
 
 	registerBackfillCommand(app, httpClient)
+	registerConditionsBackfillCommand(app, httpClient)
 
 	if err := app.Start(); err != nil {
 		log.Fatal(err)
@@ -282,4 +283,59 @@ func newBackfillRunner(app core.App, httpClient *http.Client, ortusBaseURL strin
 	r.Enricher.Ortus = ortus
 	r.Localities.Ortus = ortus
 	return r, nil
+}
+
+// registerConditionsBackfillCommand adds `tempus-backfill`: weather,
+// climate and astronomy for the samples from before Phase T (see
+// internal/backfill). A run is capped (--limit) and meant to be
+// repeated until nothing remains.
+func registerConditionsBackfillCommand(app *pocketbase.PocketBase, httpClient *http.Client) {
+	var limit int
+	var interval time.Duration
+	cmd := &cobra.Command{
+		Use:   "tempus-backfill",
+		Short: "Backfill weather, climate and astronomy via Tempus for samples that have none yet",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			r, err := newConditionsBackfillRunner(app, httpClient, os.Getenv("TEMPUS_BASE_URL"), limit, interval)
+			if err != nil {
+				return err
+			}
+			res, err := r.Run(cmd.Context())
+			cmd.Printf("tempus-backfill: %d queried, %d remaining\n", res.Queried, res.Remaining)
+			return err
+		},
+	}
+	cmd.Flags().IntVar(&limit, "limit", 0, "samples per run (default 200)")
+	cmd.Flags().DurationVar(&interval, "interval", 0, "pause between two samples (default 2s)")
+	app.RootCmd.AddCommand(cmd)
+}
+
+// errNoTempusURL is returned by tempus-backfill when TEMPUS_BASE_URL is
+// empty: the run would silently do nothing.
+var errNoTempusURL = errors.New("tempus-backfill: TEMPUS_BASE_URL is empty")
+
+// newConditionsBackfillRunner wires the conditions backfill runner.
+func newConditionsBackfillRunner(app core.App, httpClient *http.Client, tempusBaseURL string, limit int, interval time.Duration) (*backfill.ConditionsRunner, error) {
+	u := strings.TrimSpace(tempusBaseURL)
+	if u == "" {
+		return nil, errNoTempusURL
+	}
+	return &backfill.ConditionsRunner{
+		App: app,
+		Conditions: &enrichment.ConditionsEnricher{
+			App: app,
+			Tempus: &services.Tempus{
+				BaseURL:    u,
+				HTTPClient: httpClient,
+				Cache:      &services.Geocache{App: app},
+				MaxRetries: 3,
+				Logger:     slog.Default(),
+			},
+			Logger:  slog.Default(),
+			Timeout: 15 * time.Second,
+		},
+		Limit:    limit,
+		Interval: interval,
+		Logger:   slog.Default(),
+	}, nil
 }

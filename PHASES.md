@@ -1246,7 +1246,7 @@ Jede Probe mit Koordinate bekommt Wetter, Klima, Sonne und Mond zu ihrem Zeitpun
 
 - [ ] PR 7 – Backend: Felder am Sample, Tempus-Wrapper, Anreicherung, stündliches Nachziehen, Features quellenbezogen ersetzen (`feat/tempus-backend`)
 - [ ] PR 8 – App: Abfrage, lokale Speicherung, Sync, Bereich „Wetter und Klima“ mit Detailseite (`feat/tempus-ios`, nach Phase S)
-- [ ] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7)
+- [ ] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7): Kommando `tempus-backfill`, Plan `docs/superpowers/plans/2026-11-19-tempus-backfill.md`
 - [ ] PR 10 – Ablösung der eigenen Astronomie (`feat/astro-aus-tempus`, erst nach gelaufenem Backfill mergen)
 
 Bestehende Proben behalten bis zum Backfill einen leeren `conditions_status`. Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht (0 °C ist ein echter Wert).
