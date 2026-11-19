@@ -495,3 +495,46 @@ func TestResetAllDayConditions_JudgesTheCurrentRow(t *testing.T) {
 		t.Errorf("status %q, version %d: a stale copy was written over the newer row", status(got), got.GetInt("version"))
 	}
 }
+
+// A sample deleted between the list and its transaction is skipped; the
+// other samples of the fieldtrip are still reset.
+func TestResetAllDayConditions_SkipsSampleDeletedMeanwhile(t *testing.T) {
+	app := setupTestApp(t)
+	ft, allDay, _ := nightFlipFixture(t, app)
+	second := newSampleRecord(t, app)
+	for _, f := range []string{"owner", "fieldtrip", "latitude", "longitude", "timezone", "is_all_day", "begin_date"} {
+		second.Set(f, allDay.Get(f))
+	}
+	clientValues(second, SampleQueryInstant(app, second), conditions.StatusFinal)
+	second = saved(t, app, second)
+
+	deleted := false
+	beforeResetSave = func(string) {
+		if deleted {
+			return
+		}
+		deleted = true
+		if err := app.Delete(reload(t, app, allDay)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() { beforeResetSave = nil }()
+
+	if err := resetAllDayConditionsAfterFlip(t, app, ft); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if got := reload(t, app, second); status(got) != conditions.StatusPending {
+		t.Errorf("status of the remaining sample = %q, want pending", status(got))
+	}
+}
+
+// resetAllDayConditionsAfterFlip flips the night flag in the database
+// without the hook and calls the reset directly, so its error shows.
+func resetAllDayConditionsAfterFlip(t *testing.T, app *tests.TestApp, ft *core.Record) error {
+	t.Helper()
+	if _, err := app.DB().NewQuery("UPDATE fieldtrips SET night_fieldtrip = TRUE WHERE id = {:id}").
+		Bind(map[string]any{"id": ft.Id}).Execute(); err != nil {
+		t.Fatal(err)
+	}
+	return resetAllDayConditions(app, ft.Id)
+}

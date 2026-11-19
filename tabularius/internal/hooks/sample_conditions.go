@@ -1,6 +1,8 @@
 package hooks
 
 import (
+	"database/sql"
+	"errors"
 	"log/slog"
 	"math"
 	"time"
@@ -57,6 +59,10 @@ func resetAllDayConditions(app core.App, fieldtripID string) error {
 		// edit or enrichment is not overwritten by a stale copy.
 		err := app.RunInTransaction(func(tx core.App) error {
 			rec, err := tx.FindRecordById("samples", listed.Id)
+			if errors.Is(err, sql.ErrNoRows) {
+				// Deleted since the list was read: nothing to reset.
+				return nil
+			}
 			if err != nil {
 				return err
 			}
