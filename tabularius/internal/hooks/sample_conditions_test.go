@@ -463,3 +463,35 @@ func TestReset_UpdateMovedWithOlderFetchDateClears(t *testing.T) {
 		t.Errorf("status = %q", status(rec))
 	}
 }
+
+// The reset re-reads each sample inside its transaction: a row that was
+// changed after the list was read is judged by its current state.
+func TestResetAllDayConditions_JudgesTheCurrentRow(t *testing.T) {
+	app := setupTestApp(t)
+	ft, allDay, _ := nightFlipFixture(t, app)
+	ft = reload(t, app, ft)
+	ft.Set("night_fieldtrip", true)
+	// Saved without the hook's knowledge of what follows: by the time
+	// the reset runs, the sample is no longer all-day.
+	beforeResetSave = func(id string) {
+		if id != allDay.Id {
+			return
+		}
+		rec := reload(t, app, allDay)
+		rec.Set("is_all_day", false)
+		rec.Set("begin_date", condBegin)
+		clientValues(rec, condBegin, conditions.StatusFinal)
+		rec.Set("version", 9)
+		if err := app.SaveNoValidate(rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() { beforeResetSave = nil }()
+	if err := app.SaveNoValidate(ft); err != nil {
+		t.Fatal(err)
+	}
+	got := reload(t, app, allDay)
+	if status(got) != conditions.StatusFinal || got.GetInt("version") != 9 {
+		t.Errorf("status %q, version %d: a stale copy was written over the newer row", status(got), got.GetInt("version"))
+	}
+}

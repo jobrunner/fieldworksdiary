@@ -154,7 +154,7 @@ func TestEnrich_SecondRunDoesNotBumpVersion(t *testing.T) {
 	if first.GetString("conditions_status") != conditions.StatusProvisional || first.GetInt("version") != 4 {
 		t.Fatalf("status %q, version %d", first.GetString("conditions_status"), first.GetInt("version"))
 	}
-	e.EnrichSample(context.Background(), sampleID)
+	e.refreshSample(context.Background(), sampleID)
 	second := loadSample(t, app, sampleID)
 	if second.GetInt("version") != 4 {
 		t.Errorf("version = %d after an identical answer, want 4", second.GetInt("version"))
@@ -543,5 +543,41 @@ func TestEnrichSampleTimezone_ResetsConditionsOfAllDaySample(t *testing.T) {
 	s := loadSample(t, app, sampleID)
 	if s.GetString("conditions_status") != conditions.StatusPending || s.GetFloat("weather_temperature_c") != 0 {
 		t.Errorf("status %q, temperature %v", s.GetString("conditions_status"), s.GetFloat("weather_temperature_c"))
+	}
+}
+
+// The hooks and the Ortus follow-up fill pending samples only. A
+// provisional one (e.g. values the app delivered) waits for its retry
+// date and the refresh job.
+func TestEnrich_LeavesProvisionalToTheRefreshJob(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	id := provisionalSample(t, app, condNow.Add(time.Hour))
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	e := newConditionsEnricher(app, f, condNow)
+	e.EnrichSample(context.Background(), id)
+	if f.hits() != 0 {
+		t.Errorf("tempus hits = %d: a provisional sample was asked before its retry date", f.hits())
+	}
+	if s := loadSample(t, app, id); s.GetFloat("weather_temperature_c") != 11 {
+		t.Errorf("temperature = %v, the delivered value was overwritten", s.GetFloat("weather_temperature_c"))
+	}
+}
+
+// The app stores its own answer while ours is in flight: theirs is
+// newer and stays.
+func TestEnrich_SkipsWriteWhenConditionsChangedMeanwhile(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	e := newConditionsEnricher(app, f, condNow)
+	e.afterQuery = func() { makeProvisional(t, app, sampleID, condNow.Add(time.Hour)) }
+	e.EnrichSample(context.Background(), sampleID)
+	s := loadSample(t, app, sampleID)
+	if s.GetString("conditions_status") != conditions.StatusProvisional || s.GetFloat("weather_temperature_c") != 11 {
+		t.Errorf("status %q, temperature %v: the answer in flight overwrote newer values",
+			s.GetString("conditions_status"), s.GetFloat("weather_temperature_c"))
+	}
+	if n := tempusRows(t, app, sampleID); n != 0 {
+		t.Errorf("tempus rows = %d, want none from the skipped answer", n)
 	}
 }

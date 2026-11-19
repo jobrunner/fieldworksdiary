@@ -48,14 +48,32 @@ func resetAllDayConditions(app core.App, fieldtripID string) error {
 	if err != nil {
 		return err
 	}
-	for _, rec := range samples {
-		want := SampleQueryInstant(app, rec)
-		if conditions.SameInstant(rec.GetDateTime("conditions_queried_for").Time(), want) {
-			continue
+	for _, listed := range samples {
+		if beforeResetSave != nil {
+			beforeResetSave(listed.Id)
 		}
-		conditions.Clear(rec)
-		rec.Set("version", rec.GetInt("version")+1)
-		if err := app.SaveNoValidate(rec); err != nil {
+		// The fieldtrip's save is committed by now; read, check and
+		// save each sample in one transaction so a concurrent client
+		// edit or enrichment is not overwritten by a stale copy.
+		err := app.RunInTransaction(func(tx core.App) error {
+			rec, err := tx.FindRecordById("samples", listed.Id)
+			if err != nil {
+				return err
+			}
+			status := rec.GetString("conditions_status")
+			if rec.GetString("fieldtrip") != fieldtripID || !rec.GetBool("is_all_day") ||
+				(status != conditions.StatusProvisional && status != conditions.StatusFinal) {
+				return nil
+			}
+			want := SampleQueryInstant(tx, rec)
+			if conditions.SameInstant(rec.GetDateTime("conditions_queried_for").Time(), want) {
+				return nil
+			}
+			conditions.Clear(rec)
+			rec.Set("version", rec.GetInt("version")+1)
+			return tx.SaveNoValidate(rec)
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -134,6 +152,10 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 		conditions.Clear(rec)
 	}
 }
+
+// beforeResetSave runs before each sample of resetAllDayConditions is
+// handled (tests).
+var beforeResetSave func(sampleID string)
 
 // nowFunc is the clock of this file (tests).
 var nowFunc = time.Now

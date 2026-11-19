@@ -186,14 +186,15 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 		if ctx.Err() != nil {
 			break
 		}
-		e.runSafelyWith(ctx, rec.Id)
+		e.refreshSafely(ctx, rec.Id)
 		queried++
 	}
 	return queried
 }
 
-// runSafelyWith is runSafely inside the caller's context.
-func (e *ConditionsEnricher) runSafelyWith(ctx context.Context, sampleID string) {
+// refreshSafely runs refreshSample inside the caller's context with
+// the per-sample timeout and panic recovery.
+func (e *ConditionsEnricher) refreshSafely(ctx context.Context, sampleID string) {
 	defer e.recoverPanic(sampleID)
 	timeout := e.Timeout
 	if timeout == 0 {
@@ -201,22 +202,41 @@ func (e *ConditionsEnricher) runSafelyWith(ctx context.Context, sampleID string)
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	e.EnrichSample(ctx, sampleID)
+	e.refreshSample(ctx, sampleID)
 }
 
-// EnrichSample asks Tempus for one pending or provisional sample and
-// writes the answer (synchronously; hooks and the job call it through
-// runSafely). Failures are logged, never returned:
+// EnrichSample asks Tempus for one pending sample and writes the answer
+// (synchronously; the hooks call it through runSafely, the Ortus run
+// directly). A provisional sample is left alone: its values may have
+// come from the app, and asking again is the refresh job's business
+// once its retry date has passed.
+func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) {
+	e.enrich(ctx, sampleID, false)
+}
+
+// refreshSample is EnrichSample for the refresh job: it also asks again
+// for a provisional sample.
+func (e *ConditionsEnricher) refreshSample(ctx context.Context, sampleID string) {
+	e.enrich(ctx, sampleID, true)
+}
+
+// enrich does the work of EnrichSample and refreshSample. Failures are
+// logged, never returned:
 //
 //   - no coordinate, another status, no Tempus: nothing to do
+//
 //   - Tempus error: the sample stays as it is; a pending sample loses
 //     its Tempus features, which belonged to its former place or time
+//
 //   - coordinate or instant changed while Tempus was asked: skipped,
 //     the update hook has queued its own run
 //
+//   - the conditions changed while Tempus was asked (the app delivered
+//     its own, or another run was faster): skipped, theirs are newer
+//
 // The version is bumped only when values or features changed, so a
 // re-query with the same answer sends no client into a 409.
-func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) {
+func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provisionalToo bool) {
 	if e.Tempus == nil {
 		return
 	}
@@ -229,9 +249,11 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 		return
 	}
 	status := rec.GetString("conditions_status")
-	if !hasCoordinate(rec) || !refreshable(status) {
+	if !hasCoordinate(rec) || !refreshable(status, provisionalToo) {
 		return
 	}
+	seen := conditions.Snapshot(rec)
+	seenFetched := rec.GetDateTime("conditions_fetched_at").Time()
 	lat, lon := rec.GetFloat("latitude"), rec.GetFloat("longitude")
 	want := hooks.SampleQueryInstant(app, rec)
 
@@ -265,10 +287,11 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 		if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
 			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon ||
 			!hooks.SampleQueryInstant(tx, rec).Equal(want) ||
-			!refreshable(rec.GetString("conditions_status")) {
+			conditions.Snapshot(rec) != seen ||
+			!rec.GetDateTime("conditions_fetched_at").Time().Equal(seenFetched) {
 			return errSkip
 		}
-		before := conditions.Snapshot(rec)
+		before := seen
 		retryBefore := rec.GetDateTime("conditions_retry_at").Time()
 		conditions.Apply(rec, res)
 		changed := conditions.Snapshot(rec) != before ||
@@ -309,9 +332,10 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 	)
 }
 
-// refreshable reports whether a sample in this status is asked (again).
-func refreshable(status string) bool {
-	return status == conditions.StatusPending || status == conditions.StatusProvisional
+// refreshable reports whether a sample in this status is asked: a
+// pending one always, a provisional one only by the refresh job.
+func refreshable(status string, provisionalToo bool) bool {
+	return status == conditions.StatusPending || (provisionalToo && status == conditions.StatusProvisional)
 }
 
 // dropStaleFeatures removes the Tempus features of a sample that is
