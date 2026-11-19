@@ -40,10 +40,8 @@ struct CopyableValueButton<Content: View>: View {
         .buttonStyle(.plain)
         .sensoryFeedback(.success, trigger: copyCount)
         .animation(AppMotion.respecting(AppMotion.fast, reduceMotion: reduceMotion), value: showsCopied)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Kopiert in die Zwischenablage")
-        .accessibilityAddTraits(.isButton)
         .onDisappear {
             // Der abgebrochene Timer setzt den Hinweis nicht mehr zurück;
             // ohne das stünde nach der Rückkehr dauerhaft „Kopiert“ da.
