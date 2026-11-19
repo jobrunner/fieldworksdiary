@@ -472,43 +472,70 @@ private struct SampleEditorContent: View {
             }
         }
         .padding(.vertical, AppSpacing.md)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(locationA11yLabel)
     }
 
     /// System name on top (aligned with „Höhe“), the coordinate, then
-    /// the horizontal accuracy. Labels secondary, values primary.
+    /// the horizontal accuracy. Labels secondary, values primary. A tap
+    /// on the coordinate copies it (see `ClipboardText`).
     private var coordinateBlock: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xxs) {
-            if let caption = coordinateDisplay?.caption {
-                Text(caption)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
             // No line limit: `ViewThatFits` in `locationRow` stacks the
             // blocks when the coordinate doesn't fit on one line.
-            Text(coordinateText)
-                .font(.body.monospacedDigit())
+            if let display = coordinateDisplay, let clipboard = coordinateClipboardText {
+                CopyableValueButton(
+                    caption: display.caption,
+                    clipboardText: clipboard,
+                    accessibilityLabel: coordinateA11yLabel(display),
+                    announcement: "Koordinate kopiert"
+                ) {
+                    Text(display.text)
+                        .font(AppFont.body.monospacedDigit())
+                }
+            } else {
+                Text(coordinateText)
+                    .font(AppFont.body.monospacedDigit())
+            }
             if let acc = viewModel.accuracyM {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.xs) {
                     Text("Genauigkeit").foregroundStyle(.secondary)
                     Text(String(format: "±%.0f m", acc))
                 }
-                .font(.footnote)
+                .font(AppFont.footnote)
+                // Steht schon im Label des Koordinaten-Buttons.
+                .accessibilityHidden(coordinateDisplay != nil)
             }
         }
     }
 
     private func altitudeBlock(alignment: HorizontalAlignment) -> some View {
         VStack(alignment: alignment, spacing: AppSpacing.xxs) {
-            Text("Höhe")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Text(altitudeText)
-                .font(.body.monospacedDigit())
+            if let alt = viewModel.altitudeM {
+                CopyableValueButton(
+                    caption: "Höhe",
+                    clipboardText: ClipboardText.altitude(meters: alt),
+                    accessibilityLabel: altitudeA11yLabel(alt),
+                    announcement: "Höhe kopiert",
+                    alignment: alignment
+                ) {
+                    Text(altitudeText)
+                        .font(AppFont.body.monospacedDigit())
+                }
+            } else {
+                VStack(alignment: alignment, spacing: AppSpacing.xxs) {
+                    Text("Höhe")
+                        .font(AppFont.footnote)
+                        .foregroundStyle(.secondary)
+                    Text(altitudeText)
+                        .font(AppFont.body.monospacedDigit())
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Höhe unbekannt")
+            }
             if let acc = viewModel.savedSample?.verticalAccuracy {
                 Text(String(format: "±%.0f m", acc))
-                    .font(.footnote)
+                    .font(AppFont.footnote)
+                    // Steht schon im Label des Höhen-Buttons.
+                    .accessibilityHidden(viewModel.altitudeM != nil)
             }
         }
     }
@@ -768,6 +795,13 @@ private struct SampleEditorContent: View {
                                        format: config.coordinateDisplayFormat)
     }
 
+    /// The coordinate for the clipboard; nil without coordinate.
+    private var coordinateClipboardText: String? {
+        guard let c = viewModel.coordinate else { return nil }
+        return ClipboardText.coordinate(lat: c.latitude, lon: c.longitude,
+                                        format: config.coordinateDisplayFormat)
+    }
+
     private var altitudeText: String {
         if let alt = viewModel.altitudeM { return String(format: "%.0f m", alt) }
         return "—"
@@ -840,23 +874,18 @@ private struct SampleEditorContent: View {
 
     // MARK: - A11y labels
 
-    private var locationA11yLabel: String {
-        var parts: [String] = []
-        if let display = coordinateDisplay {
-            parts.append("Koordinate \(display.text), \(display.caption)")
-        } else if hasNoCoordinate {
-            parts.append("Ohne Koordinate")
-        } else {
-            parts.append("Position wird gesucht")
-        }
+    private func coordinateA11yLabel(_ display: (text: String, caption: String)) -> String {
+        var parts = ["Koordinate \(display.text), \(display.caption)"]
         if let acc = viewModel.accuracyM {
             parts.append(String(format: "Genauigkeit etwa %.0f Meter", acc))
         }
-        if let alt = viewModel.altitudeM {
-            parts.append(String(format: "Höhe %.0f Meter", alt))
-            if let acc = viewModel.savedSample?.verticalAccuracy {
-                parts.append(String(format: "Fehler etwa %.0f Meter", acc))
-            }
+        return parts.joined(separator: ", ")
+    }
+
+    private func altitudeA11yLabel(_ altitude: Double) -> String {
+        var parts = [String(format: "Höhe %.0f Meter", altitude)]
+        if let acc = viewModel.savedSample?.verticalAccuracy {
+            parts.append(String(format: "Fehler etwa %.0f Meter", acc))
         }
         return parts.joined(separator: ", ")
     }
