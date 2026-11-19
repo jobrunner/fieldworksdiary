@@ -581,3 +581,43 @@ func TestEnrich_SkipsWriteWhenConditionsChangedMeanwhile(t *testing.T) {
 		t.Errorf("tempus rows = %d, want none from the skipped answer", n)
 	}
 }
+
+// The app saves provisional values right after the backfill marked the
+// sample: the backfill must not ask Tempus and overwrite them.
+func TestBackfillSample_KeepsValuesSavedAfterTheMark(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582) // status empty
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	e := newConditionsEnricher(app, f, condNow)
+	e.afterBackfillMark = func() { makeProvisional(t, app, sampleID, condNow.Add(time.Hour)) }
+	e.BackfillSample(context.Background(), sampleID)
+	s := loadSample(t, app, sampleID)
+	if f.hits() != 0 || s.GetFloat("weather_temperature_c") != 11 {
+		t.Errorf("tempus hits = %d, temperature %v: the app's provisional values were overwritten",
+			f.hits(), s.GetFloat("weather_temperature_c"))
+	}
+}
+
+func TestBackfillSample_FillsLegacySampleAndSkipsOthers(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, legacy, ftID := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	e := newConditionsEnricher(app, f, condNow)
+	if !e.BackfillSample(context.Background(), legacy) {
+		t.Fatal("legacy sample not processed")
+	}
+	if s := loadSample(t, app, legacy); s.GetString("conditions_status") != conditions.StatusFinal {
+		t.Errorf("status = %q", s.GetString("conditions_status"))
+	}
+	if e.BackfillSample(context.Background(), legacy) {
+		t.Error("a processed sample was taken again")
+	}
+	noCoord := extraSample(t, app, ownerID, ftID)
+	updateSample(t, app, noCoord, map[string]any{"latitude": 0, "longitude": 0})
+	if e.BackfillSample(context.Background(), noCoord) || e.BackfillSample(context.Background(), "doesnotexist00") {
+		t.Error("a sample without coordinate or a missing one was processed")
+	}
+	if f.hits() != 1 {
+		t.Errorf("tempus hits = %d, want 1", f.hits())
+	}
+}

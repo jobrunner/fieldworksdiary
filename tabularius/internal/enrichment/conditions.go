@@ -50,6 +50,9 @@ type ConditionsEnricher struct {
 
 	// afterQuery runs between the Tempus call and the write (tests).
 	afterQuery func()
+	// afterBackfillMark runs between the mark and the query of
+	// BackfillSample (tests).
+	afterBackfillMark func()
 
 	// inFlight serializes the runs for one sample: the create hook, the
 	// Ortus run and the job may all trigger the same one. The second
@@ -192,9 +195,14 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 	return queried
 }
 
-// refreshSafely runs refreshSample inside the caller's context with
-// the per-sample timeout and panic recovery.
+// refreshSafely is the refresh job's call: provisional samples too.
 func (e *ConditionsEnricher) refreshSafely(ctx context.Context, sampleID string) {
+	e.enrichSafely(ctx, sampleID, true)
+}
+
+// enrichSafely runs enrich inside the caller's context with the
+// per-sample timeout and panic recovery.
+func (e *ConditionsEnricher) enrichSafely(ctx context.Context, sampleID string, provisionalToo bool) {
 	defer e.recoverPanic(sampleID)
 	timeout := e.Timeout
 	if timeout == 0 {
@@ -202,7 +210,7 @@ func (e *ConditionsEnricher) refreshSafely(ctx context.Context, sampleID string)
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	e.refreshSample(ctx, sampleID)
+	e.enrich(ctx, sampleID, provisionalToo)
 }
 
 // EnrichSample asks Tempus for one pending sample and writes the answer
@@ -245,7 +253,12 @@ func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string
 	if !marked {
 		return false
 	}
-	e.refreshSafely(ctx, sampleID)
+	if e.afterBackfillMark != nil {
+		e.afterBackfillMark()
+	}
+	// Pending only: values the app saved since the mark are provisional
+	// or final and stay.
+	e.enrichSafely(ctx, sampleID, false)
 	return true
 }
 

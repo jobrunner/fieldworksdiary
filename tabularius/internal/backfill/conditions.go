@@ -81,13 +81,15 @@ func (r *ConditionsRunner) Run(ctx context.Context) (ConditionsResult, error) {
 	r.log().Info("conditions backfill: start", slog.String("service", "tempus"), slog.Int("count", len(recs)))
 
 	var runErr error
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
 	for i, rec := range recs {
+		// The pause counts from the end of the previous sample, however
+		// long its query took.
 		if i > 0 {
+			pause := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
-			case <-tick.C:
+				pause.Stop()
+			case <-pause.C:
 			}
 		}
 		if runErr = ctx.Err(); runErr != nil {
@@ -96,6 +98,11 @@ func (r *ConditionsRunner) Run(ctx context.Context) (ConditionsResult, error) {
 		if r.Conditions.BackfillSample(ctx, rec.Id) {
 			res.Queried++
 		}
+	}
+	// A cancellation during the last sample ends its query quietly;
+	// report it all the same.
+	if runErr == nil {
+		runErr = ctx.Err()
 	}
 
 	remaining, err := r.App.CountRecords("samples", legacyConditionsExpr())

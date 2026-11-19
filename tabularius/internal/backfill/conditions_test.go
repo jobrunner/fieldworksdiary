@@ -229,3 +229,44 @@ func TestConditionsRunner_NilEnricherIsAnError(t *testing.T) {
 		t.Error("expected an error without a Tempus client")
 	}
 }
+
+// Cancelled while the last (here: only) sample is being asked: the run
+// must not report success.
+func TestConditionsRunner_CancelDuringLastSampleIsReported(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	f := newTempusFake(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	f.onHit = func(int32) { cancel() }
+	if _, err := newConditionsRunner(app, f, 10).Run(ctx); err == nil {
+		t.Fatal("cancellation during the last sample was reported as success")
+	}
+}
+
+// The pause counts from the end of a sample: a slow query must not let
+// the next one start right away.
+func TestConditionsRunner_PausesAfterASlowSample(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	f := newTempusFake(t)
+	var firstDone, secondStart time.Time
+	f.onHit = func(n int32) {
+		if n == 1 {
+			time.Sleep(300 * time.Millisecond) // slower than the interval
+			firstDone = time.Now()
+			return
+		}
+		secondStart = time.Now()
+	}
+	r := newConditionsRunner(app, f, 10)
+	r.Interval = 200 * time.Millisecond
+	if _, err := r.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gap := secondStart.Sub(firstDone); gap < 180*time.Millisecond {
+		t.Errorf("gap between the samples = %s, want at least the interval", gap)
+	}
+}
