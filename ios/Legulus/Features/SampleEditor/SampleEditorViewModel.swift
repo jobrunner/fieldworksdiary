@@ -19,20 +19,8 @@ import UIKit
 /// row observation.
 @MainActor
 final class SampleEditorViewModel: ObservableObject {
-    /// Photo not yet persisted to disk. We keep it in memory until the
-    /// next save so a dismissed editor leaves no orphans on disk.
-    struct PendingPhoto: Identifiable, Equatable {
-        let id: String
-        let image: UIImage
-
-        static func == (lhs: PendingPhoto, rhs: PendingPhoto) -> Bool {
-            lhs.id == rhs.id
-        }
-    }
-
     @Published var code: String = ""
     @Published var notes: String = ""
-    @Published var pendingPhotos: [PendingPhoto] = []
     @Published private(set) var locationStatus: LocationProvider.Status = .idle
     /// The persisted sample's coordinate for the bottom card.
     @Published private(set) var coordinate: CLLocationCoordinate2D?
@@ -112,6 +100,9 @@ final class SampleEditorViewModel: ObservableObject {
     /// Ends the „locating“ state when `PendingFixService` gives up.
     private var fixDeadlineTask: Task<Void, Never>?
 
+    /// Local id of the sample this editor works on.
+    let sampleID: String
+
     init(
         sampleID: String,
         isNew: Bool = false,
@@ -125,6 +116,7 @@ final class SampleEditorViewModel: ObservableObject {
         pendingFixes: PendingFixService? = nil,
         now: @escaping () -> Date = Date.init
     ) {
+        self.sampleID = sampleID
         self.store = store
         self.photoStore = photoStore
         self.fieldtripStore = fieldtripStore
@@ -179,14 +171,14 @@ final class SampleEditorViewModel: ObservableObject {
     }
 
     /// True when at least one user-editable field differs from the
-    /// adopted snapshot, or new (unsaved) photos are queued.
+    /// adopted snapshot. Photos are stored the moment they are taken
+    /// and never count as an open edit.
     var hasUnsavedEdits: Bool {
         guard isExistingSample else { return false }
         let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedNotes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedCode != originalCode { return true }
         if trimmedNotes != originalNotes { return true }
-        if !pendingPhotos.isEmpty { return true }
         return false
     }
 
@@ -254,12 +246,62 @@ final class SampleEditorViewModel: ObservableObject {
 
     // MARK: - photos
 
-    func addPhoto(_ image: UIImage) {
-        pendingPhotos.append(PendingPhoto(id: UUID().uuidString, image: image))
+    /// Stores a photo the camera just took: the file unchanged on disk
+    /// and its row as `pending`, right away. A series taken in the
+    /// field must survive the app going to the background, so nothing
+    /// waits for the sample to be saved. Throws when the photo could
+    /// not be stored; no file is left behind then.
+    func addCapturedPhoto(_ data: Data) throws {
+        let photoID = UUID().uuidString
+        let path = try PhotoStorage.write(data: data, sampleID: sampleID, photoID: photoID)
+        let timestamp = Date()
+        do {
+            try photoStore.insert(LocalPhoto(
+                id: photoID,
+                sampleId: sampleID,
+                localPath: path,
+                backendId: nil,
+                syncStatus: .pending,
+                syncError: nil,
+                clientUuid: photoID,
+                clientUpdatedAt: timestamp,
+                createdAt: timestamp
+            ))
+        } catch {
+            PhotoStorage.delete(relativePath: path)
+            Log.persistence.error("photo row insert failed: \(error.localizedDescription)")
+            throw error
+        }
+        savedPhotos = (try? photoStore.fetchBySample(sampleID)) ?? []
+        sync.kick()
     }
 
-    func removePendingPhoto(id: String) {
-        pendingPhotos.removeAll { $0.id == id }
+    /// Deletes a photo: row and file right away. A photo that is already
+    /// on the server is removed there through the outbox (works
+    /// offline); one that was never uploaded leaves nothing to do.
+    func deletePhoto(id: String) {
+        // Read the row afresh: the sync may have set its backend id
+        // since `savedPhotos` was loaded.
+        guard let photo = (try? photoStore.fetchBySample(sampleID))?.first(where: { $0.id == id }) else { return }
+        do {
+            try photoStore.delete(id: photo.id)
+        } catch {
+            Log.persistence.error("photo delete failed: \(error.localizedDescription)")
+            saveError = "Das Foto konnte nicht gelöscht werden."
+            return
+        }
+        PhotoStorage.delete(relativePath: photo.localPath)
+        if let backendID = photo.backendId, !backendID.isEmpty {
+            do {
+                _ = try mutationsStore.enqueue(entityType: .samplePhoto, entityId: backendID, op: .delete, payload: Data("{}".utf8))
+            } catch {
+                // The local photo is gone; the server copy stays until
+                // the sample itself is deleted.
+                Log.persistence.error("photo delete not queued: \(error.localizedDescription)")
+            }
+        }
+        savedPhotos = (try? photoStore.fetchBySample(sampleID)) ?? []
+        sync.kick()
     }
 
     // MARK: - marked toggle
@@ -468,12 +510,10 @@ final class SampleEditorViewModel: ObservableObject {
         // form (`SampleFormView`) or set in the background.
         let changed = working.sampleID != stored.sampleID
             || working.notes != stored.notes
-            || !pendingPhotos.isEmpty
         guard changed else { return true }
 
         do {
             try store.saveEdits(working, mutationsStore: mutationsStore)
-            try persistPhotos(for: working)
         } catch {
             saveError = error.localizedDescription
             return false
@@ -482,7 +522,6 @@ final class SampleEditorViewModel: ObservableObject {
         // user may still be editing: a kept-back id stays in the field.
         if choice == .typed { originalCode = typedCode }
         originalNotes = typedNotes
-        pendingPhotos = []
         if let fresh = try? store.fetchById(working.id) {
             savedSample = fresh
         }
@@ -593,37 +632,6 @@ final class SampleEditorViewModel: ObservableObject {
 
     // MARK: - private
 
-    /// Writes the captured JPEGs to disk + inserts photo rows. Same
-    /// best-effort semantics as the old AddSampleViewModel: a failure
-    /// on one photo doesn't kill the whole save, since the sample is
-    /// already persisted.
-    private func persistPhotos(for sample: LocalSample) throws {
-        for pending in pendingPhotos {
-            do {
-                let path = try PhotoStorage.write(
-                    image: pending.image,
-                    sampleID: sample.id,
-                    photoID: pending.id
-                )
-                let now = Date()
-                let photo = LocalPhoto(
-                    id: pending.id,
-                    sampleId: sample.id,
-                    localPath: path,
-                    backendId: nil,
-                    syncStatus: .pending,
-                    syncError: nil,
-                    clientUuid: pending.id,
-                    clientUpdatedAt: now,
-                    createdAt: now
-                )
-                try photoStore.insert(photo)
-            } catch {
-                Log.persistence.error("photo persist failed: \(error.localizedDescription)")
-            }
-        }
-    }
-
     /// Re-reads the persisted row + photos + fieldtrip without
     /// disturbing the user's in-progress edits (code/notes are
     /// `@Published` and considered user-owned). Used on view appear
@@ -680,7 +688,6 @@ final class SampleEditorViewModel: ObservableObject {
         if let ftID = sample.fieldtrip, !ftID.isEmpty {
             savedFieldtrip = try? fieldtripStore.fetchById(ftID)
         }
-        pendingPhotos = []
         codeValidationError = nil
         loadPlacemarks(for: sample)
     }

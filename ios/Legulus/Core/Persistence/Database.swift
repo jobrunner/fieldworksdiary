@@ -107,6 +107,7 @@ final class Database {
         migrator.registerMigration("v16_sample_coordinate_optional", migrate: migrateV16)
         migrator.registerMigration("v17_locality_origins", migrate: migrateV17)
         migrator.registerMigration("v18_sample_is_retrospective", migrate: migrateV18)
+        migrator.registerMigration("v19_photo_attempts", migrate: migrateV19)
         return migrator
     }
 
@@ -589,6 +590,15 @@ final class Database {
     private static func migrateV18(_ db: GRDB.Database) throws {
         try db.alter(table: "local_samples") { t in
             t.add(column: "is_retrospective", .boolean).notNull().defaults(to: false)
+        }
+    }
+
+    /// Retry bookkeeping for photo uploads: full-resolution photos fail
+    /// more often on a weak connection, and retries back off.
+    private static func migrateV19(_ db: GRDB.Database) throws {
+        try db.alter(table: "local_photos") { t in
+            t.add(column: "attempts", .integer).notNull().defaults(to: 0)
+            t.add(column: "last_attempt_at", .datetime)
         }
     }
 }
