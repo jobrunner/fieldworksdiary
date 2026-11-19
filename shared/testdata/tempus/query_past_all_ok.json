@@ -1,0 +1,361 @@
+{
+    "query": {
+        "coordinate": {
+            "lat": 48.1351,
+            "lon": 11.582
+        },
+        "datetime": "2026-07-01T12:00:00Z"
+    },
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.55,
+                    48.119507
+                ]
+            },
+            "properties": {
+                "cloudCover": 100,
+                "isDay": true,
+                "isDaySource": "Tag/Nacht aus Sonnenstand berechnet (NOAA-N\u00e4herung), tempus",
+                "kind": "weather",
+                "observedAt": "2026-07-01T12:00:00Z",
+                "precipitation": 1.4,
+                "provider": "open-meteo",
+                "relativeHumidity2m": 85,
+                "temperature2m": 16,
+                "units": {
+                    "cloudCover": "%",
+                    "precipitation": "mm",
+                    "relativeHumidity2m": "%",
+                    "temperature2m": "\u00b0C",
+                    "weatherCode": "wmo code",
+                    "windSpeed10m": "km/h"
+                },
+                "weatherCode": 61,
+                "weatherCodeDescription": {
+                    "de": "Leichter Regen",
+                    "en": "Slight rain"
+                },
+                "weatherCodeSource": "WMO Code Table 4677 (WW \u2013 present weather); weather-interpretation codes as used by Open-Meteo",
+                "weatherCodeSourceURL": "https://open-meteo.com/en/docs",
+                "windBeaufort": 2,
+                "windBeaufortDescription": {
+                    "de": "leichte Brise",
+                    "en": "Light breeze"
+                },
+                "windBeaufortSource": "Beaufort-Skala (WMO), abgeleitet aus der Windgeschwindigkeit in 10 m, tempus",
+                "windBeaufortSourceURL": "https://en.wikipedia.org/wiki/Beaufort_scale",
+                "windSpeed10m": 7.4
+            },
+            "license": {
+                "name": "CC-BY 4.0",
+                "url": "https://open-meteo.com/en/license",
+                "attribution": "Weather data by Open-Meteo.com; ERA5 (Copernicus Climate Change Service / ECMWF)"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.582,
+                    48.1351
+                ]
+            },
+            "properties": {
+                "azimuthDeg": 202.63,
+                "dayLengthMinutes": 960.76,
+                "elevationDeg": 63.63,
+                "kind": "sun",
+                "lightPhase": {
+                    "de": "Tag",
+                    "en": "day"
+                },
+                "observedAt": "2026-07-01T12:00:00Z",
+                "provider": "sun",
+                "solarNoon": "2026-07-01T11:17:08Z",
+                "solarNoonElevationDeg": 65.04,
+                "sunrise": "2026-07-01T03:16:45Z",
+                "sunset": "2026-07-01T19:17:30Z",
+                "twilight": {
+                    "astronomical": {
+                        "dawn": "2026-07-01T00:01:22Z",
+                        "dusk": "2026-07-01T22:32:53Z"
+                    },
+                    "civil": {
+                        "dawn": "2026-07-01T02:35:32Z",
+                        "dusk": "2026-07-01T19:58:44Z"
+                    },
+                    "nautical": {
+                        "dawn": "2026-07-01T01:38:08Z",
+                        "dusk": "2026-07-01T20:56:07Z"
+                    }
+                },
+                "units": {
+                    "azimuthDeg": "\u00b0 (von Nord, im Uhrzeigersinn)",
+                    "dayLengthMinutes": "min",
+                    "elevationDeg": "\u00b0",
+                    "solarNoonElevationDeg": "\u00b0",
+                    "zenithDeg": "\u00b0"
+                },
+                "zenithDeg": 26.37
+            },
+            "license": {
+                "name": "NOAA Solar Calculator",
+                "url": "https://gml.noaa.gov/grad/solcalc/",
+                "attribution": "Sonnenstand berechnet (NOAA-N\u00e4herung), tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.582,
+                    48.1351
+                ]
+            },
+            "properties": {
+                "ageDays": 16.12,
+                "azimuthDeg": 343.28,
+                "distanceKm": 402822,
+                "elevationDeg": -64.88,
+                "illuminationPct": 97.89,
+                "kind": "moon",
+                "moonrise": "2026-07-01T20:38:44Z",
+                "moonset": "2026-07-01T04:10:35Z",
+                "observedAt": "2026-07-01T12:00:00Z",
+                "phase": {
+                    "de": "Vollmond",
+                    "en": "Full Moon"
+                },
+                "phaseAngleDeg": 16.72,
+                "provider": "moon",
+                "units": {
+                    "ageDays": "d",
+                    "azimuthDeg": "\u00b0 (von Nord, im Uhrzeigersinn)",
+                    "distanceKm": "km",
+                    "elevationDeg": "\u00b0",
+                    "illuminationPct": "%",
+                    "phaseAngleDeg": "\u00b0"
+                }
+            },
+            "license": {
+                "name": "Meeus, Astronomical Algorithms",
+                "url": "https://en.wikipedia.org/wiki/Position_of_the_Moon",
+                "attribution": "Mondstand berechnet nach Meeus (geozentrische N\u00e4herung), tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.55,
+                    48.119507
+                ]
+            },
+            "properties": {
+                "arrheniusThermalTime": {
+                    "activationEnergyEv": 0.65,
+                    "days": 182,
+                    "method": "Boltzmann-Arrhenius 2-Punkt-Rate (Tmin/Tmax), normiert auf 20 \u00b0C (artagnostisch, basisfrei)",
+                    "referenceTempC": 20,
+                    "value": 100.9
+                },
+                "growingDegreeDays": {
+                    "base10": 532.9,
+                    "base5": 1024.5,
+                    "days": 182,
+                    "method": "average (Tmax+Tmin)/2 \u2212 base, floor 0, no upper cutoff",
+                    "since": "2026-01-01"
+                },
+                "kind": "aggregate",
+                "observedAt": "2026-07-01T12:00:00Z",
+                "precipitation": {
+                    "last120h": 62.7,
+                    "last24h": 34,
+                    "last72h": 62.5
+                },
+                "provider": "aggregate",
+                "temperatureDay": {
+                    "max": 18.5,
+                    "mean": 17.3,
+                    "min": 14.2
+                },
+                "units": {
+                    "arrheniusThermalTime": "d (20 \u00b0C-\u00c4quivalent)",
+                    "growingDegreeDays": "\u00b0C\u00b7d",
+                    "precipitation": "mm",
+                    "temperature": "\u00b0C"
+                }
+            },
+            "license": {
+                "name": "CC-BY 4.0",
+                "url": "https://open-meteo.com/en/license",
+                "attribution": "Weather data by Open-Meteo.com; ERA5 (Copernicus Climate Change Service / ECMWF); Zeitfenster-Aggregate (Niederschlag, Tages-Extrema, GDD, Arrhenius-Zeit) berechnet von tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.55,
+                    48.119507
+                ]
+            },
+            "properties": {
+                "altitudinalBelt": {
+                    "basis": "thermoclimatic isotherm, Central-Europe-calibrated",
+                    "belt": {
+                        "de": "submontan-kollin",
+                        "en": "colline"
+                    },
+                    "borderline": false,
+                    "indicators": {
+                        "biotemperatureC": 8.9,
+                        "matC": 8.9,
+                        "warmestMonthC": 18.3,
+                        "warmestQuarterC": 17.6
+                    },
+                    "macrobioclimate": {
+                        "code": "temperate",
+                        "de": "temperat",
+                        "elevationM": 521,
+                        "en": "temperate"
+                    },
+                    "source": "H\u00f6henstufe thermoklimatisch berechnet (Paulsen & K\u00f6rner 2014; Rivas-Mart\u00ednez 2008, WBCS), tempus",
+                    "thermotype": {
+                        "code": "supratemperate",
+                        "de": "supratemperat",
+                        "en": "supratemperate",
+                        "index": "Tp",
+                        "value": 1071
+                    }
+                },
+                "bio": {
+                    "bio1": 8.9,
+                    "bio10": 17.6,
+                    "bio11": 0.3,
+                    "bio12": 959,
+                    "bio13": 108,
+                    "bio14": 54,
+                    "bio15": 24.2,
+                    "bio16": 323,
+                    "bio17": 185,
+                    "bio18": 315,
+                    "bio19": 185,
+                    "bio2": 8.8,
+                    "bio3": 33.2,
+                    "bio4": 670.8,
+                    "bio5": 22.9,
+                    "bio6": -3.7,
+                    "bio7": 26.6,
+                    "bio8": 15.9,
+                    "bio9": 0.3
+                },
+                "kind": "bioclim",
+                "koppen": {
+                    "adjacent": {
+                        "code": "Cfb",
+                        "de": "warm-gem\u00e4\u00dfigt, feucht, warmer Sommer (ozeanisch)",
+                        "en": "temperate oceanic"
+                    },
+                    "borderline": true,
+                    "code": "Dfb",
+                    "coldestMonthMeanC": -0.3,
+                    "de": "kontinental, feucht, warmer Sommer",
+                    "en": "warm-summer humid continental"
+                },
+                "provider": "bioclim",
+                "referencePeriod": "1991-2020",
+                "units": {
+                    "bio15": "% (Variationskoeffizient)",
+                    "bio3": "%",
+                    "bio4": "\u00b0C\u00d7100 (Std.abw.)",
+                    "precipitation": "mm",
+                    "temperature": "\u00b0C"
+                }
+            },
+            "license": {
+                "name": "CC-BY 4.0",
+                "url": "https://open-meteo.com/en/license",
+                "attribution": "Weather data by Open-Meteo.com; ERA5 (Copernicus Climate Change Service / ECMWF), 1991-2020; BIO-Variablen (WorldClim-Definitionen) und K\u00f6ppen-Geiger, berechnet aus ERA5 von tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.55,
+                    48.119507
+                ]
+            },
+            "properties": {
+                "basedOn": "open-meteo",
+                "comfort": {
+                    "de": "angenehm",
+                    "en": "comfortable"
+                },
+                "comfortSource": "Taupunkt-Komfortskala (g\u00e4ngige meteorologische Einteilung)",
+                "comfortSourceURL": "https://en.wikipedia.org/wiki/Dew_point#Relationship_to_human_comfort",
+                "dewPoint2m": 13.5,
+                "kind": "dewpoint",
+                "method": "Magnus-Tetens (a=17.62, b=243.12)",
+                "observedAt": "2026-07-01T12:00:00Z",
+                "provider": "dewpoint",
+                "units": {
+                    "dewPoint2m": "\u00b0C"
+                }
+            },
+            "license": {
+                "name": "CC-BY 4.0",
+                "url": "https://open-meteo.com/en/license",
+                "attribution": "Taupunkt (Magnus-Formel), berechnet von tempus aus: Weather data by Open-Meteo.com; ERA5 (Copernicus Climate Change Service / ECMWF)"
+            }
+        }
+    ],
+    "providers": [
+        {
+            "id": "open-meteo",
+            "kind": "weather",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "sun",
+            "kind": "sun",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "moon",
+            "kind": "moon",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "aggregate",
+            "kind": "aggregate",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "bioclim",
+            "kind": "bioclim",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "dewpoint",
+            "kind": "dewpoint",
+            "status": "ok",
+            "retryable": false
+        }
+    ]
+}
