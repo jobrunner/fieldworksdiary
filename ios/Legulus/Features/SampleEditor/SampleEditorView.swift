@@ -275,7 +275,7 @@ private struct SampleEditorContent: View {
         VStack(alignment: .leading, spacing: AppSpacing.lg) {
             HStack(alignment: .center, spacing: AppSpacing.sm) {
                 TextField("Code", text: $viewModel.code)
-                    .font(.title2.weight(.semibold).monospaced())
+                    .font(AppFont.codeEmphasized)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .submitLabel(.next)
