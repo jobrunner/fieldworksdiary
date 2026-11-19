@@ -253,3 +253,90 @@ func TestSampleQueryInstant_UsesNightFlagOfFieldtrip(t *testing.T) {
 		t.Errorf("night fieldtrip: %s", got)
 	}
 }
+
+// nightFlipFixture stores a fieldtrip with one all-day and one timed
+// sample, both with final values for their instant, and registers the
+// hooks.
+func nightFlipFixture(t *testing.T, app *tests.TestApp) (ft, allDay, timed *core.Record) {
+	t.Helper()
+	RegisterSampleConditionsReset(app)
+	owner := createTestUser(t, app, "night"+uniqueSuffix(t)+"@example.com")
+	coll, _ := app.FindCollectionByNameOrId("fieldtrips")
+	ft = core.NewRecord(coll)
+	ft.Set("owner", owner.Id)
+	ft.Set("collecting_day", "2026-05-19")
+	if err := app.SaveNoValidate(ft); err != nil {
+		t.Fatal(err)
+	}
+	mk := func(allDay bool, begin time.Time) *core.Record {
+		rec := newSampleRecord(t, app)
+		rec.Set("owner", owner.Id)
+		rec.Set("fieldtrip", ft.Id)
+		rec.Set("latitude", 49.68)
+		rec.Set("longitude", 10.03)
+		rec.Set("timezone", "Europe/Berlin")
+		rec.Set("is_all_day", allDay)
+		rec.Set("begin_date", begin)
+		rec.Set("version", 5)
+		clientValues(rec, SampleQueryInstant(app, rec), conditions.StatusFinal)
+		return saved(t, app, rec)
+	}
+	allDay = mk(true, time.Date(2026, 5, 18, 22, 0, 0, 0, time.UTC))
+	timed = mk(false, condBegin)
+	return ft, allDay, timed
+}
+
+func reload(t *testing.T, app *tests.TestApp, rec *core.Record) *core.Record {
+	t.Helper()
+	fresh, err := app.FindRecordById(rec.Collection().Name, rec.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fresh
+}
+
+// A fieldtrip turning into a night fieldtrip moves the instant of its
+// all-day samples from 14:00 to 22:00: their values no longer fit.
+func TestNightFlagFlip_ResetsAllDaySamples(t *testing.T) {
+	app := setupTestApp(t)
+	ft, allDay, _ := nightFlipFixture(t, app)
+	ft = reload(t, app, ft)
+	ft.Set("night_fieldtrip", true)
+	if err := app.SaveNoValidate(ft); err != nil {
+		t.Fatal(err)
+	}
+	got := reload(t, app, allDay)
+	if status(got) != conditions.StatusPending || got.GetFloat("weather_temperature_c") != 0 {
+		t.Errorf("status %q, temperature %v", status(got), got.GetFloat("weather_temperature_c"))
+	}
+	if got.GetInt("version") != 6 {
+		t.Errorf("version = %d, want 6", got.GetInt("version"))
+	}
+}
+
+func TestNightFlagFlip_LeavesTimedSamples(t *testing.T) {
+	app := setupTestApp(t)
+	ft, _, timed := nightFlipFixture(t, app)
+	ft = reload(t, app, ft)
+	ft.Set("night_fieldtrip", true)
+	if err := app.SaveNoValidate(ft); err != nil {
+		t.Fatal(err)
+	}
+	got := reload(t, app, timed)
+	if status(got) != conditions.StatusFinal || got.GetInt("version") != 5 {
+		t.Errorf("status %q, version %d", status(got), got.GetInt("version"))
+	}
+}
+
+func TestFieldtripSaveWithoutNightChange_LeavesSamples(t *testing.T) {
+	app := setupTestApp(t)
+	ft, allDay, _ := nightFlipFixture(t, app)
+	ft = reload(t, app, ft)
+	ft.Set("title", "Mainaue")
+	if err := app.SaveNoValidate(ft); err != nil {
+		t.Fatal(err)
+	}
+	if got := reload(t, app, allDay); status(got) != conditions.StatusFinal || got.GetInt("version") != 5 {
+		t.Errorf("status %q, version %d", status(got), got.GetInt("version"))
+	}
+}

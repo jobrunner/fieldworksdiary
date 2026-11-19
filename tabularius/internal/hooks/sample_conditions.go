@@ -1,9 +1,11 @@
 package hooks
 
 import (
+	"log/slog"
 	"math"
 	"time"
 
+	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 
 	"go.mett.io/tabularius/internal/conditions"
@@ -20,6 +22,44 @@ func RegisterSampleConditionsReset(app core.App) {
 		resetStaleConditions(e.App, e.Record, false)
 		return e.Next()
 	})
+	// Every save of a fieldtrip, also the ones the grouping does
+	// itself: a flipped night flag moves the instant of its all-day
+	// samples.
+	app.OnRecordAfterUpdateSuccess("fieldtrips").BindFunc(func(e *core.RecordEvent) error {
+		if e.Record.GetBool("night_fieldtrip") != e.Record.Original().GetBool("night_fieldtrip") {
+			if err := resetAllDayConditions(e.App, e.Record.Id); err != nil {
+				e.App.Logger().Warn("conditions: reset after night flag change failed",
+					slog.String("fieldtrip_id", e.Record.Id), slog.Any("err", err))
+			}
+		}
+		return e.Next()
+	})
+}
+
+// resetAllDayConditions sets the all-day samples of a fieldtrip back to
+// "pending" when their values were queried for another instant than
+// the one that applies now (14:00 for a day, 22:00 for a night
+// fieldtrip). The version is bumped so clients pick the change up; the
+// refresh job asks Tempus again.
+func resetAllDayConditions(app core.App, fieldtripID string) error {
+	samples, err := app.FindRecordsByFilter("samples",
+		"fieldtrip = {:ft} && is_all_day = true && (conditions_status = 'provisional' || conditions_status = 'final')",
+		"", 0, 0, dbx.Params{"ft": fieldtripID})
+	if err != nil {
+		return err
+	}
+	for _, rec := range samples {
+		want := SampleQueryInstant(app, rec)
+		if conditions.SameInstant(rec.GetDateTime("conditions_queried_for").Time(), want) {
+			continue
+		}
+		conditions.Clear(rec)
+		rec.Set("version", rec.GetInt("version")+1)
+		if err := app.SaveNoValidate(rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // SampleQueryInstant returns the instant Tempus is asked for this
