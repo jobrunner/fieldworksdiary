@@ -37,15 +37,16 @@ type featureBody struct {
 // handleReplaceSampleFeatures replaces the features of one scope of one
 // of the caller's samples: `?scope=tempus` the Tempus rows, no parameter
 // or `?scope=ortus` the Ortus rows (what app versions from before Tempus
-// send). Rows of the other scope stay; a feature of the other scope in
-// the body is a 400. Foreign or missing samples both yield 404 so ids
+// send). Rows of the other scope stay. With an explicit scope a feature
+// of the other scope in the body is a 400; without one it is skipped. Foreign or missing samples both yield 404 so ids
 // of other users' samples cannot be probed.
 func handleReplaceSampleFeatures(e *core.RequestEvent) error {
 	ownerID, err := authOwnerID(e)
 	if err != nil {
 		return err
 	}
-	scope, ok := featureScope(e.Request.URL.Query().Get("scope"))
+	rawScope := e.Request.URL.Query().Get("scope")
+	scope, ok := featureScope(rawScope)
 	if !ok {
 		return apis.NewBadRequestError("Unknown feature scope.", nil)
 	}
@@ -65,6 +66,14 @@ func handleReplaceSampleFeatures(e *core.RequestEvent) error {
 	}
 	fs := make([]geoplace.Feature, 0, len(*body.Features))
 	for _, f := range *body.Features {
+		// Without a scope the caller is an app version from before
+		// Tempus. It sends back every row it once pulled, the tempus:
+		// ones included; those are the backend's and are skipped
+		// instead of failing the request (the client would retry it
+		// forever).
+		if rawScope == "" && geoplace.ScopeOf(f.SourceID) != scope {
+			continue
+		}
 		fs = append(fs, geoplace.Feature{
 			SourceID: f.SourceID, SourceName: f.SourceName, Layer: f.Layer,
 			FeatureID: f.FeatureID, Properties: f.Properties, License: f.License,

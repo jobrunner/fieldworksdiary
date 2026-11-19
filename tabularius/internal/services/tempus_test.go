@@ -230,3 +230,39 @@ func TestGeocacheGetMaxAge(t *testing.T) {
 		t.Errorf("Get with the default TTL: %q, %v", got, err)
 	}
 }
+
+// The first answer for a fresh instant is forecast data. Once the
+// instant is five days old the archive has the final data: the cached
+// forecast answer must not be served as if it were final.
+func TestTempusQuery_ForecastEntryIsNotServedAsFinal(t *testing.T) {
+	var hits int32
+	srv := tempusServer(t, tempusFixture(t, "query_past_all_ok.json"), &hits, nil)
+	now := tempusPast.Add(time.Hour)
+	clock := func() time.Time { return now }
+	cache := newTestGeocache(t)
+	cache.Now = clock
+	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: cache, Now: clock}
+	q := func() {
+		t.Helper()
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast); err != nil {
+			t.Fatal(err)
+		}
+	}
+	q() // cached as a forecast answer
+	now = tempusPast.Add(121 * time.Hour)
+	q()
+	if hits != 2 {
+		t.Fatalf("server hits = %d, want 2: the forecast entry was reused after five days", hits)
+	}
+	// The answer cached now is final and stays usable for days.
+	now = tempusPast.Add(121*time.Hour + 3*24*time.Hour)
+	q()
+	if hits != 2 {
+		t.Errorf("server hits = %d, want 2: the final entry was not reused", hits)
+	}
+	now = tempusPast.Add(121*time.Hour + 8*24*time.Hour)
+	q()
+	if hits != 3 {
+		t.Errorf("server hits = %d, want 3 after the final entry expired", hits)
+	}
+}

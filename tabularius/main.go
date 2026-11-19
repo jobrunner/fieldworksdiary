@@ -203,6 +203,9 @@ func main() {
 			}
 			cond.Register()
 			cond.RegisterCron(tempusRefreshLimit)
+			// The Ortus run can move the instant of an all-day sample
+			// (corrected zone); it then asks Tempus again itself.
+			enr.Conditions = cond
 		} else {
 			slog.Warn("tempus: TEMPUS_BASE_URL leer, Anreicherung deaktiviert")
 		}

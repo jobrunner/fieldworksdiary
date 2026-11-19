@@ -71,7 +71,7 @@ var valueSpecs = []valueSpec{
 
 // ValueFields are the sample fields that carry Tempus values (without
 // the conditions_* bookkeeping fields). Number columns cannot be empty:
-// a column counts only when its kind is listed in conditions_kinds.
+// a column counts only when it is listed in conditions_fields.
 var ValueFields = func() []string {
 	names := make([]string, 0, len(valueSpecs))
 	for _, s := range valueSpecs {
@@ -94,7 +94,8 @@ type Result struct {
 	FetchedAt  time.Time
 	// RetryAt is when to ask again; zero for a final result.
 	RetryAt time.Time
-	// Kinds are the feature kinds that delivered values, sorted.
+	// Kinds are the feature kinds Tempus delivered, sorted (not stored:
+	// on the record conditions_fields says which values exist).
 	Kinds []string
 	// Values holds only the fields Tempus delivered (numbers as
 	// float64, texts as string, dates as time.Time).
@@ -236,19 +237,20 @@ func lookup(props map[string]any, path []string, typ valueType) (any, bool) {
 	}
 }
 
-// Apply writes the result onto the sample: the conditions_* fields and
-// every value field. A value Tempus did not deliver is reset, so nothing
+// Apply writes the result onto the sample: the conditions_* fields
+// (conditions_fields lists the delivered values) and every value field. A value Tempus did not deliver is reset, so nothing
 // from an earlier answer survives. No other field is touched.
 func Apply(rec *core.Record, r Result) {
 	rec.Set("conditions_status", r.Status)
 	setDate(rec, "conditions_queried_for", r.QueriedFor)
 	setDate(rec, "conditions_fetched_at", r.FetchedAt)
 	setDate(rec, "conditions_retry_at", r.RetryAt)
-	kinds := r.Kinds
-	if kinds == nil {
-		kinds = []string{}
+	fields := make([]string, 0, len(r.Values))
+	for field := range r.Values {
+		fields = append(fields, field)
 	}
-	rec.Set("conditions_kinds", kinds)
+	sort.Strings(fields)
+	rec.Set("conditions_fields", fields)
 	for _, spec := range valueSpecs {
 		v := r.Values[spec.field]
 		switch spec.typ {
@@ -278,11 +280,24 @@ func setDate(rec *core.Record, field string, t time.Time) {
 	rec.Set(field, t.UTC())
 }
 
-// Kinds reads conditions_kinds from the sample.
-func Kinds(rec *core.Record) []string {
-	var kinds []string
-	_ = rec.UnmarshalJSONField("conditions_kinds", &kinds)
-	return kinds
+// Fields reads conditions_fields from the sample: the value fields
+// Tempus actually delivered, sorted. A number column not listed here
+// holds no value, whatever it reads (PocketBase has no empty number, and
+// 0 °C is a real temperature).
+func Fields(rec *core.Record) []string {
+	var fields []string
+	_ = rec.UnmarshalJSONField("conditions_fields", &fields)
+	return fields
+}
+
+// HasValue reports whether the sample holds a delivered value in field.
+func HasValue(rec *core.Record, field string) bool {
+	for _, f := range Fields(rec) {
+		if f == field {
+			return true
+		}
+	}
+	return false
 }
 
 // Snapshot renders the conditions of a sample as one comparable string.
@@ -292,7 +307,7 @@ func Snapshot(rec *core.Record) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "status=%s\x00", rec.GetString("conditions_status"))
 	fmt.Fprintf(&b, "for=%s\x00", rec.GetDateTime("conditions_queried_for").String())
-	fmt.Fprintf(&b, "kinds=%s\x00", strings.Join(Kinds(rec), ","))
+	fmt.Fprintf(&b, "fields=%s\x00", strings.Join(Fields(rec), ","))
 	for _, spec := range valueSpecs {
 		switch spec.typ {
 		case typeNumber:
@@ -304,4 +319,48 @@ func Snapshot(rec *core.Record) string {
 		}
 	}
 	return b.String()
+}
+
+// Bounds for what a client may say about values it fetched itself.
+const (
+	// clockSkew is how far a client's fetch date may lie ahead of ours.
+	clockSkew = 5 * time.Minute
+	// maxUnavailableRetry caps the retry a client reports for a
+	// provider that was unavailable.
+	maxUnavailableRetry = 24 * time.Hour
+)
+
+// CheckDelivered validates the bookkeeping a client sent along with
+// values it fetched from Tempus itself, for the instant queriedFor. The
+// values are the client's; status and retry date follow from the dates,
+// so a wrong status cannot keep forecast data from being replaced or a
+// sample out of the refresh job:
+//
+//   - no fetch date, or one in the future: not usable (ok = false)
+//   - instant still in the future: provisional, retry an hour after it
+//   - fetched before the instant was FinalAfter old: provisional, retry
+//     when it is — or sooner if the client says so
+//   - fetched later: final as claimed; a claimed "provisional" (a
+//     provider was unavailable) keeps a retry within a day
+func CheckDelivered(status string, queriedFor, fetchedAt, retryAt, now time.Time) (string, time.Time, bool) {
+	if fetchedAt.IsZero() || fetchedAt.After(now.Add(clockSkew)) {
+		return "", time.Time{}, false
+	}
+	within := func(lo, hi, def time.Time) time.Time {
+		if retryAt.IsZero() || retryAt.Before(lo) || retryAt.After(hi) {
+			return def
+		}
+		return retryAt
+	}
+	switch {
+	case queriedFor.After(fetchedAt):
+		return StatusProvisional, queriedFor.Add(defaultRetry), true
+	case !IsFinalAge(queriedFor, fetchedAt):
+		final := queriedFor.Add(FinalAfter)
+		return StatusProvisional, within(fetchedAt, final, final), true
+	case status == StatusFinal:
+		return StatusFinal, time.Time{}, true
+	default:
+		return StatusProvisional, within(fetchedAt, fetchedAt.Add(maxUnavailableRetry), fetchedAt.Add(defaultRetry)), true
+	}
 }

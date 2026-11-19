@@ -139,8 +139,8 @@ Der Wrapper liegt in `tabularius/internal/services/tempus.go`, die
 Kernlogik (Abfragezeitpunkt, Abbildung auf Felder und Status) in
 `internal/conditions`. Die Werte stehen als Felder am Sample, die
 vollständigen Features in `sample_features` mit `source_id` `tempus:…`.
-Zahlenspalten gelten nur, wenn ihre Feature-Art in `conditions_kinds`
-steht (0 °C ist ein echter Wert). Frische Werte sind vorläufig; ein
+Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht
+(0 °C ist ein echter Wert). Frische Werte sind vorläufig; ein
 stündlicher Job fragt sie erneut ab. Details:
 `docs/superpowers/specs/2026-11-19-tempus-wetter-klima-design.md`.
 

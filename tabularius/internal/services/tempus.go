@@ -116,13 +116,17 @@ func orDefault(d, def time.Duration) time.Duration {
 	return def
 }
 
-// cacheMaxAge is how long a cached answer for at stays usable: forecast
-// data is revised, archive data is final.
+// cacheMaxAge is how old a cached answer for at may be. Forecast data
+// is revised, so an answer for a young instant lives only RecentMaxAge.
+// Once the instant is FinalAfter old the archive is final, but only an
+// answer fetched after that point holds archive data: an entry cached
+// earlier is a forecast answer and must not be served as final.
 func (t *Tempus) cacheMaxAge(at time.Time) time.Duration {
-	if t.now().Sub(at) >= orDefault(t.FinalAfter, tempusDefaultFinalAfter) {
-		return orDefault(t.FinalMaxAge, tempusDefaultFinalMaxAge)
+	sinceFinal := t.now().Sub(at) - orDefault(t.FinalAfter, tempusDefaultFinalAfter)
+	if sinceFinal < 0 {
+		return orDefault(t.RecentMaxAge, tempusDefaultRecentMaxAge)
 	}
-	return orDefault(t.RecentMaxAge, tempusDefaultRecentMaxAge)
+	return min(sinceFinal, orDefault(t.FinalMaxAge, tempusDefaultFinalMaxAge))
 }
 
 // Query returns Tempus' answer for (lat, lon) at the instant at. It

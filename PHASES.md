@@ -1229,11 +1229,11 @@ Deploy (manuell, siehe `docs/ENVIRONMENTS.md` „Manuelles Deploy“):
 
 Sechs Verbesserungen rund um die Sample-Ansicht, jede auf einem eigenen Feature-Branch mit eigenem PR:
 
-- [ ] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
-- [ ] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
-- [ ] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
+- [x] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
+- [x] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
+- [x] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
 - [ ] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2)
-- [ ] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
+- [x] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
 - [ ] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
 
 Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lässt sich nur auf einem Gerät prüfen.
@@ -1249,4 +1249,4 @@ Jede Probe mit Koordinate bekommt Wetter, Klima, Sonne und Mond zu ihrem Zeitpun
 - [ ] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7)
 - [ ] PR 10 – Ablösung der eigenen Astronomie (`feat/astro-aus-tempus`, erst nach gelaufenem Backfill mergen)
 
-Bestehende Proben behalten bis zum Backfill einen leeren `conditions_status`. Zahlenspalten gelten nur, wenn ihre Feature-Art in `conditions_kinds` steht (0 °C ist ein echter Wert).
+Bestehende Proben behalten bis zum Backfill einen leeren `conditions_status`. Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht (0 °C ist ein echter Wert).

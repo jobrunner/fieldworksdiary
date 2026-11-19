@@ -22,7 +22,8 @@ services:
     environment:
       APP_ENV: production
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
-      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL:-https://tempus.legulus.app}
+      # `-` statt `:-`: ein ausdrücklich leerer Wert schaltet Tempus ab.
+      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL-https://tempus.legulus.app}
     labels:
       env: production
       managed-by: docker-compose

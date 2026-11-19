@@ -8,6 +8,8 @@
 
 **Tech Stack:** Go, PocketBase als Library (`core.App`, Request-Hooks, `app.Cron()`), `log/slog`, `net/http/httptest` für Fakes.
 
+**Nachtrag nach dem Review:** `conditions_kinds` wurde durch `conditions_fields` ersetzt (feldgenaue Liste der gelieferten Werte); die Aufgaben unten nennen noch den alten Namen.
+
 **Spec:** `docs/superpowers/specs/2026-11-19-tempus-wetter-klima-design.md` (Abschnitte Datenhaltung, Ablauf/Backend, Wer gewinnt). App (PR 8), Backfill (PR 9) und Astro-Ablösung (PR 10) bekommen eigene Pläne.
 
 ## Global Constraints

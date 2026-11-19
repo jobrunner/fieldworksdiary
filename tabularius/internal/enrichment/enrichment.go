@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"go.mett.io/tabularius/internal/adminlabels"
+	"go.mett.io/tabularius/internal/conditions"
 	"go.mett.io/tabularius/internal/geoplace"
+	"go.mett.io/tabularius/internal/hooks"
 	"go.mett.io/tabularius/internal/services"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -53,6 +55,10 @@ type Enricher struct {
 	Logger *slog.Logger
 	// Timeout caps the entire enrichment work for one sample.
 	Timeout time.Duration
+	// Conditions asks Tempus again after the Ortus run, which can move
+	// the instant of an all-day sample by correcting its zone. Nil
+	// leaves such a sample to the hourly refresh job.
+	Conditions *ConditionsEnricher
 }
 
 // Register wires the after-create and after-update hooks on samples.
@@ -109,6 +115,12 @@ func (e *Enricher) runSafely(sampleID, ftID string) {
 
 	// 1. Sample location enrichment via Ortus.
 	e.run(ctx, sampleID)
+
+	// 1b. Weather/climate, if the Ortus run left the sample pending
+	//     (a no-op for every other status).
+	if e.Conditions != nil {
+		e.Conditions.EnrichSample(ctx, sampleID)
+	}
 
 	// 2. Fieldtrip derived fields (centroid, astro, suggested
 	//    locality). Purely local, cheap.
@@ -188,6 +200,8 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		}
 
 		before := snapshot(rec)
+		conditionsBefore := conditions.Snapshot(rec)
+		instantBefore := hooks.SampleQueryInstant(tx, rec)
 		if res.Place != nil {
 			switch status {
 			case statusPending, statusInherited:
@@ -218,11 +232,17 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		geoplace.ApplyGeo(rec, res.Geo)
 		applyDEMHeight(rec, res.Geo)
 		applyTimezone(rec, res.Geo)
+		// A corrected zone moves 14:00/22:00 local of an all-day sample:
+		// its weather values were queried for another instant. Rows
+		// that were never processed stay with the backfill.
+		if rec.GetString("conditions_status") != "" && !hooks.SampleQueryInstant(tx, rec).Equal(instantBefore) {
+			conditions.Clear(rec)
+		}
 		finalStatus = rec.GetString("location_status")
 
 		// Nothing changed (e.g. a re-run over the same place): no save,
 		// no version bump, so clients are not sent into a 409.
-		if snapshot(rec) == before && !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeOrtus, res.Features) {
+		if snapshot(rec) == before && conditions.Snapshot(rec) == conditionsBefore && !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeOrtus, res.Features) {
 			return nil
 		}
 
@@ -408,7 +428,13 @@ func (e *Enricher) EnrichSampleTimezone(ctx context.Context, sampleID string) (b
 			return nil
 		}
 		tz, src := rec.GetString("timezone"), rec.GetString("timezone_source")
+		instantBefore := hooks.SampleQueryInstant(tx, rec)
 		applyTimezone(rec, geo)
+		// See run: a corrected zone moves the instant of an all-day
+		// sample; the refresh job asks Tempus again.
+		if rec.GetString("conditions_status") != "" && !hooks.SampleQueryInstant(tx, rec).Equal(instantBefore) {
+			conditions.Clear(rec)
+		}
 		if rec.GetString("timezone") == tz && rec.GetString("timezone_source") == src {
 			return nil
 		}

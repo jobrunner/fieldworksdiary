@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -49,6 +50,40 @@ type ConditionsEnricher struct {
 
 	// afterQuery runs between the Tempus call and the write (tests).
 	afterQuery func()
+
+	// inFlight serializes the runs for one sample: the create hook, the
+	// Ortus run and the job may all trigger the same one. The second
+	// run finds the sample already filled and does not ask again.
+	inFlight sync.Map // sample id -> *sync.Mutex
+	// slots caps the concurrent Tempus queries (a bulk sync creates
+	// many samples at once; Tempus has a daily budget).
+	slotsOnce sync.Once
+	slots     chan struct{}
+}
+
+// maxConcurrentQueries is the cap on parallel Tempus queries.
+const maxConcurrentQueries = 4
+
+// lockSample serializes the work for one sample; call the returned
+// function to release.
+func (e *ConditionsEnricher) lockSample(sampleID string) func() {
+	m, _ := e.inFlight.LoadOrStore(sampleID, &sync.Mutex{})
+	mu, _ := m.(*sync.Mutex)
+	mu.Lock()
+	// The entry stays in the map: removing it while another run waits
+	// on the mutex would let a third one start with a fresh mutex.
+	return mu.Unlock
+}
+
+// acquireSlot waits for a free query slot or the end of ctx.
+func (e *ConditionsEnricher) acquireSlot(ctx context.Context) (func(), bool) {
+	e.slotsOnce.Do(func() { e.slots = make(chan struct{}, maxConcurrentQueries) })
+	select {
+	case e.slots <- struct{}{}:
+		return func() { <-e.slots }, true
+	case <-ctx.Done():
+		return nil, false
+	}
 }
 
 // Register wires the create and update hooks on samples. They run after
@@ -59,7 +94,13 @@ func (e *ConditionsEnricher) Register() {
 		if err := ev.Next(); err != nil {
 			return err
 		}
-		if ev.Record.GetString("conditions_status") == conditions.StatusPending && hasCoordinate(ev.Record) {
+		switch {
+		case !hasCoordinate(ev.Record):
+			go func(id string) {
+				defer e.recoverPanic(id)
+				e.dropFeaturesWithoutCoordinate(id)
+			}(ev.Record.Id)
+		case ev.Record.GetString("conditions_status") == conditions.StatusPending:
 			go e.runSafely(ev.Record.Id)
 		}
 		return nil
@@ -127,7 +168,7 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 		"conditions_status = 'provisional' && conditions_retry_at != '' && conditions_retry_at <= {:now}",
 		"conditions_retry_at", limit, 0, dbx.Params{"now": now.Format(pbDateLayout)})
 	if err != nil {
-		e.log().Warn("conditions: refresh query failed", slog.Any("err", err))
+		e.log().Warn("conditions: refresh query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
 		return 0
 	}
 	if rest := limit - len(due); rest > 0 {
@@ -135,7 +176,7 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 			"conditions_status = 'pending' && (latitude != 0 || longitude != 0) && updated <= {:stale}",
 			"updated", rest, 0, dbx.Params{"stale": now.Add(-pendingGrace).Format(pbDateLayout)})
 		if err != nil {
-			e.log().Warn("conditions: refresh query failed", slog.Any("err", err))
+			e.log().Warn("conditions: refresh query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
 		} else {
 			due = append(due, pending...)
 		}
@@ -179,6 +220,7 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 	if e.Tempus == nil {
 		return
 	}
+	defer e.lockSample(sampleID)()
 	log := e.log().With(slog.String("sample_id", sampleID))
 	app := e.App
 	rec, err := app.FindRecordById("samples", sampleID)
@@ -193,14 +235,20 @@ func (e *ConditionsEnricher) EnrichSample(ctx context.Context, sampleID string) 
 	lat, lon := rec.GetFloat("latitude"), rec.GetFloat("longitude")
 	want := hooks.SampleQueryInstant(app, rec)
 
+	release, ok := e.acquireSlot(ctx)
+	if !ok {
+		log.Warn("conditions: no free query slot, sample stays as it is", slog.String("service", tempusServiceName))
+		return
+	}
 	resp, err := e.Tempus.Query(ctx, lat, lon, want)
+	release()
 	if e.afterQuery != nil {
 		e.afterQuery()
 	}
 	if err != nil {
 		log.Warn("conditions: tempus query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
 		if status == conditions.StatusPending {
-			e.dropStaleFeatures(sampleID, log)
+			e.dropStaleFeatures(sampleID, lat, lon, want, log)
 		}
 		return
 	}
@@ -266,12 +314,48 @@ func refreshable(status string) bool {
 	return status == conditions.StatusPending || status == conditions.StatusProvisional
 }
 
-func (e *ConditionsEnricher) dropStaleFeatures(sampleID string, log *slog.Logger) {
-	if !geoplace.FeaturesChanged(e.App, sampleID, geoplace.ScopeTempus, nil) {
-		return
+// dropStaleFeatures removes the Tempus features of a sample that is
+// still pending for the same place and instant: they belonged to its
+// former coordinate or time. The sample is re-read in the transaction,
+// so features a client delivered while Tempus was failing are kept.
+func (e *ConditionsEnricher) dropStaleFeatures(sampleID string, lat, lon float64, want time.Time, log *slog.Logger) {
+	err := e.App.RunInTransaction(func(tx core.App) error {
+		rec, err := tx.FindRecordById("samples", sampleID)
+		if err != nil {
+			return err
+		}
+		if rec.GetString("conditions_status") != conditions.StatusPending ||
+			math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
+			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon ||
+			!hooks.SampleQueryInstant(tx, rec).Equal(want) ||
+			!geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeTempus, nil) {
+			return nil
+		}
+		return geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), geoplace.ScopeTempus, nil)
+	})
+	if err != nil {
+		log.Warn("conditions: dropping stale features failed", slog.String("service", tempusServiceName), slog.Any("err", err))
 	}
-	if err := geoplace.ReplaceFeatures(e.App, sampleID, "", geoplace.ScopeTempus, nil); err != nil {
-		log.Warn("conditions: dropping stale features failed", slog.Any("err", err))
+}
+
+// dropFeaturesWithoutCoordinate removes the Tempus features of a sample
+// that has no coordinate (any more): they describe a place the sample
+// is no longer at, and nothing else would ever replace them.
+func (e *ConditionsEnricher) dropFeaturesWithoutCoordinate(sampleID string) {
+	log := e.log().With(slog.String("sample_id", sampleID))
+	err := e.App.RunInTransaction(func(tx core.App) error {
+		rec, err := tx.FindRecordById("samples", sampleID)
+		if err != nil {
+			return err
+		}
+		if hasCoordinate(rec) || !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeTempus, nil) {
+			return nil
+		}
+		return geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), geoplace.ScopeTempus, nil)
+	})
+	if err != nil {
+		log.Warn("conditions: dropping features without coordinate failed",
+			slog.String("service", tempusServiceName), slog.Any("err", err))
 	}
 }
 

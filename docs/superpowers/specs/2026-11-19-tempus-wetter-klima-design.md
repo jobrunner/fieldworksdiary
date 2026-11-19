@@ -118,7 +118,7 @@ Berechnung wird durch Tempus abgelöst.
 |---|---|
 | `conditions_status` | leer, `pending`, `provisional`, `final` |
 | `conditions_retry_at` | frühester Zeitpunkt der nächsten Abfrage (nur bei `provisional`) |
-| `conditions_kinds` | Liste der Feature-Arten, die Werte geliefert haben, z.B. `["weather","sun","moon"]` |
+| `conditions_fields` | Liste der Wertfelder, die Tempus tatsächlich geliefert hat, z.B. `["sunrise","weather_temperature_c"]` |
 | `conditions_queried_for` | UTC-Zeitpunkt, mit dem Tempus gefragt wurde |
 | `conditions_fetched_at` | wann die Antwort geholt wurde |
 | `weather_temperature_c` | Temperatur 2 m |
@@ -139,13 +139,12 @@ Berechnung wird durch Tempus abgelöst.
 Die Feldnamen sind mein Vorschlag. Alle Wertfelder sind optional.
 
 Zahlenfelder kennen in PocketBase kein „leer“, ein fehlender Wert steht als
-0 in der Spalte. 0 °C oder 0 mm sind aber echte Werte. Deshalb sagt
-`conditions_kinds`, welche Feature-Arten geliefert haben: die Spalten einer
-Art gelten nur, wenn die Art in der Liste steht. Zuordnung: `weather` →
-`weather_*` außer Taupunkt, `dewpoint` → `weather_dew_point_c`,
-`aggregate` → `precipitation_*h_mm` und `day_temperature_*`, `bioclim` →
-`climate_*`, `sun` → `sunrise`/`sunset`, `moon` → `moon_*`. App und Export
-müssen diese Regel beachten.
+0 in der Spalte. 0 °C oder 0 mm sind aber echte Werte. Deshalb listet
+`conditions_fields` genau die Wertfelder, die Tempus geliefert hat: eine
+Spalte gilt nur, wenn ihr Name in der Liste steht. Das gilt feldgenau, auch
+wenn innerhalb eines gelieferten Features ein einzelner Wert fehlt (oder
+der Wind in einer anderen Einheit als km/h kommt). App und Export müssen
+diese Regel beachten.
 
 Statusbedeutung (mein Vorschlag, Tempus meldet den Zustand je Provider):
 
@@ -259,6 +258,9 @@ Backend fragt neu ab.
 
 - Liefert die App passende Werte (gleiche Koordinate, gleicher
   Abfragezeitpunkt), übernimmt das Backend sie und fragt nicht selbst.
+  Status und Zeitpunkt der nächsten Abfrage leitet das Backend dabei aus
+  dem Abfragezeitpunkt und dem Abrufdatum der App ab; ohne Abrufdatum
+  gelten die Werte als nicht geliefert.
 - Der Nachzieh-Job des Backends darf Werte der App überschreiben, weil die
   Werte nicht von Hand bearbeitet werden und endgültige Daten vorläufige
   ersetzen sollen.

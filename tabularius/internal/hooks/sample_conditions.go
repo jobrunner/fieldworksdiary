@@ -87,7 +87,8 @@ func SampleQueryInstant(app core.App, rec *core.Record) time.Time {
 //
 //   - no coordinate: no values, empty status
 //   - the request carries values queried for the sample's instant (the
-//     app asked Tempus itself): kept. After a move of coordinate or
+//     app asked Tempus itself): kept, with status and retry date
+//     derived from the dates (conditions.CheckDelivered). After a move of coordinate or
 //     instant that only holds for values fetched anew, not for the old
 //     ones echoed back.
 //   - coordinate or instant moved otherwise, or the request carries
@@ -106,6 +107,9 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 	status := rec.GetString("conditions_status")
 	delivered := (status == conditions.StatusProvisional || status == conditions.StatusFinal) &&
 		conditions.SameInstant(rec.GetDateTime("conditions_queried_for").Time(), want)
+	if delivered {
+		delivered = normalizeDelivered(rec, want)
+	}
 
 	if isCreate {
 		if !delivered {
@@ -119,8 +123,8 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 		math.Abs(rec.GetFloat("longitude")-orig.GetFloat("longitude")) > coordEpsilon ||
 		!want.Equal(SampleQueryInstant(app, orig))
 	if moved {
-		fetchedAnew := !rec.GetDateTime("conditions_fetched_at").Time().
-			Equal(orig.GetDateTime("conditions_fetched_at").Time())
+		fetchedAnew := rec.GetDateTime("conditions_fetched_at").Time().
+			After(orig.GetDateTime("conditions_fetched_at").Time())
 		if !delivered || !fetchedAnew {
 			conditions.Clear(rec)
 		}
@@ -129,4 +133,30 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 	if !delivered && conditions.Snapshot(rec) != conditions.Snapshot(orig) {
 		conditions.Clear(rec)
 	}
+}
+
+// nowFunc is the clock of this file (tests).
+var nowFunc = time.Now
+
+// normalizeDelivered replaces the status and retry date a client sent
+// with the ones that follow from its dates. It reports false when the
+// values are unusable (no or a future fetch date).
+func normalizeDelivered(rec *core.Record, want time.Time) bool {
+	status, retryAt, ok := conditions.CheckDelivered(
+		rec.GetString("conditions_status"),
+		want,
+		rec.GetDateTime("conditions_fetched_at").Time(),
+		rec.GetDateTime("conditions_retry_at").Time(),
+		nowFunc(),
+	)
+	if !ok {
+		return false
+	}
+	rec.Set("conditions_status", status)
+	if retryAt.IsZero() {
+		rec.Set("conditions_retry_at", "")
+	} else {
+		rec.Set("conditions_retry_at", retryAt.UTC())
+	}
+	return true
 }

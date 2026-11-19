@@ -28,14 +28,18 @@ func conditionsSample(t *testing.T, app *tests.TestApp) *core.Record {
 }
 
 // clientValues fills the record the way an app that queried Tempus
-// itself would.
+// itself would: a provisional answer fetched an hour after the instant,
+// a final one fetched after the archive became final.
 func clientValues(rec *core.Record, queriedFor time.Time, status string) {
+	fetched, retry := queriedFor.Add(time.Hour), queriedFor.Add(conditions.FinalAfter)
+	if status == conditions.StatusFinal {
+		fetched, retry = queriedFor.Add(conditions.FinalAfter+time.Hour), time.Time{}
+	}
 	conditions.Apply(rec, conditions.Result{
 		Status:     status,
 		QueriedFor: queriedFor,
-		FetchedAt:  queriedFor.Add(time.Hour),
-		RetryAt:    queriedFor.Add(conditions.FinalAfter),
-		Kinds:      []string{"weather"},
+		FetchedAt:  fetched,
+		RetryAt:    retry,
 		Values:     map[string]any{"weather_temperature_c": 18.4},
 	})
 }
@@ -80,7 +84,7 @@ func TestReset_CreateWithValuesForOtherInstantIsCleared(t *testing.T) {
 	rec := conditionsSample(t, app)
 	clientValues(rec, condBegin.Add(-3*time.Hour), conditions.StatusFinal)
 	resetStaleConditions(app, rec, true)
-	if status(rec) != conditions.StatusPending || rec.GetFloat("weather_temperature_c") != 0 || len(conditions.Kinds(rec)) != 0 {
+	if status(rec) != conditions.StatusPending || rec.GetFloat("weather_temperature_c") != 0 || len(conditions.Fields(rec)) != 0 {
 		t.Errorf("stale client values kept: status %q", status(rec))
 	}
 }
@@ -174,7 +178,7 @@ func TestReset_UpdateWithFreshClientValuesKeepsThem(t *testing.T) {
 	// The app moved the coordinate and queried Tempus again.
 	rec.Set("latitude", 49.70)
 	clientValues(rec, condBegin, conditions.StatusFinal)
-	rec.Set("conditions_fetched_at", condBegin.Add(48*time.Hour))
+	rec.Set("conditions_fetched_at", condBegin.Add(200*time.Hour))
 	rec.Set("weather_temperature_c", 21.0)
 	resetStaleConditions(app, rec, false)
 	if status(rec) != conditions.StatusFinal || rec.GetFloat("weather_temperature_c") != 21.0 {
@@ -338,5 +342,124 @@ func TestFieldtripSaveWithoutNightChange_LeavesSamples(t *testing.T) {
 	}
 	if got := reload(t, app, allDay); status(got) != conditions.StatusFinal || got.GetInt("version") != 5 {
 		t.Errorf("status %q, version %d", status(got), got.GetInt("version"))
+	}
+}
+
+// --- what a client says about its own values is checked, not trusted ---
+
+func retryAt(rec *core.Record) time.Time { return rec.GetDateTime("conditions_retry_at").Time() }
+
+// "final" for forecast data would never be replaced by the archive.
+func TestReset_ClientFinalForFreshInstantBecomesProvisional(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusProvisional)
+	rec.Set("conditions_status", conditions.StatusFinal)
+	rec.Set("conditions_retry_at", "")
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusProvisional || !retryAt(rec).Equal(condBegin.Add(conditions.FinalAfter)) {
+		t.Errorf("status %q, retry %s", status(rec), retryAt(rec))
+	}
+	if rec.GetFloat("weather_temperature_c") != 18.4 {
+		t.Error("the values themselves must be kept")
+	}
+}
+
+// Without a retry date the refresh job would never pick the sample up.
+func TestReset_ClientProvisionalWithoutRetryGetsOne(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusProvisional)
+	rec.Set("conditions_retry_at", "")
+	resetStaleConditions(app, rec, true)
+	if !retryAt(rec).Equal(condBegin.Add(conditions.FinalAfter)) {
+		t.Errorf("retry = %s", retryAt(rec))
+	}
+}
+
+func TestReset_ClientRetryFarInFutureIsBounded(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusProvisional)
+	rec.Set("conditions_retry_at", condBegin.Add(10*365*24*time.Hour))
+	resetStaleConditions(app, rec, true)
+	if !retryAt(rec).Equal(condBegin.Add(conditions.FinalAfter)) {
+		t.Errorf("retry = %s", retryAt(rec))
+	}
+}
+
+// A sooner retry (a provider was unavailable) is the client's to say.
+func TestReset_ClientEarlierRetryIsKept(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusProvisional)
+	soon := condBegin.Add(3 * time.Hour)
+	rec.Set("conditions_retry_at", soon)
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusProvisional || !retryAt(rec).Equal(soon) {
+		t.Errorf("status %q, retry %s", status(rec), retryAt(rec))
+	}
+}
+
+func TestReset_ClientFinalAfterFiveDaysStaysFinalWithoutRetry(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec.Set("conditions_retry_at", condBegin.Add(999*time.Hour))
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusFinal || !retryAt(rec).IsZero() {
+		t.Errorf("status %q, retry %s", status(rec), retryAt(rec))
+	}
+}
+
+func TestReset_ClientValuesWithoutFetchDateAreCleared(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec.Set("conditions_fetched_at", "")
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusPending {
+		t.Errorf("status = %q", status(rec))
+	}
+}
+
+func TestReset_ClientValuesFetchedInTheFutureAreCleared(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec.Set("conditions_fetched_at", time.Now().Add(48*time.Hour))
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusPending {
+		t.Errorf("status = %q", status(rec))
+	}
+}
+
+// A sample planned for later: only sun and moon exist yet.
+func TestReset_ClientValuesForFutureInstantRetrySoonAfterIt(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	future := time.Now().UTC().Add(72 * time.Hour).Truncate(time.Second)
+	rec.Set("begin_date", future)
+	clientValues(rec, future, conditions.StatusProvisional)
+	rec.Set("conditions_fetched_at", time.Now().UTC().Add(-time.Minute))
+	rec.Set("conditions_retry_at", "")
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusProvisional || !retryAt(rec).Equal(future.Add(time.Hour)) {
+		t.Errorf("status %q, retry %s", status(rec), retryAt(rec))
+	}
+}
+
+// After a move the client must have fetched anew: a fetch date older
+// than the stored one is an echo, however it differs.
+func TestReset_UpdateMovedWithOlderFetchDateClears(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec = saved(t, app, rec)
+	rec.Set("latitude", 49.70)
+	rec.Set("conditions_fetched_at", condBegin.Add(conditions.FinalAfter))
+	resetStaleConditions(app, rec, false)
+	if status(rec) != conditions.StatusPending {
+		t.Errorf("status = %q", status(rec))
 	}
 }

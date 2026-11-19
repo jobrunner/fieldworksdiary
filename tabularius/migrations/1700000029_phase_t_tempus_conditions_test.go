@@ -14,7 +14,7 @@ var wantPhaseTFields = map[string]string{
 	"conditions_queried_for":   core.FieldTypeDate,
 	"conditions_fetched_at":    core.FieldTypeDate,
 	"conditions_retry_at":      core.FieldTypeDate,
-	"conditions_kinds":         core.FieldTypeJSON,
+	"conditions_fields":        core.FieldTypeJSON,
 	"weather_temperature_c":    core.FieldTypeNumber,
 	"weather_humidity_pct":     core.FieldTypeNumber,
 	"weather_dew_point_c":      core.FieldTypeNumber,

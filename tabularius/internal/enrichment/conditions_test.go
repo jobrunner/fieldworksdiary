@@ -126,8 +126,8 @@ func TestEnrich_PendingBecomesFinalAndWritesFeatures(t *testing.T) {
 	if s.GetInt("version") != 4 {
 		t.Errorf("version = %d, want 4", s.GetInt("version"))
 	}
-	if s.GetFloat("weather_temperature_c") != 16 || len(conditions.Kinds(s)) != 6 {
-		t.Errorf("values not written: %v / %v", s.GetFloat("weather_temperature_c"), conditions.Kinds(s))
+	if s.GetFloat("weather_temperature_c") != 16 || len(conditions.Fields(s)) != 19 {
+		t.Errorf("values not written: %v / %v", s.GetFloat("weather_temperature_c"), conditions.Fields(s))
 	}
 	if !s.GetDateTime("conditions_queried_for").Time().Equal(time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC)) {
 		t.Errorf("queried_for = %v", s.Get("conditions_queried_for"))
@@ -315,7 +315,6 @@ func makeProvisional(t *testing.T, app *tests.TestApp, id string, retryAt time.T
 		QueriedFor: time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC),
 		FetchedAt:  time.Date(2026, 5, 19, 16, 0, 0, 0, time.UTC),
 		RetryAt:    retryAt,
-		Kinds:      []string{"weather"},
 		Values:     map[string]any{"weather_temperature_c": 11.0},
 	})
 	if err := app.SaveNoValidate(rec); err != nil {
@@ -391,5 +390,158 @@ func TestRefreshDue_NilTempusDoesNothing(t *testing.T) {
 	provisionalSample(t, app, condNow.Add(-time.Minute))
 	if n := (&ConditionsEnricher{App: app}).RefreshDue(context.Background(), 10); n != 0 {
 		t.Errorf("n = %d", n)
+	}
+}
+
+// While Tempus is failing slowly, the app delivers its own values and
+// features. The error path must not delete them.
+func TestEnrich_FailedQueryKeepsFeaturesDeliveredMeanwhile(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := pendingSample(t, app)
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	f.fail = true
+	e := newConditionsEnricher(app, f, condNow)
+	e.afterQuery = func() {
+		rec := mustSample(t, app, sampleID)
+		conditions.Apply(rec, conditions.Result{
+			Status:     conditions.StatusFinal,
+			QueriedFor: time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC),
+			FetchedAt:  condNow,
+			Values:     map[string]any{"weather_temperature_c": 12.0},
+		})
+		if err := app.SaveNoValidate(rec); err != nil {
+			t.Fatal(err)
+		}
+		if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, geoplace.ScopeTempus,
+			[]geoplace.Feature{{SourceID: "tempus:weather", SourceName: "Tempus", Layer: "weather"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.EnrichSample(context.Background(), sampleID)
+	if n := tempusRows(t, app, sampleID); n != 1 {
+		t.Errorf("tempus rows = %d: the app's features were deleted", n)
+	}
+}
+
+// Ortus corrects the zone of an all-day sample: 14:00 local is another
+// instant now, the stored values belong to the old one.
+func TestOrtusTimezoneChange_ResetsConditionsAndAsksAgain(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status": "pending", "timezone": "UTC", "timezone_source": "device",
+		"is_all_day": true, "begin_date": time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC),
+	})
+	rec := mustSample(t, app, sampleID)
+	conditions.Apply(rec, conditions.Result{
+		Status:     conditions.StatusFinal,
+		QueriedFor: time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC),
+		FetchedAt:  condNow,
+		Values:     map[string]any{"weather_temperature_c": 12.0},
+	})
+	if err := app.SaveNoValidate(rec); err != nil {
+		t.Fatal(err)
+	}
+
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	e := newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json"))
+
+	// Without a conditions enricher the values are at least cleared.
+	runEnrich(t, e, sampleID)
+	s := loadSample(t, app, sampleID)
+	if s.GetString("timezone") != "Europe/Berlin" {
+		t.Fatalf("precondition: timezone = %q", s.GetString("timezone"))
+	}
+	if s.GetString("conditions_status") != conditions.StatusPending || s.GetFloat("weather_temperature_c") != 0 {
+		t.Errorf("status %q, temperature %v after the zone change", s.GetString("conditions_status"), s.GetFloat("weather_temperature_c"))
+	}
+
+	// With one, the sample is asked again right away, for 14:00 Berlin.
+	e.Conditions = newConditionsEnricher(app, tempus, condNow)
+	e.runSafely(sampleID, "")
+	s = loadSample(t, app, sampleID)
+	if s.GetString("conditions_status") != conditions.StatusFinal {
+		t.Errorf("status = %q", s.GetString("conditions_status"))
+	}
+	if got := tempus.datetimes; len(got) != 1 || got[0] != "2026-05-19T12:00:00Z" {
+		t.Errorf("asked for %v, want 14:00 Berlin", got)
+	}
+}
+
+// Two triggers for the same sample (create hook and the Ortus run) must
+// not both ask Tempus.
+func TestEnrich_ConcurrentRunsForOneSampleQueryOnce(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	f := newFakeTempus(t, "query_past_all_ok.json")
+	e := newConditionsEnricher(app, f, condNow)
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			e.EnrichSample(context.Background(), sampleID)
+		}()
+	}
+	wg.Wait()
+	if f.hits() != 1 {
+		t.Errorf("tempus hits = %d, want 1", f.hits())
+	}
+}
+
+// A sample that lost its coordinate has no conditions; the feature rows
+// of its former place must go as well.
+func TestCoordinateRemoved_DropsTempusFeatures(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := pendingSample(t, app)
+	for scope, fs := range map[geoplace.FeatureScope][]geoplace.Feature{
+		geoplace.ScopeTempus: {{SourceID: "tempus:sun", SourceName: "Tempus", Layer: "sun"}},
+		geoplace.ScopeOrtus:  {{SourceID: "nsg", SourceName: "NSG", Layer: "l", FeatureID: "1"}},
+	} {
+		if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, scope, fs); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := newConditionsEnricher(app, newFakeTempus(t, "query_past_all_ok.json"), condNow)
+
+	// With a coordinate nothing is removed.
+	e.dropFeaturesWithoutCoordinate(sampleID)
+	if n := tempusRows(t, app, sampleID); n != 1 {
+		t.Fatalf("tempus rows = %d, want 1 while the coordinate exists", n)
+	}
+	updateSample(t, app, sampleID, map[string]any{"latitude": 0, "longitude": 0, "conditions_status": ""})
+	e.dropFeaturesWithoutCoordinate(sampleID)
+	if tempus, all := tempusRows(t, app, sampleID), len(sampleFeatures(t, app, sampleID)); tempus != 0 || all != 1 {
+		t.Errorf("tempus rows = %d, all rows = %d; want 0 and the Ortus row", tempus, all)
+	}
+}
+
+// The timezone backfill corrects zones too; conditions of an all-day
+// sample queried for the old zone's 14:00 must not survive it.
+func TestEnrichSampleTimezone_ResetsConditionsOfAllDaySample(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status": "manual", "timezone": "UTC", "timezone_source": "device",
+		"is_all_day": true, "begin_date": time.Date(2026, 5, 19, 0, 0, 0, 0, time.UTC),
+	})
+	rec := mustSample(t, app, sampleID)
+	conditions.Apply(rec, conditions.Result{
+		Status:     conditions.StatusFinal,
+		QueriedFor: time.Date(2026, 5, 19, 14, 0, 0, 0, time.UTC),
+		FetchedAt:  condNow,
+		Values:     map[string]any{"weather_temperature_c": 12.0},
+	})
+	if err := app.SaveNoValidate(rec); err != nil {
+		t.Fatal(err)
+	}
+	e := newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json"))
+	saved, err := e.EnrichSampleTimezone(context.Background(), sampleID)
+	if err != nil || !saved {
+		t.Fatalf("saved = %v, err = %v", saved, err)
+	}
+	s := loadSample(t, app, sampleID)
+	if s.GetString("conditions_status") != conditions.StatusPending || s.GetFloat("weather_temperature_c") != 0 {
+		t.Errorf("status %q, temperature %v", s.GetString("conditions_status"), s.GetFloat("weather_temperature_c"))
 	}
 }

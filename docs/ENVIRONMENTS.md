@@ -52,7 +52,8 @@ SQLite-Volumes. Ein Crash der Staging-Datenbank kann Prod nicht treffen.
 | `TEMPUS_BASE_URL` | Tempus (Wetter, Klima, Astronomie), z.B. `https://tempus.example` | keine Wetter-Anreicherung, kein stündlicher Nachzieh-Lauf |
 
 Beide Variablen haben in den Compose-Dateien einen Default und lassen
-sich über die Umgebung überschreiben. In `docker-compose.test.yml` ist
+sich über die Umgebung überschreiben. Ein ausdrücklich leerer Wert
+(`TEMPUS_BASE_URL=`) schaltet Tempus ab. In `docker-compose.test.yml` ist
 `TEMPUS_BASE_URL` leer, damit die iOS-Tests nicht vom Netz abhängen.
 Der Nachzieh-Lauf startet stündlich zur Minute 7 und fragt höchstens
 200 Proben pro Lauf ab.

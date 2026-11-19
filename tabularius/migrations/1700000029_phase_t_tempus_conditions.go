@@ -3,12 +3,12 @@
 //   - samples: conditions_status (select pending/provisional/final,
 //     empty = never processed), conditions_queried_for,
 //     conditions_fetched_at, conditions_retry_at (dates),
-//     conditions_kinds (JSON list of the feature kinds that delivered
-//     values) and the value columns for weather, antecedent
+//     conditions_fields (JSON list of the value columns Tempus
+//     delivered) and the value columns for weather, antecedent
 //     precipitation, day extrema, climate, sun and moon.
 //   - Number columns cannot be empty in PocketBase (a missing value
-//     reads 0, and 0 °C is a real value): the columns of a kind count
-//     only when the kind is listed in conditions_kinds.
+//     reads 0, and 0 °C is a real value): a value column counts only
+//     when it is listed in conditions_fields.
 //   - Index on (conditions_status, conditions_retry_at) for the hourly
 //     refresh job.
 //
@@ -33,7 +33,7 @@ func phaseTFields() []core.Field {
 		&core.DateField{Name: "conditions_queried_for"},
 		&core.DateField{Name: "conditions_fetched_at"},
 		&core.DateField{Name: "conditions_retry_at"},
-		&core.JSONField{Name: "conditions_kinds"},
+		&core.JSONField{Name: "conditions_fields"},
 	}
 	for _, name := range []string{
 		"weather_temperature_c", "weather_humidity_pct", "weather_dew_point_c",

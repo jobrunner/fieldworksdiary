@@ -219,3 +219,38 @@ func TestFeaturesEndpoint_UnknownScope400(t *testing.T) {
 		http.StatusBadRequest, []string{`"status":400`}, nil)
 	sc.Test(t)
 }
+
+// An app version from before Tempus hydrates every feature row of the
+// server, the tempus: ones included, and sends them all back on a
+// resend without a scope. That must neither fail (the mutation would
+// retry forever) nor overwrite the backend's Tempus rows.
+func TestFeaturesEndpoint_UnscopedPutIgnoresTempusRowsInBody(t *testing.T) {
+	app := newScenarioApp(t)
+	owner := makeUser(t, app, "fscope6@example.com")
+	ft := makeFieldtrip(t, app, owner.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ft.Id)
+	seedFeatures(t, app, sample.Id, owner.Id)
+	token := authTokenFor(t, app, owner)
+	body := map[string]any{"features": []map[string]any{
+		{"source_id": "ffh", "source_name": "FFH", "layer": "l", "feature_id": "9"},
+		{"source_id": "tempus:moon", "source_name": "Tempus", "layer": "moon"},
+	}}
+	sc := featuresScenarioQuery(app, token, sample.Id, "", body, http.StatusNoContent, nil, func(t testing.TB) {
+		if got := featureSourceIDs(t, app, sample.Id); got != "ffh,tempus:sun" {
+			t.Errorf("sources = %q, want the client's Ortus row and the server's Tempus row", got)
+		}
+	})
+	sc.Test(t)
+}
+
+// With an explicit scope the body has to match it.
+func TestFeaturesEndpoint_ExplicitOrtusScopeRejectsTempusRows(t *testing.T) {
+	app := newScenarioApp(t)
+	owner := makeUser(t, app, "fscope7@example.com")
+	ft := makeFieldtrip(t, app, owner.Id)
+	sample := makeSample(t, app, owner.Id, "260519/1", ft.Id)
+	token := authTokenFor(t, app, owner)
+	body := map[string]any{"features": []map[string]any{{"source_id": "tempus:moon", "source_name": "Tempus", "layer": "moon"}}}
+	sc := featuresScenarioQuery(app, token, sample.Id, "scope=ortus", body, http.StatusBadRequest, []string{`"status":400`}, nil)
+	sc.Test(t)
+}

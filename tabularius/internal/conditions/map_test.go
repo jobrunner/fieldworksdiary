@@ -201,6 +201,25 @@ func TestFromTempus_ZeroValuesCount(t *testing.T) {
 	if _, ok := r.Values["weather_humidity_pct"]; ok {
 		t.Error("a property Tempus did not send must stay absent")
 	}
+
+	// On the record the zeros are told apart from gaps by
+	// conditions_fields: it lists exactly the delivered columns.
+	rec := newSample(t)
+	Apply(rec, r)
+	want := []string{"weather_cloud_cover_pct", "weather_precipitation_mm", "weather_temperature_c"}
+	if got := Fields(rec); !reflect.DeepEqual(got, want) {
+		t.Errorf("fields = %v, want %v", got, want)
+	}
+}
+
+// A null inside a delivered feature is a gap, not a zero.
+func TestFromTempus_NullPropertyIsNotAField(t *testing.T) {
+	r := FromTempus(weatherOnly(map[string]any{"temperature2m": nil, "precipitation": 2.5}), past, pastFetch)
+	rec := newSample(t)
+	Apply(rec, r)
+	if got := Fields(rec); !reflect.DeepEqual(got, []string{"weather_precipitation_mm"}) {
+		t.Errorf("fields = %v", got)
+	}
 }
 
 func TestFromTempus_WindInOtherUnitIsNotStored(t *testing.T) {
@@ -212,6 +231,11 @@ func TestFromTempus_WindInOtherUnitIsNotStored(t *testing.T) {
 	}
 	if len(r.Features) != 1 {
 		t.Error("the feature itself must be kept")
+	}
+	rec := newSample(t)
+	Apply(rec, r)
+	if len(Fields(rec)) != 0 {
+		t.Errorf("fields = %v: the wind column would read as a real 0 km/h", Fields(rec))
 	}
 }
 
@@ -284,8 +308,8 @@ func TestApplyAndClear(t *testing.T) {
 		!rec.GetDateTime("conditions_fetched_at").Time().Equal(past.Add(3*time.Hour)) {
 		t.Errorf("dates = %v / %v / %v", rec.Get("conditions_queried_for"), rec.Get("conditions_retry_at"), rec.Get("conditions_fetched_at"))
 	}
-	if got := Kinds(rec); !reflect.DeepEqual(got, []string{"aggregate", "bioclim", "moon", "sun"}) {
-		t.Errorf("kinds = %v", got)
+	if got := Fields(rec); len(got) != 12 || got[0] != "climate_altitudinal_belt" || got[len(got)-1] != "sunset" {
+		t.Errorf("fields = %v", got)
 	}
 	if rec.GetFloat("precipitation_24h_mm") != 34 || rec.GetString("moon_phase") != "Vollmond" {
 		t.Errorf("values not applied")
@@ -308,7 +332,7 @@ func TestApplyAndClear(t *testing.T) {
 	if rec.GetString("conditions_status") != StatusPending {
 		t.Errorf("status after Clear = %q", rec.GetString("conditions_status"))
 	}
-	if len(Kinds(rec)) != 0 || rec.GetString("moon_phase") != "" || !rec.GetDateTime("sunrise").Time().IsZero() ||
+	if len(Fields(rec)) != 0 || rec.GetString("moon_phase") != "" || !rec.GetDateTime("sunrise").Time().IsZero() ||
 		!rec.GetDateTime("conditions_queried_for").Time().IsZero() {
 		t.Error("Clear left values behind")
 	}
@@ -336,5 +360,45 @@ func TestSnapshot_IgnoresFetchedAt(t *testing.T) {
 	rec.Set("weather_temperature_c", 17)
 	if Snapshot(rec) == before {
 		t.Error("a changed value must change the snapshot")
+	}
+}
+
+func TestCheckDelivered(t *testing.T) {
+	now := past.Add(400 * time.Hour)
+	final := past.Add(FinalAfter)
+	cases := []struct {
+		name       string
+		status     string
+		fetched    time.Time
+		retry      time.Time
+		wantStatus string
+		wantRetry  time.Time
+		wantOK     bool
+	}{
+		{"no fetch date", StatusFinal, time.Time{}, time.Time{}, "", time.Time{}, false},
+		{"fetched in the future", StatusFinal, now.Add(time.Hour), time.Time{}, "", time.Time{}, false},
+		{"clock skew is tolerated", StatusFinal, now.Add(time.Minute), time.Time{}, StatusFinal, time.Time{}, true},
+		{"final claimed for forecast data", StatusFinal, past.Add(time.Hour), time.Time{}, StatusProvisional, final, true},
+		{"provisional without retry", StatusProvisional, past.Add(time.Hour), time.Time{}, StatusProvisional, final, true},
+		{"retry far in the future", StatusProvisional, past.Add(time.Hour), past.Add(9999 * time.Hour), StatusProvisional, final, true},
+		{"retry before the fetch", StatusProvisional, past.Add(2 * time.Hour), past.Add(time.Hour), StatusProvisional, final, true},
+		{"sooner retry is kept", StatusProvisional, past.Add(time.Hour), past.Add(3 * time.Hour), StatusProvisional, past.Add(3 * time.Hour), true},
+		{"final after five days", StatusFinal, past.Add(200 * time.Hour), past.Add(999 * time.Hour), StatusFinal, time.Time{}, true},
+		{"old but a provider was unavailable", StatusProvisional, past.Add(200 * time.Hour), past.Add(202 * time.Hour), StatusProvisional, past.Add(202 * time.Hour), true},
+		{"old, unavailable, no retry", StatusProvisional, past.Add(200 * time.Hour), time.Time{}, StatusProvisional, past.Add(201 * time.Hour), true},
+		{"old, unavailable, retry too far", StatusProvisional, past.Add(200 * time.Hour), past.Add(300 * time.Hour), StatusProvisional, past.Add(201 * time.Hour), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			status, retry, ok := CheckDelivered(c.status, past, c.fetched, c.retry, now)
+			if status != c.wantStatus || !retry.Equal(c.wantRetry) || ok != c.wantOK {
+				t.Errorf("got (%q, %s, %v), want (%q, %s, %v)", status, retry, ok, c.wantStatus, c.wantRetry, c.wantOK)
+			}
+		})
+	}
+	// An instant that is still ahead: retry an hour after it.
+	future := now.Add(72 * time.Hour)
+	if status, retry, ok := CheckDelivered(StatusFinal, future, now, time.Time{}, now); status != StatusProvisional || !retry.Equal(future.Add(time.Hour)) || !ok {
+		t.Errorf("future instant: (%q, %s, %v)", status, retry, ok)
 	}
 }
