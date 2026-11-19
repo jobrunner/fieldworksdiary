@@ -69,6 +69,18 @@ enum PhotoStorage {
         guard let url = absoluteURL(forRelative: relativePath),
               let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
+        return thumbnail(from: source, maxPixel: maxPixel)
+    }
+
+    /// `thumbnail(relativePath:maxPixel:)` for image data that is not on
+    /// disk (yet).
+    static func thumbnail(data: Data, maxPixel: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        return thumbnail(from: source, maxPixel: maxPixel)
+    }
+
+    private static func thumbnail(from source: CGImageSource, maxPixel: CGFloat) -> UIImage? {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
