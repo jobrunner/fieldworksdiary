@@ -7,7 +7,6 @@ package enrichment
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -20,7 +19,6 @@ import (
 	"go.mett.io/tabularius/internal/geoplace"
 	"go.mett.io/tabularius/internal/services"
 
-	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 )
 
@@ -224,7 +222,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 
 		// Nothing changed (e.g. a re-run over the same place): no save,
 		// no version bump, so clients are not sent into a 409.
-		if snapshot(rec) == before && !featuresChanged(tx, sampleID, res.Features) {
+		if snapshot(rec) == before && !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeOrtus, res.Features) {
 			return nil
 		}
 
@@ -237,7 +235,7 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		if err := tx.SaveNoValidate(rec); err != nil {
 			return fmt.Errorf("save sample: %w", err)
 		}
-		if err := geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), res.Features); err != nil {
+		if err := geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), geoplace.ScopeOrtus, res.Features); err != nil {
 			return fmt.Errorf("replace features: %w", err)
 		}
 		return nil
@@ -275,50 +273,6 @@ func snapshot(rec *core.Record) string {
 		fmt.Fprintf(&b, "%s=%v\x00", f, rec.Get(f))
 	}
 	return b.String()
-}
-
-// featureKey renders a feature in a form comparable between the stored
-// record and a freshly mapped one (fetched_at is ignored).
-func featureKey(source, layer, id string, props, license any) string {
-	norm := func(v any) string {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return ""
-		}
-		var x any
-		if json.Unmarshal(raw, &x) != nil {
-			return string(raw)
-		}
-		out, _ := json.Marshal(x)
-		return string(out)
-	}
-	return strings.Join([]string{source, layer, id, norm(props), norm(license)}, "|")
-}
-
-// featuresChanged reports whether the stored features of the sample
-// differ from fs.
-func featuresChanged(app core.App, sampleID string, fs []geoplace.Feature) bool {
-	old, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sampleID})
-	if err != nil || len(old) != len(fs) {
-		return true
-	}
-	have := map[string]int{}
-	for _, r := range old {
-		have[featureKey(r.GetString("source_id"), r.GetString("layer"), r.GetString("feature_id"),
-			r.Get("properties"), r.Get("license"))]++
-	}
-	for _, f := range fs {
-		var lic any
-		if len(f.License) > 0 {
-			lic = f.License
-		}
-		k := featureKey(f.SourceID, f.Layer, f.FeatureID, f.Properties, lic)
-		if have[k] == 0 {
-			return true
-		}
-		have[k]--
-	}
-	return false
 }
 
 // errSkip aborts the write transaction without logging a failure.

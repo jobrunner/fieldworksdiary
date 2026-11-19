@@ -127,10 +127,10 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 		{SourceID: "a", SourceName: "A", Layer: "l", FeatureID: "1", Properties: map[string]any{"k": "v"}},
 		{SourceID: "b", SourceName: "B", Layer: "l", FeatureID: "2"},
 	}
-	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, fs); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, fs); err != nil {
 		t.Fatal(err)
 	}
-	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, fs[:1]); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, fs[:1]); err != nil {
 		t.Fatal(err)
 	}
 	recs, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
@@ -143,12 +143,129 @@ func TestReplaceFeatures_ReplacesSet(t *testing.T) {
 	if recs[0].GetDateTime("fetched_at").IsZero() {
 		t.Error("fetched_at unset")
 	}
-	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, nil); err != nil {
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, nil); err != nil {
 		t.Fatal(err)
 	}
 	recs, _ = app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0, dbx.Params{"s": sample.Id})
 	if len(recs) != 0 {
 		t.Errorf("want empty, got %d", len(recs))
+	}
+}
+
+func featureSources(t *testing.T, app *tests.TestApp, sampleID string) []string {
+	t.Helper()
+	recs, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "source_id", 0, 0, dbx.Params{"s": sampleID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, len(recs))
+	for _, r := range recs {
+		ids = append(ids, r.GetString("source_id"))
+	}
+	return ids
+}
+
+var (
+	ortusFeatures  = []geoplace.Feature{{SourceID: "nsg", SourceName: "NSG", Layer: "l", FeatureID: "1"}}
+	tempusFeatures = []geoplace.Feature{
+		{SourceID: "tempus:sun", SourceName: "Tempus", Layer: "sun"},
+		{SourceID: "tempus:weather", SourceName: "Tempus", Layer: "weather", Properties: map[string]any{"temperature2m": 0.0}},
+	}
+)
+
+func TestScopeOf(t *testing.T) {
+	if geoplace.ScopeOf("tempus:weather") != geoplace.ScopeTempus {
+		t.Error("tempus: prefix must map to the Tempus scope")
+	}
+	for _, id := range []string{"nsg", "tk25-blattschnitt-de", "", "tempus", "Tempus:weather"} {
+		if geoplace.ScopeOf(id) != geoplace.ScopeOrtus {
+			t.Errorf("%q must map to the Ortus scope", id)
+		}
+	}
+}
+
+func TestReplaceFeatures_OrtusKeepsTempusRows(t *testing.T) {
+	app := newStoreApp(t)
+	u := mkUser(t, app, "scope1@example.com")
+	sample := mkSample(t, app, u)
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeTempus, tempusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, ortusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	// An Ortus run that finds nothing must not wipe the Tempus rows either.
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := featureSources(t, app, sample.Id); len(got) != 2 || got[0] != "tempus:sun" || got[1] != "tempus:weather" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+func TestReplaceFeatures_TempusKeepsOrtusRows(t *testing.T) {
+	app := newStoreApp(t)
+	u := mkUser(t, app, "scope2@example.com")
+	sample := mkSample(t, app, u)
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, ortusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeTempus, tempusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeTempus, tempusFeatures[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if got := featureSources(t, app, sample.Id); len(got) != 2 || got[0] != "nsg" || got[1] != "tempus:sun" {
+		t.Errorf("sources = %v", got)
+	}
+}
+
+func TestReplaceFeatures_RejectsForeignScope(t *testing.T) {
+	app := newStoreApp(t)
+	u := mkUser(t, app, "scope3@example.com")
+	sample := mkSample(t, app, u)
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, ortusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	mixed := append([]geoplace.Feature{{SourceID: "other", Layer: "l"}}, tempusFeatures...)
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, mixed); err == nil {
+		t.Fatal("a Tempus feature in an Ortus replace must be rejected")
+	}
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeTempus, ortusFeatures); err == nil {
+		t.Fatal("an Ortus feature in a Tempus replace must be rejected")
+	}
+	if got := featureSources(t, app, sample.Id); len(got) != 1 || got[0] != "nsg" {
+		t.Errorf("a rejected replace changed the rows: %v", got)
+	}
+}
+
+func TestFeaturesChanged_IgnoresOtherScope(t *testing.T) {
+	app := newStoreApp(t)
+	u := mkUser(t, app, "scope4@example.com")
+	sample := mkSample(t, app, u)
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeOrtus, ortusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	if geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeOrtus, ortusFeatures) {
+		t.Error("identical Ortus set reported as changed")
+	}
+	if err := geoplace.ReplaceFeatures(app, sample.Id, u.Id, geoplace.ScopeTempus, tempusFeatures); err != nil {
+		t.Fatal(err)
+	}
+	if geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeOrtus, ortusFeatures) {
+		t.Error("Tempus rows must not make the Ortus set look changed")
+	}
+	if geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeTempus, tempusFeatures) {
+		t.Error("identical Tempus set reported as changed")
+	}
+	if !geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeTempus, tempusFeatures[:1]) {
+		t.Error("smaller Tempus set must count as changed")
+	}
+	changed := []geoplace.Feature{tempusFeatures[0], {SourceID: "tempus:weather", SourceName: "Tempus", Layer: "weather",
+		Properties: map[string]any{"temperature2m": 1.0}}}
+	if !geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeTempus, changed) {
+		t.Error("changed properties must count as changed")
 	}
 }
 

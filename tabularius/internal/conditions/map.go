@@ -23,7 +23,7 @@ const (
 
 // FeatureSourcePrefix starts the source_id of every Tempus row in
 // sample_features ("tempus:weather", …).
-const FeatureSourcePrefix = "tempus:"
+const FeatureSourcePrefix = geoplace.TempusSourcePrefix
 
 const featureSourceName = "Tempus"
 

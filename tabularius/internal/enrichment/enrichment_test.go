@@ -504,7 +504,7 @@ func TestEnrich_SeaKeepsStatusWritesGeo(t *testing.T) {
 	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 40.0, -25.0)
 	// Stale geo + features from an earlier coordinate must be replaced.
 	updateSample(t, app, sampleID, map[string]any{"location_status": "pending", "mtb_sheet_number": "6326"})
-	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID,
+	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, geoplace.ScopeOrtus,
 		[]geoplace.Feature{{SourceID: "old", Layer: "old", FeatureID: "1"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -842,4 +842,32 @@ func TestEnrich_SetsTimezoneUnlessManual(t *testing.T) {
 			t.Errorf("timezone changed without tzid: %q / %q", s.GetString("timezone"), s.GetString("timezone_source"))
 		}
 	})
+}
+
+// An Ortus run must leave the Tempus rows of the sample alone.
+func TestEnrich_OrtusRunKeepsTempusFeatures(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := createOwnerSampleFieldtrip(t, app, 49.681616, 10.039652)
+	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, geoplace.ScopeTempus, []geoplace.Feature{
+		{SourceID: "tempus:sun", SourceName: "Tempus", Layer: "sun"},
+		{SourceID: "tempus:moon", SourceName: "Tempus", Layer: "moon"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e := newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json"))
+	runEnrich(t, e, sampleID)
+
+	tempus := 0
+	for _, f := range sampleFeatures(t, app, sampleID) {
+		if geoplace.ScopeOf(f.GetString("source_id")) == geoplace.ScopeTempus {
+			tempus++
+		}
+	}
+	if tempus != 2 {
+		t.Errorf("tempus rows after the Ortus run = %d, want 2", tempus)
+	}
+	if len(sampleFeatures(t, app, sampleID)) <= 2 {
+		t.Error("the Ortus run wrote no features of its own")
+	}
+
 }
