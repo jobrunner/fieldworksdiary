@@ -111,6 +111,11 @@ func main() {
 	// the async enrichment re-resolves the place.
 	hooks.RegisterSampleLocationReset(app)
 
+	// Phase T: weather/climate values that no longer fit the sample's
+	// coordinate or time are cleared (status pending) before the save;
+	// values the app queried itself are kept.
+	hooks.RegisterSampleConditionsReset(app)
+
 	// Phase R6.1: server-side locality fusion. Every locality
 	// create + every centroid-shift > 100 m triggers ServerFuse;
 	// the hook merges duplicates (with a remap-event emit) or
@@ -179,6 +184,28 @@ func main() {
 			Timeout: 15 * time.Second,
 		}
 		enrichment.RegisterPlacemarkEnricher(app, pm)
+
+		// Phase T: weather, climate and astronomy from Tempus for
+		// pending samples, plus the hourly refresh of provisional
+		// values (TEMPUS_BASE_URL; empty disables both).
+		if tempusBaseURL := strings.TrimSpace(os.Getenv("TEMPUS_BASE_URL")); tempusBaseURL != "" {
+			cond := &enrichment.ConditionsEnricher{
+				App: app,
+				Tempus: &services.Tempus{
+					BaseURL:    tempusBaseURL,
+					HTTPClient: httpClient,
+					Cache:      cache,
+					MaxRetries: 3,
+					Logger:     slog.Default(),
+				},
+				Logger:  slog.Default(),
+				Timeout: 15 * time.Second,
+			}
+			cond.Register()
+			cond.RegisterCron(tempusRefreshLimit)
+		} else {
+			slog.Warn("tempus: TEMPUS_BASE_URL leer, Anreicherung deaktiviert")
+		}
 		return se.Next()
 	})
 
@@ -188,6 +215,9 @@ func main() {
 		log.Fatal(err)
 	}
 }
+
+// tempusRefreshLimit caps the Tempus queries of one hourly refresh run.
+const tempusRefreshLimit = 200
 
 // registerBackfillCommand adds `ortus-backfill [--remap-only]`: Ortus
 // enrichment of existing samples (step B) and localities (step B') and

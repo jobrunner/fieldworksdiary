@@ -262,8 +262,10 @@ func TestFeaturesChanged_IgnoresOtherScope(t *testing.T) {
 	if !geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeTempus, tempusFeatures[:1]) {
 		t.Error("smaller Tempus set must count as changed")
 	}
-	changed := []geoplace.Feature{tempusFeatures[0], {SourceID: "tempus:weather", SourceName: "Tempus", Layer: "weather",
-		Properties: map[string]any{"temperature2m": 1.0}}}
+	changed := []geoplace.Feature{tempusFeatures[0], {
+		SourceID: "tempus:weather", SourceName: "Tempus", Layer: "weather",
+		Properties: map[string]any{"temperature2m": 1.0},
+	}}
 	if !geoplace.FeaturesChanged(app, sample.Id, geoplace.ScopeTempus, changed) {
 		t.Error("changed properties must count as changed")
 	}

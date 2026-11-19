@@ -131,6 +131,19 @@ für 7 Tage gecacht. Die MTB-Angabe stammt ausschließlich aus der Quelle
 berechnet. Außerhalb DE bleiben die MTB-Felder leer (kein Fehler).
 Anreicherung läuft asynchron und darf das Sample-Insert nie blockieren.
 
+- **Tempus** (Wetter, Klima-Normale, Astronomie zu Koordinate und
+  Zeitpunkt): Endpoint aus `TEMPUS_BASE_URL` (Docker-Compose, nicht im
+  Code; leer schaltet die Anreicherung ab, so in der Test-Instanz).
+
+Der Wrapper liegt in `tabularius/internal/services/tempus.go`, die
+Kernlogik (Abfragezeitpunkt, Abbildung auf Felder und Status) in
+`internal/conditions`. Die Werte stehen als Felder am Sample, die
+vollständigen Features in `sample_features` mit `source_id` `tempus:…`.
+Zahlenspalten gelten nur, wenn ihre Feature-Art in `conditions_kinds`
+steht (0 °C ist ein echter Wert). Frische Werte sind vorläufig; ein
+stündlicher Job fragt sie erneut ab. Details:
+`docs/superpowers/specs/2026-11-19-tempus-wetter-klima-design.md`.
+
 ## Was der Agent NICHT von sich aus tun soll
 
 - **Phasen aus `PROJECT_PLAN.md` überspringen oder zusammenlegen.**

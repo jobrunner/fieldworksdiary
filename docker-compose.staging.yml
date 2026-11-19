@@ -20,6 +20,7 @@ services:
     environment:
       APP_ENV: staging
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
+      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL:-https://tempus.legulus.app}
     labels:
       env: staging
       managed-by: docker-compose

@@ -869,5 +869,4 @@ func TestEnrich_OrtusRunKeepsTempusFeatures(t *testing.T) {
 	if len(sampleFeatures(t, app, sampleID)) <= 2 {
 		t.Error("the Ortus run wrote no features of its own")
 	}
-
 }
