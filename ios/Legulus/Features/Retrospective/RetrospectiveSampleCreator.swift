@@ -132,16 +132,15 @@ struct RetrospectiveSampleCreator {
         )
     }
 
-    /// Normal photo path (`PhotoStorage.write`, `LocalPhotoStore.insert`),
-    /// best effort: the sample already exists, a failed photo is logged.
+    /// Stores the imported photo: a JPEG unchanged, any other format
+    /// converted once at full size with its metadata
+    /// (`PhotoImportFormat`). Best effort: the sample already exists, a
+    /// failed photo is logged.
     private func attachPhoto(_ data: Data, to sampleID: String) {
-        guard let image = UIImage(data: data) else {
-            Log.persistence.error("retrospective photo not decodable for sample \(sampleID, privacy: .public)")
-            return
-        }
         let photoID = UUID().uuidString
         do {
-            let path = try PhotoStorage.write(image: image, sampleID: sampleID, photoID: photoID)
+            let jpeg = try PhotoImportFormat.jpegData(from: data)
+            let path = try PhotoStorage.write(data: jpeg, sampleID: sampleID, photoID: photoID)
             let timestamp = Date()
             try photoStore.insert(LocalPhoto(
                 id: photoID,
