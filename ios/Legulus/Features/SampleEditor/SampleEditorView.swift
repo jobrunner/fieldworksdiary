@@ -708,17 +708,26 @@ private struct SampleEditorContent: View {
 
     private var timeRow: some View {
         HStack(alignment: .top, spacing: AppSpacing.sm) {
-            Image(systemName: moonSymbol)
+            Image(systemName: "calendar")
                 .font(.title3)
                 .foregroundStyle(.secondary)
                 .frame(width: iconColumnWidth)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(longDateText)
-                    .font(.body)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.9)
+                // One line while it fits; at large type sizes the date
+                // breaks after the weekday instead of mid-date.
+                ViewThatFits(in: .horizontal) {
+                    Text(longDateText)
+                        // Truncation never shows: `ViewThatFits` takes
+                        // the stacked variant when one line is too narrow.
+                        .lineLimit(1)
+                    VStack(alignment: .leading, spacing: AppSpacing.xxs) {
+                        Text(longDateParts.weekday)
+                        Text(longDateParts.date)
+                    }
+                }
+                .font(AppFont.body)
                 if let window = timeWindowText {
                     Text(window)
                         .font(.body.monospacedDigit())
@@ -807,29 +816,6 @@ private struct SampleEditorContent: View {
         return "—"
     }
 
-    private var moonSymbol: String {
-        guard let astro = viewModel.savedFieldtrip?.astro else { return "moon.stars" }
-        // Crude mapping from phase fraction (0..1) to SF moon symbols.
-        switch astro.moonPhase {
-        case ..<0.05, 0.95...: return "moon.dust"
-        case 0.05 ..< 0.2: return "moon"
-        case 0.2 ..< 0.3: return "moon.fill"
-        case 0.3 ..< 0.45: return "moon"
-        case 0.45 ..< 0.55: return "moon.stars.fill"
-        case 0.55 ..< 0.7: return "moon"
-        case 0.7 ..< 0.8: return "moon.fill"
-        default: return "moon"
-        }
-    }
-
-    private func dayFormatter(in zone: TimeZone) -> DateFormatter {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        f.timeZone = zone
-        f.dateFormat = "EEEE, dd. MMMM yyyy"
-        return f
-    }
-
     private var timeFormatter: DateFormatter {
         let f = DateFormatter()
         f.locale = Locale(identifier: "de_DE")
@@ -838,13 +824,17 @@ private struct SampleEditorContent: View {
         return f
     }
 
-    private var longDateText: String {
+    private var longDateParts: (weekday: String, date: String) {
         // Existing sample: the sample's zone; a new one reads the
         // device zone (that is the zone it will be created in).
         if viewModel.isExistingSample {
-            return dayFormatter(in: viewModel.timeZone).string(from: viewModel.beginDate)
+            return SampleEditorViewModel.longDateParts(viewModel.beginDate, zone: viewModel.timeZone)
         }
-        return dayFormatter(in: .current).string(from: Date())
+        return SampleEditorViewModel.longDateParts(Date(), zone: .current)
+    }
+
+    private var longDateText: String {
+        "\(longDateParts.weekday) \(longDateParts.date)"
     }
 
     /// „10:07 – 10:22“; nil for an all-day or a not yet saved sample.

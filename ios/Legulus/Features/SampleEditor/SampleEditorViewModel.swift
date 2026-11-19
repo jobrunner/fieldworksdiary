@@ -233,6 +233,18 @@ final class SampleEditorViewModel: ObservableObject {
         return "\(beginText) – \(full.string(from: end))"
     }
 
+    /// „Montag,“ and „16. November 2026“ in the sample's zone. Two parts
+    /// so the view can break after the weekday at large type sizes.
+    static func longDateParts(_ date: Date, zone: TimeZone) -> (weekday: String, date: String) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "de_DE")
+        formatter.timeZone = zone
+        formatter.dateFormat = "EEEE,"
+        let weekday = formatter.string(from: date)
+        formatter.dateFormat = "dd. MMMM yyyy"
+        return (weekday, formatter.string(from: date))
+    }
+
     var canSave: Bool {
         if isSaving { return false }
         // An empty sample id is valid (stored as "").
