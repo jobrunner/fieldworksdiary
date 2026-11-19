@@ -17,6 +17,8 @@ Status-Legende: `pending` · `in progress` · `done` · `blocked`
 
 **Phase S (Sample-Ansicht: Kopieren, Stift-Icon, Datumszeile, Serienkamera, Sample-Nummer, Foto-Import im Original, gestartet 2026-11-19): in progress.** Sechs PRs auf eigenen Feature-Branches, siehe Abschnitt „Phase S“.
 
+**Phase T (Wetter, Klima und Astronomie über Tempus, gestartet 2026-11-19): in progress.** Vier PRs (Backend, App, Backfill, Astro-Ablösung), siehe Abschnitt „Phase T“.
+
 ---
 
 ## Phase 0 – Bootstrap
@@ -1227,11 +1229,24 @@ Deploy (manuell, siehe `docs/ENVIRONMENTS.md` „Manuelles Deploy“):
 
 Sechs Verbesserungen rund um die Sample-Ansicht, jede auf einem eigenen Feature-Branch mit eigenem PR:
 
-- [ ] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
-- [ ] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
-- [ ] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
+- [x] PR 1 – Koordinate und Höhe per Tap kopieren (`feat/sample-copy-coordinate`)
+- [x] PR 2 – Stift-Icon statt „…“, Stern und Kamera im Inhalt (`feat/sample-toolbar-edit-icon`)
+- [x] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
 - [ ] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2)
-- [ ] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
+- [x] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
 - [ ] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
 
 Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lässt sich nur auf einem Gerät prüfen.
+
+## Phase T – Wetter, Klima und Astronomie über Tempus
+
+**Status: in progress** (gestartet 2026-11-19; Design `docs/superpowers/specs/2026-11-19-tempus-wetter-klima-design.md`, Plan für das Backend `docs/superpowers/plans/2026-11-19-tempus-backend.md`)
+
+Jede Probe mit Koordinate bekommt Wetter, Klima, Sonne und Mond zu ihrem Zeitpunkt vom Dienst Tempus. Die App holt die Daten, wenn sie online ist, sonst reichert das Backend an. Die eigene Astronomie-Berechnung entfällt am Ende.
+
+- [ ] PR 7 – Backend: Felder am Sample, Tempus-Wrapper, Anreicherung, stündliches Nachziehen, Features quellenbezogen ersetzen (`feat/tempus-backend`)
+- [ ] PR 8 – App: Abfrage, lokale Speicherung, Sync, Bereich „Wetter und Klima“ mit Detailseite (`feat/tempus-ios`, nach Phase S)
+- [ ] PR 9 – Backfill bestehender Proben (`feat/tempus-backfill`, auf PR 7)
+- [ ] PR 10 – Ablösung der eigenen Astronomie (`feat/astro-aus-tempus`, erst nach gelaufenem Backfill mergen)
+
+Bestehende Proben behalten bis zum Backfill einen leeren `conditions_status`. Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht (0 °C ist ein echter Wert).

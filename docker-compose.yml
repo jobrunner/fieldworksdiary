@@ -23,6 +23,8 @@ services:
       APP_ENV: dev
       APPLE_ALLOWED_AUDIENCES: app.legulus.prod,app.legulus.dev,app.legulus.staging
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
+      # `-` statt `:-`: ein ausdrücklich leerer Wert schaltet Tempus ab.
+      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL-https://tempus.legulus.app}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
       interval: 10s

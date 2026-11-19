@@ -20,6 +20,8 @@ services:
     environment:
       APP_ENV: staging
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
+      # `-` statt `:-`: ein ausdrücklich leerer Wert schaltet Tempus ab.
+      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL-https://tempus.legulus.app}
     labels:
       env: staging
       managed-by: docker-compose

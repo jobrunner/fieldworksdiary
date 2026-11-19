@@ -25,6 +25,9 @@ services:
       APP_ENV: test
       APPLE_ALLOWED_AUDIENCES: app.legulus.test
       ORTUS_BASE_URL: ${ORTUS_BASE_URL:-https://ortus.legulus.app}
+      # Leer: die Test-Instanz fragt Tempus nicht ab, damit die iOS-Tests
+      # nicht vom Netz abhängen.
+      TEMPUS_BASE_URL: ${TEMPUS_BASE_URL:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/api/health"]
       interval: 10s

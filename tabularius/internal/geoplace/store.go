@@ -2,7 +2,10 @@ package geoplace
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -111,12 +114,59 @@ func ApplyGeo(rec *core.Record, g SampleGeo) {
 	rec.Set("mtb_quadrant", g.MTBQuadrant)
 }
 
-// ReplaceFeatures replaces the complete feature set of a sample in one
-// transaction.
-func ReplaceFeatures(app core.App, sampleID, ownerID string, fs []Feature) error {
+// FeatureScope groups the rows of sample_features by the service that
+// owns them. Each service replaces only its own rows.
+type FeatureScope string
+
+// Feature scopes.
+const (
+	ScopeOrtus  FeatureScope = "ortus"
+	ScopeTempus FeatureScope = "tempus"
+)
+
+// TempusSourcePrefix starts the source_id of every Tempus feature.
+const TempusSourcePrefix = "tempus:"
+
+// ScopeOf returns the scope a source_id belongs to: Tempus for the
+// "tempus:" prefix, Ortus for everything else (Ortus source ids are
+// free-form).
+func ScopeOf(sourceID string) FeatureScope {
+	if strings.HasPrefix(sourceID, TempusSourcePrefix) {
+		return ScopeTempus
+	}
+	return ScopeOrtus
+}
+
+// ErrForeignScope is returned when a feature does not belong to the
+// scope that is being replaced.
+var ErrForeignScope = errors.New("feature belongs to another scope")
+
+func scopedFeatures(app core.App, sampleID string, scope FeatureScope) ([]*core.Record, error) {
+	all, err := app.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0,
+		dbx.Params{"s": sampleID})
+	if err != nil {
+		return nil, err
+	}
+	out := all[:0]
+	for _, r := range all {
+		if ScopeOf(r.GetString("source_id")) == scope {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+// ReplaceFeatures replaces the features of one scope of a sample in one
+// transaction; rows of the other scope stay. A feature of another scope
+// in fs is rejected with ErrForeignScope and nothing is changed.
+func ReplaceFeatures(app core.App, sampleID, ownerID string, scope FeatureScope, fs []Feature) error {
+	for _, f := range fs {
+		if ScopeOf(f.SourceID) != scope {
+			return fmt.Errorf("%w: %q in %s", ErrForeignScope, f.SourceID, scope)
+		}
+	}
 	return app.RunInTransaction(func(tx core.App) error {
-		old, err := tx.FindRecordsByFilter("sample_features", "sample = {:s}", "", 0, 0,
-			dbx.Params{"s": sampleID})
+		old, err := scopedFeatures(tx, sampleID, scope)
 		if err != nil {
 			return err
 		}
@@ -149,4 +199,54 @@ func ReplaceFeatures(app core.App, sampleID, ownerID string, fs []Feature) error
 		}
 		return nil
 	})
+}
+
+// featureKey renders a feature in a form comparable between the stored
+// record and a freshly mapped one (fetched_at is ignored; empty and
+// missing properties or license compare equal).
+func featureKey(source, layer, id string, props, license any) string {
+	norm := func(v any) string {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		var x any
+		if json.Unmarshal(raw, &x) != nil {
+			return string(raw)
+		}
+		out, _ := json.Marshal(x)
+		// PocketBase stores a missing JSON object as {} and reads a
+		// missing value back as null: both mean "nothing".
+		if s := string(out); s != "null" && s != "{}" {
+			return s
+		}
+		return ""
+	}
+	return strings.Join([]string{source, layer, id, norm(props), norm(license)}, "|")
+}
+
+// FeaturesChanged reports whether the stored features of one scope of
+// the sample differ from fs.
+func FeaturesChanged(app core.App, sampleID string, scope FeatureScope, fs []Feature) bool {
+	old, err := scopedFeatures(app, sampleID, scope)
+	if err != nil || len(old) != len(fs) {
+		return true
+	}
+	have := map[string]int{}
+	for _, r := range old {
+		have[featureKey(r.GetString("source_id"), r.GetString("layer"), r.GetString("feature_id"),
+			r.Get("properties"), r.Get("license"))]++
+	}
+	for _, f := range fs {
+		var lic any
+		if len(f.License) > 0 {
+			lic = f.License
+		}
+		k := featureKey(f.SourceID, f.Layer, f.FeatureID, f.Properties, lic)
+		if have[k] == 0 {
+			return true
+		}
+		have[k]--
+	}
+	return false
 }

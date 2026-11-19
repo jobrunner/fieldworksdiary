@@ -28,6 +28,15 @@ const DefaultCacheTTL = 7 * 24 * time.Hour
 type Geocache struct {
 	App core.App
 	TTL time.Duration
+	// Now is the clock (tests); nil means time.Now.
+	Now func() time.Time
+}
+
+func (c *Geocache) now() time.Time {
+	if c.Now != nil {
+		return c.Now()
+	}
+	return time.Now()
 }
 
 // CoordinateKey turns (lat, lon, lang) into a stable cache key.
@@ -42,6 +51,12 @@ func CoordinateKey(lat, lon float64, lang string) string {
 // Get returns the cached payload bytes, or sql.ErrNoRows if absent or
 // expired.
 func (c *Geocache) Get(service, key string) ([]byte, error) {
+	return c.GetMaxAge(service, key, c.ttl())
+}
+
+// GetMaxAge is Get with an explicit maximum age instead of the cache's
+// TTL, for services whose answers age at different speeds.
+func (c *Geocache) GetMaxAge(service, key string, maxAge time.Duration) ([]byte, error) {
 	rec, err := c.App.FindFirstRecordByFilter(
 		"geocache",
 		"service = {:svc} && key = {:key}",
@@ -54,7 +69,7 @@ func (c *Geocache) Get(service, key string) ([]byte, error) {
 		return nil, err
 	}
 	cachedAt := rec.GetDateTime("cached_at").Time()
-	if time.Since(cachedAt) > c.ttl() {
+	if c.now().Sub(cachedAt) > maxAge {
 		return nil, sql.ErrNoRows
 	}
 	return []byte(rec.GetString("payload")), nil
@@ -81,7 +96,7 @@ func (c *Geocache) Put(service, key string, payload []byte) error {
 		rec.Set("key", key)
 	}
 	rec.Set("payload", string(payload))
-	rec.Set("cached_at", time.Now().UTC())
+	rec.Set("cached_at", c.now().UTC())
 	return c.App.SaveNoValidate(rec)
 }
 

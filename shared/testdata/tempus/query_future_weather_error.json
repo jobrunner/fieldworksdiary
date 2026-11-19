@@ -1,0 +1,235 @@
+{
+    "query": {
+        "coordinate": {
+            "lat": 48.1351,
+            "lon": 11.582
+        },
+        "datetime": "2027-06-01T12:00:00Z"
+    },
+    "features": [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.582,
+                    48.1351
+                ]
+            },
+            "properties": {
+                "azimuthDeg": 204.77,
+                "dayLengthMinutes": 945.93,
+                "elevationDeg": 62.05,
+                "kind": "sun",
+                "lightPhase": {
+                    "de": "Tag",
+                    "en": "day"
+                },
+                "observedAt": "2027-06-01T12:00:00Z",
+                "provider": "sun",
+                "solarNoon": "2027-06-01T11:11:06Z",
+                "solarNoonElevationDeg": 63.81,
+                "sunrise": "2027-06-01T03:18:08Z",
+                "sunset": "2027-06-01T19:04:04Z",
+                "twilight": {
+                    "astronomical": {
+                        "dawn": "2027-06-01T00:24:40Z",
+                        "dusk": "2027-06-01T21:57:32Z"
+                    },
+                    "civil": {
+                        "dawn": "2027-06-01T02:38:15Z",
+                        "dusk": "2027-06-01T19:43:57Z"
+                    },
+                    "nautical": {
+                        "dawn": "2027-06-01T01:44:00Z",
+                        "dusk": "2027-06-01T20:38:12Z"
+                    }
+                },
+                "units": {
+                    "azimuthDeg": "\u00b0 (von Nord, im Uhrzeigersinn)",
+                    "dayLengthMinutes": "min",
+                    "elevationDeg": "\u00b0",
+                    "solarNoonElevationDeg": "\u00b0",
+                    "zenithDeg": "\u00b0"
+                },
+                "zenithDeg": 27.95
+            },
+            "license": {
+                "name": "NOAA Solar Calculator",
+                "url": "https://gml.noaa.gov/grad/solcalc/",
+                "attribution": "Sonnenstand berechnet (NOAA-N\u00e4herung), tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.582,
+                    48.1351
+                ]
+            },
+            "properties": {
+                "ageDays": 25.93,
+                "azimuthDeg": 255.82,
+                "distanceKm": 379800,
+                "elevationDeg": 32.06,
+                "illuminationPct": 14.19,
+                "kind": "moon",
+                "moonrise": "2027-06-01T00:49:35Z",
+                "moonset": "2027-06-01T15:25:48Z",
+                "observedAt": "2027-06-01T12:00:00Z",
+                "phase": {
+                    "de": "abnehmende Sichel",
+                    "en": "Waning Crescent"
+                },
+                "phaseAngleDeg": 135.74,
+                "provider": "moon",
+                "units": {
+                    "ageDays": "d",
+                    "azimuthDeg": "\u00b0 (von Nord, im Uhrzeigersinn)",
+                    "distanceKm": "km",
+                    "elevationDeg": "\u00b0",
+                    "illuminationPct": "%",
+                    "phaseAngleDeg": "\u00b0"
+                }
+            },
+            "license": {
+                "name": "Meeus, Astronomical Algorithms",
+                "url": "https://en.wikipedia.org/wiki/Position_of_the_Moon",
+                "attribution": "Mondstand berechnet nach Meeus (geozentrische N\u00e4herung), tempus"
+            }
+        },
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [
+                    11.55,
+                    48.119507
+                ]
+            },
+            "properties": {
+                "altitudinalBelt": {
+                    "basis": "thermoclimatic isotherm, Central-Europe-calibrated",
+                    "belt": {
+                        "de": "submontan-kollin",
+                        "en": "colline"
+                    },
+                    "borderline": false,
+                    "indicators": {
+                        "biotemperatureC": 8.9,
+                        "matC": 8.9,
+                        "warmestMonthC": 18.3,
+                        "warmestQuarterC": 17.6
+                    },
+                    "macrobioclimate": {
+                        "code": "temperate",
+                        "de": "temperat",
+                        "elevationM": 521,
+                        "en": "temperate"
+                    },
+                    "source": "H\u00f6henstufe thermoklimatisch berechnet (Paulsen & K\u00f6rner 2014; Rivas-Mart\u00ednez 2008, WBCS), tempus",
+                    "thermotype": {
+                        "code": "supratemperate",
+                        "de": "supratemperat",
+                        "en": "supratemperate",
+                        "index": "Tp",
+                        "value": 1071
+                    }
+                },
+                "bio": {
+                    "bio1": 8.9,
+                    "bio10": 17.6,
+                    "bio11": 0.3,
+                    "bio12": 959,
+                    "bio13": 108,
+                    "bio14": 54,
+                    "bio15": 24.2,
+                    "bio16": 323,
+                    "bio17": 185,
+                    "bio18": 315,
+                    "bio19": 185,
+                    "bio2": 8.8,
+                    "bio3": 33.2,
+                    "bio4": 670.8,
+                    "bio5": 22.9,
+                    "bio6": -3.7,
+                    "bio7": 26.6,
+                    "bio8": 15.9,
+                    "bio9": 0.3
+                },
+                "kind": "bioclim",
+                "koppen": {
+                    "adjacent": {
+                        "code": "Cfb",
+                        "de": "warm-gem\u00e4\u00dfigt, feucht, warmer Sommer (ozeanisch)",
+                        "en": "temperate oceanic"
+                    },
+                    "borderline": true,
+                    "code": "Dfb",
+                    "coldestMonthMeanC": -0.3,
+                    "de": "kontinental, feucht, warmer Sommer",
+                    "en": "warm-summer humid continental"
+                },
+                "provider": "bioclim",
+                "referencePeriod": "1991-2020",
+                "units": {
+                    "bio15": "% (Variationskoeffizient)",
+                    "bio3": "%",
+                    "bio4": "\u00b0C\u00d7100 (Std.abw.)",
+                    "precipitation": "mm",
+                    "temperature": "\u00b0C"
+                }
+            },
+            "license": {
+                "name": "CC-BY 4.0",
+                "url": "https://open-meteo.com/en/license",
+                "attribution": "Weather data by Open-Meteo.com; ERA5 (Copernicus Climate Change Service / ECMWF), 1991-2020; BIO-Variablen (WorldClim-Definitionen) und K\u00f6ppen-Geiger, berechnet aus ERA5 von tempus"
+            }
+        }
+    ],
+    "providers": [
+        {
+            "id": "open-meteo",
+            "kind": "weather",
+            "status": "error",
+            "retryable": false,
+            "error": "provider error (class 2): no weather available for future dates"
+        },
+        {
+            "id": "sun",
+            "kind": "sun",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "moon",
+            "kind": "moon",
+            "status": "ok",
+            "retryable": false
+        },
+        {
+            "id": "aggregate",
+            "kind": "aggregate",
+            "status": "error",
+            "retryable": false,
+            "error": "provider error (class 2): no aggregate data available for future dates"
+        },
+        {
+            "id": "bioclim",
+            "kind": "bioclim",
+            "status": "ok",
+            "cached": true,
+            "retryable": false
+        },
+        {
+            "id": "dewpoint",
+            "kind": "dewpoint",
+            "status": "unavailable",
+            "retryable": true,
+            "retryAfter": "2h0m0s",
+            "error": "provider error (class 1): data not yet available for the requested time"
+        }
+    ]
+}
