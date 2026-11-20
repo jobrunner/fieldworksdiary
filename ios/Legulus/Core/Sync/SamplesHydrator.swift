@@ -21,12 +21,12 @@ import Foundation
 final class SamplesHydrator: ObservableObject {
     let store: LocalSampleStore
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
     let placemarks: LocalPlacemarkStore?
     let features: LocalSampleFeatureStore?
-    let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleListClient
-    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
-    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
+    let clientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleListClient
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient
 
     let userIDProvider: () -> String
     let defaults: UserDefaults
@@ -41,18 +41,18 @@ final class SamplesHydrator: ObservableObject {
          placemarks: LocalPlacemarkStore? = nil,
          features: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil },
+         authProvider: @escaping () -> AuthTokenSource? = { nil },
          userIDProvider: @escaping () -> String = { "" },
          defaults: UserDefaults = .standard,
          perPage: Int = 200,
          maxPages: Int = 100,
-         clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleListClient = {
+         clientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleListClient = {
              SampleClient(endpoint: $0, auth: $1)
          },
-         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient = {
              PlacemarkClient(endpoint: $0, auth: $1)
          },
-         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient = {
              SampleFeaturesClient(endpoint: $0, auth: $1)
          })
     {

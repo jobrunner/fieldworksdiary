@@ -14,7 +14,7 @@ import Foundation
 final class RemapEventsPuller: ObservableObject {
     let localitiesStore: LocalLocalityStore
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
     /// Returns the authenticated user id, or "" if none. Used to
     /// scope the cursor key.
     let userIDProvider: () -> String
@@ -25,7 +25,7 @@ final class RemapEventsPuller: ObservableObject {
     init(
         localitiesStore: LocalLocalityStore,
         endpointProvider: @escaping () -> String,
-        authProvider: @escaping () -> AuthSession? = { nil },
+        authProvider: @escaping () -> AuthTokenSource? = { nil },
         userIDProvider: @escaping () -> String = { "" }
     ) {
         self.localitiesStore = localitiesStore

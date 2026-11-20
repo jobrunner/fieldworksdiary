@@ -324,7 +324,7 @@ final class SyncRunner: ObservableObject {
     /// features push / hydration.
     let featureStore: LocalSampleFeatureStore?
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
     let onSampleSynced: (String) -> Void
     /// Called after a `.locality/.create` mutation reconciled a
     /// client locality to its backend id, so the container can
@@ -333,17 +333,18 @@ final class SyncRunner: ObservableObject {
     /// Factory für den HTTP-Client. Produktiv konstruiert das jedes
     /// Mal ein frisches `SampleClient` mit dem aktuellen Endpoint;
     /// Tests injizieren einen Mock.
-    let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient
+    let clientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SamplePushClient
     /// Factory für den Locality-Push-Client (R8d). Analog zu
     /// `clientFactory`; Tests injizieren einen Mock.
-    let localityClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient
+    let localityClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> LocalityPushClient
     /// Phase O2: placemark resolve/fetch and features replace/fetch.
-    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
-    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient
 
     @Published private(set) var inFlight = 0
 
     private(set) var passTask: Task<Void, Never>?
+    private var isShutDown = false
     private var retryTimer: Task<Void, Never>?
 
     /// Time between automatic retry passes when the outbox isn't
@@ -373,7 +374,7 @@ final class SyncRunner: ObservableObject {
     /// doesn't wait for the enrichment sample by sample.
     private var enrichmentTargets: [EnrichmentTarget] = []
 
-    private let photoClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient
+    private let photoClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PhotoSyncClient
     /// False holds photo uploads back („Fotos nur im WLAN hochladen“
     /// without Wi-Fi). Sample data syncs regardless.
     private let photoUploadAllowed: () -> Bool
@@ -401,22 +402,23 @@ final class SyncRunner: ObservableObject {
          placemarkStore: LocalPlacemarkStore? = nil,
          featureStore: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil },
+         authProvider: @escaping () -> AuthTokenSource? = { nil },
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
          enrichmentPollBudget: Duration = .seconds(12),
-         clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
-         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(
+         clientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?)
+             -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
+         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> LocalityPushClient = { LocalityClient(
              endpoint: $0,
              auth: $1
          ) },
-         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient = {
              PlacemarkClient(endpoint: $0, auth: $1)
          },
-         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient = {
              SampleFeaturesClient(endpoint: $0, auth: $1)
          },
-         photoClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient = {
+         photoClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PhotoSyncClient = {
              PhotoClient(endpoint: $0, auth: $1)
          },
          photoUploadAllowed: @escaping () -> Bool = { true },
@@ -444,7 +446,7 @@ final class SyncRunner: ObservableObject {
         self.photoClientFactory = photoClientFactory
         self.photoUploadAllowed = photoUploadAllowed
         self.photoWiFiOnly = photoWiFiOnly
-        accountID = accountProvider ?? { authProvider()?.currentUser?.id }
+        accountID = accountProvider ?? { authProvider()?.currentToken.flatMap(AccountBoundAuth.userID(ofToken:)) }
         self.now = now
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
@@ -453,9 +455,19 @@ final class SyncRunner: ObservableObject {
 
     deinit { retryTimer?.cancel() }
 
+    /// Ends this runner for good: its account is no longer the current
+    /// one. No further passes; a pass in flight stops before its next
+    /// request. The outbox stays in the account's database and is
+    /// picked up when its user signs in again.
+    func shutdown() {
+        isShutDown = true
+        retryTimer?.cancel()
+        retryTimer = nil
+    }
+
     /// Schedule a push pass. Coalesces if one is already running.
     func kick() {
-        if passTask != nil { return }
+        if isShutDown || passTask != nil { return }
         passTask = Task { [weak self] in
             await self?.runPass()
             await MainActor.run { self?.passTask = nil }
@@ -498,6 +510,7 @@ final class SyncRunner: ObservableObject {
             let client = clientFactory(endpoint, authProvider())
             enrichmentTargets = []
             for mutation in mutations {
+                if isShutDown { return }
                 await execute(mutation, via: client)
             }
             await pollPendingEnrichment(via: client)
@@ -1305,7 +1318,7 @@ final class SyncRunner: ObservableObject {
             // Checked before every photo: Wi-Fi may drop, the user may
             // switch „nur im WLAN“ on, or sign out, in the middle of a
             // batch.
-            guard photoUploadAllowed(), accountID() == account else { return }
+            guard !isShutDown, photoUploadAllowed(), accountID() == account else { return }
             let backendID: String?
             if let known = backendIDs[photo.sampleId] {
                 backendID = known

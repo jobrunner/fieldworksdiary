@@ -6,12 +6,17 @@ import SwiftUI
 /// be removed once the dashboard has fully proven itself in the field.
 struct RootView: View {
     @EnvironmentObject var auth: AuthSession
+    @EnvironmentObject var container: AppContainer
 
     var body: some View {
         Group {
             if auth.isSignedIn {
                 HomeView()
                     .remapToast()
+                    // Every account has its own stores: a view tree
+                    // built for one account must not live on for the
+                    // next.
+                    .id(container.accountID)
             } else {
                 WelcomeView()
             }

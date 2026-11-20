@@ -22,6 +22,14 @@ final class Database {
         try self.init(path: path)
     }
 
+    /// Opens (and creates) the database of one account, see
+    /// `AccountStorage`.
+    convenience init(accountID: String, in appSupport: URL) throws {
+        let url = AccountStorage.databaseURL(accountID: accountID, in: appSupport)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try self.init(path: url.path)
+    }
+
     static let fileName = "legulus.sqlite"
     /// File name from before the app was renamed to Legulus.
     static let legacyFileName = "fieldworksdiary.sqlite"
