@@ -101,6 +101,9 @@ struct LocalityEditView: View {
 
         let endpoint = container.config.endpointURL
         let client = LocalityClient(endpoint: endpoint, auth: container.auth)
+        // The store of the account this started under: after the request
+        // the container may hold another account's.
+        let localities = container.localitiesStore
         do {
             let input = LocalityInput(
                 name: trimmedName,
@@ -115,7 +118,7 @@ struct LocalityEditView: View {
             } else {
                 result = try await client.create(input)
             }
-            try container.localitiesStore.upsertOne(result)
+            try localities.upsertOne(result)
             dismiss()
         } catch let err as SampleClientError {
             saveError = err.errorDescription

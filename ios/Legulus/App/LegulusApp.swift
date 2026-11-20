@@ -17,7 +17,7 @@ struct LegulusApp: App {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                container.pendingFixes.resumePending()
+                container.resumePendingFixes()
                 container.featureFlags.start(url: container.config.featureFlagsURL)
                 Task { await container.hydrate() }
             }

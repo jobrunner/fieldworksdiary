@@ -29,49 +29,150 @@ enum AccountStorage {
             .appendingPathComponent(Database.fileName)
     }
 
-    /// The account the single database of earlier app versions belongs
-    /// to: the user most of its samples were created by. Nil when the
-    /// file is missing or holds no samples.
-    static func legacyOwner(of legacyDatabase: URL) -> String? {
-        guard FileManager.default.fileExists(atPath: legacyDatabase.path) else { return nil }
-        var configuration = Configuration()
-        configuration.readonly = true
-        guard let queue = try? DatabaseQueue(path: legacyDatabase.path, configuration: configuration) else { return nil }
-        return try? queue.read { db in
-            guard try db.tableExists("local_samples") else { return nil }
-            return try String.fetchOne(db, sql: """
+    /// Suffix of a database copy that is still being prepared.
+    static let stagingSuffix = ".staging"
+
+    /// The accounts whose samples the single database of earlier app
+    /// versions holds, the one with the most samples first. Empty when
+    /// the file is missing or holds no attributable samples.
+    static func legacyOwners(of legacyDatabase: URL) -> [String] {
+        guard FileManager.default.fileExists(atPath: legacyDatabase.path),
+              let queue = try? DatabaseQueue(path: legacyDatabase.path)
+        else { return [] }
+        return (try? queue.read { db in
+            guard try db.tableExists("local_samples") else { return [] }
+            return try String.fetchAll(db, sql: """
             SELECT user_id FROM local_samples
             WHERE user_id IS NOT NULL AND user_id != '' AND user_id != 'default'
-            GROUP BY user_id ORDER BY COUNT(*) DESC, user_id LIMIT 1
+            GROUP BY user_id ORDER BY COUNT(*) DESC, user_id
             """)
-        }
+        }) ?? []
     }
 
-    /// Moves the single database of earlier app versions into the folder
-    /// of the account it belongs to: the owner of its samples, or — when
-    /// it holds none and is just a cache — the signed-in account. With
-    /// neither it stays where it is. An account that already has a
-    /// database keeps it; the legacy file is then left untouched.
+    /// The main owner of the legacy database, see `legacyOwners`.
+    static func legacyOwner(of legacyDatabase: URL) -> String? {
+        legacyOwners(of: legacyDatabase).first
+    }
+
+    /// Hands the single database of earlier app versions over to the
+    /// accounts it belongs to.
+    ///
+    /// Every account with samples in it gets its own copy, reduced to
+    /// its own samples, their photos, features and outbox entries. A
+    /// device two accounts used can hold samples of both; nobody may see
+    /// or upload the other's. The account with the most samples is the
+    /// main owner and also keeps what cannot be attributed (samples
+    /// without a user, cached fieldtrips and localities, other outbox
+    /// entries). Without any samples the file is a cache and goes to the
+    /// signed-in account; without that it stays for the next start.
+    ///
+    /// Each copy is made with SQLite's backup (it includes what still
+    /// sits in the write-ahead log), prepared under a staging name and
+    /// published with one rename. The legacy file is removed only when
+    /// every owner has a database; an account that already had one keeps
+    /// it, and the legacy file then stays untouched.
     static func adoptLegacyDatabase(signedInAccountID: String?, in appSupport: URL, fileManager fm: FileManager = .default) {
         let legacy = appSupport.appendingPathComponent(Database.fileName)
-        guard fm.fileExists(atPath: legacy.path), let owner = legacyOwner(of: legacy) ?? signedInAccountID else { return }
-        let target = databaseURL(accountID: owner, in: appSupport)
-        guard !fm.fileExists(atPath: target.path) else {
-            Log.persistence.notice("legacy database kept: its account already has one")
-            return
+        guard fm.fileExists(atPath: legacy.path) else { return }
+        var owners = legacyOwners(of: legacy)
+        let mainOwner = owners.first
+        if owners.isEmpty, let signedInAccountID {
+            owners = [signedInAccountID]
+        }
+        guard !owners.isEmpty else { return }
+
+        var everyOwnerServed = true
+        for owner in owners {
+            let target = databaseURL(accountID: owner, in: appSupport)
+            if fm.fileExists(atPath: target.path) {
+                // Never replace an account's database; keep the legacy
+                // file so nothing in it is lost.
+                Log.persistence.notice("legacy database kept: an account already has one")
+                everyOwnerServed = false
+                continue
+            }
+            do {
+                try publishCopy(
+                    of: legacy,
+                    to: target,
+                    keeping: owner,
+                    isMainOwner: owner == mainOwner || mainOwner == nil,
+                    fileManager: fm
+                )
+            } catch {
+                Log.persistence.error("handing over the legacy database failed: \(error.localizedDescription)")
+                everyOwnerServed = false
+            }
+        }
+        guard everyOwnerServed else { return }
+        for suffix in ["-wal", "-shm", ""] {
+            try? fm.removeItem(at: URL(fileURLWithPath: legacy.path + suffix))
+        }
+        Log.persistence.notice("legacy database handed over to \(owners.count, privacy: .public) account(s)")
+    }
+
+    /// Backs `legacy` up into a staging file next to `target`, reduces
+    /// it to the data of `owner` and renames it into place.
+    private static func publishCopy(
+        of legacy: URL, to target: URL, keeping owner: String, isMainOwner: Bool, fileManager fm: FileManager
+    ) throws {
+        try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let staging = URL(fileURLWithPath: target.path + stagingSuffix)
+        for suffix in ["", "-wal", "-shm", "-journal"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: staging.path + suffix))
         }
         do {
-            try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-            // Sidecars first, the main file last: an interrupted move is
-            // repeated on the next launch.
-            for suffix in ["-wal", "-shm", ""] {
-                let source = URL(fileURLWithPath: legacy.path + suffix)
-                guard fm.fileExists(atPath: source.path) else { continue }
-                try fm.moveItem(at: source, to: URL(fileURLWithPath: target.path + suffix))
+            // A plain rollback-journal file: nothing but the one file to
+            // rename afterwards.
+            let source = try DatabaseQueue(path: legacy.path)
+            let copy = try DatabaseQueue(path: staging.path)
+            try source.backup(to: copy)
+            try copy.writeWithoutTransaction { db in
+                try db.execute(sql: "PRAGMA journal_mode = DELETE")
             }
-            Log.persistence.notice("legacy database moved to its account")
-        } catch {
-            Log.persistence.error("moving the legacy database failed: \(error.localizedDescription)")
+            try copy.write { db in try prune(db, keeping: owner, isMainOwner: isMainOwner) }
+            try copy.close()
+            try source.close()
+        }
+        try fm.moveItem(at: staging, to: target)
+    }
+
+    /// Removes from a copy of the legacy database what does not belong
+    /// to `owner`.
+    private static func prune(_ db: GRDB.Database, keeping owner: String, isMainOwner: Bool) throws {
+        guard try db.tableExists("local_samples") else { return }
+        // The main owner keeps samples nobody is named for; the others
+        // keep strictly their own.
+        let foreign = isMainOwner
+            ? "user_id IS NOT NULL AND user_id != '' AND user_id != 'default' AND user_id != ?"
+            : "user_id IS NULL OR user_id != ?"
+        let foreignIDs = "SELECT id FROM local_samples WHERE \(foreign)"
+        for table in ["local_photos", "local_sample_features"] where try db.tableExists(table) {
+            try db.execute(sql: "DELETE FROM \(table) WHERE sample_id IN (\(foreignIDs))", arguments: [owner])
+        }
+        if try db.tableExists("pending_mutations") {
+            // Creates and updates of a sample carry its local id.
+            try db.execute(sql: """
+            DELETE FROM pending_mutations
+            WHERE entity_type = 'sample' AND op IN ('create', 'update') AND entity_id IN (\(foreignIDs))
+            """, arguments: [owner])
+            if !isMainOwner {
+                // Everything else in the outbox (deletes by backend id,
+                // localities, photos) cannot be attributed and stays with
+                // the main owner.
+                try db.execute(sql: """
+                DELETE FROM pending_mutations
+                WHERE NOT (entity_type = 'sample' AND op IN ('create', 'update'))
+                """)
+            }
+        }
+        try db.execute(sql: "DELETE FROM local_samples WHERE \(foreign)", arguments: [owner])
+        if !isMainOwner {
+            // Cached server rows of the main owner; this account pulls
+            // its own on first sync.
+            for table in ["local_fieldtrips", "local_excursions", "local_localities"] where try db.tableExists(table) {
+                try db.execute(sql: "DELETE FROM \(table)")
+            }
         }
     }
 }

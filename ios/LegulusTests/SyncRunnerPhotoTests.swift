@@ -279,6 +279,32 @@ final class SyncRunnerPhotoTests: XCTestCase {
         XCTAssertEqual(try mutations.fetch(entityType: .samplePhoto).count, 1)
     }
 
+    /// The account is left while the tombstone lookup is on the wire.
+    /// No delete goes out for it and the tombstone is kept: an answer
+    /// that came back without a token says nothing.
+    func testTombstone_AccountLeftDuringLookupKeepsItAndSendsNoDelete() async throws {
+        let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-lost"))
+        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        now = Date()
+        client.known["uuid-lost"] = "pbphoto-lost"
+        let runner = makeRunner()
+        client.duringLookup = { runner.shutdown() }
+        await run(runner)
+        XCTAssertTrue(client.deleted.isEmpty, "kein DELETE für ein verlassenes Konto")
+        XCTAssertEqual(try mutations.fetch(entityType: .samplePhoto).count, 1)
+    }
+
+    /// Same for a delete by id: a 404 that came back after the account
+    /// was left must not acknowledge the mutation.
+    func testDeleteMutation_AccountLeftDuringDeleteKeepsIt() async throws {
+        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: "pbphoto-9", op: .delete, payload: Data("{}".utf8))
+        client.deleteError = SampleClientError.http(status: 404, body: "")
+        let runner = makeRunner()
+        client.duringDelete = { [unowned self] in self.account = "user-b" }
+        await run(runner)
+        XCTAssertEqual(try mutations.fetch(entityType: .samplePhoto).count, 1)
+    }
+
     func testDeleteMutation_404CountsAsDone() async throws {
         _ = try mutations.enqueue(entityType: .samplePhoto, entityId: "pbphoto-9", op: .delete, payload: Data("{}".utf8))
         client.deleteError = SampleClientError.http(status: 404, body: "")
@@ -315,8 +341,12 @@ private final class FakePhotoClient: PhotoSyncClient, @unchecked Sendable {
     var known: [String: String] = [:]
     var lookupError: Error?
 
+    var duringLookup: (() -> Void)?
+    var duringDelete: (() -> Void)?
+
     func findID(clientUUID: String) async throws -> String? {
         lookups.append(clientUUID)
+        duringLookup?()
         if let lookupError { throw lookupError }
         return known[clientUUID]
     }
@@ -336,6 +366,7 @@ private final class FakePhotoClient: PhotoSyncClient, @unchecked Sendable {
     }
 
     func delete(id: String) async throws {
+        duringDelete?()
         if let deleteError { throw deleteError }
         deleted.append(id)
     }

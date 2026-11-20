@@ -202,9 +202,12 @@ struct LocalityDetailView: View {
         guard !endpoint.isEmpty else { return }
         do {
             let client = PlacemarkClient(endpoint: endpoint, auth: container.auth)
+            // The stores of the account this started under: after the
+            // request the container may hold another account's.
+            let placemarks = container.placemarksStore
             let remote = try await client.fetch(id: pmID)
-            try? container.placemarksStore.upsert(remote)
-            placemark = try? container.placemarksStore.fetch(backendID: pmID)
+            try? placemarks.upsert(remote)
+            placemark = try? placemarks.fetch(backendID: pmID)
         } catch {
             Log.network.error("placemark fetch failed: \(error.localizedDescription)")
         }

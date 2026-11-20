@@ -153,6 +153,14 @@ final class AppContainer: ObservableObject {
         await graph.hydrateAll()
     }
 
+    /// Resumes waiting GPS fixes when the app comes to the foreground.
+    /// Nothing happens while signed out: the empty placeholder graph
+    /// knows none of the samples and would drop their registrations.
+    func resumePendingFixes() {
+        guard graph.accountID != nil else { return }
+        graph.pendingFixes.resumePending()
+    }
+
     /// Makes `accountID` the current account: its own database and
     /// services replace the ones of the previous account, whose
     /// background work is stopped. Nothing is deleted and nothing is
@@ -171,33 +179,41 @@ final class AppContainer: ObservableObject {
 
     // MARK: - private
 
-    /// The graph of an account on its own database; in memory without
-    /// an account, without storage, or when the file cannot be opened.
+    /// The graph of an account on its own database. Without an account
+    /// (signed out) or without storage (previews, some tests) it runs in
+    /// memory. A database file that cannot be opened ends the app, as it
+    /// always did: carrying on in memory would take samples that look
+    /// saved and are gone with the process.
     private static func makeGraph(
         accountID: String?, storageRoot: URL?, config: AppConfig, session: AuthSession, networkStatus: NetworkStatus
     ) -> AccountGraph {
-        var database: Database?
-        if let accountID, let storageRoot {
-            // The single database of earlier versions goes to the
-            // account its samples belong to — not necessarily this one.
-            AccountStorage.adoptLegacyDatabase(signedInAccountID: accountID, in: storageRoot)
-            do {
+        let database: Database
+        var isNewDatabase = false
+        do {
+            if let accountID, let storageRoot {
+                // The single database of earlier versions goes to the
+                // accounts its samples belong to — not necessarily this one.
+                AccountStorage.adoptLegacyDatabase(signedInAccountID: accountID, in: storageRoot)
+                let url = AccountStorage.databaseURL(accountID: accountID, in: storageRoot)
+                isNewDatabase = !FileManager.default.fileExists(atPath: url.path)
                 database = try Database(accountID: accountID, in: storageRoot)
-            } catch {
-                Log.persistence.fault("account database open failed: \(error.localizedDescription)")
-            }
-        }
-        if database == nil {
-            do {
+            } else {
                 database = try Database(inMemory: ())
-            } catch {
-                fatalError("Database open failed: \(error)")
             }
+        } catch {
+            fatalError("Database open failed: \(error)")
         }
-        guard let database else { fatalError("Database open failed") }
-        return AccountGraph(
+        let graph = AccountGraph(
             accountID: accountID, database: database, config: config, session: session, networkStatus: networkStatus
         )
+        if isNewDatabase {
+            // The pull cursors live in UserDefaults, per user. A cursor
+            // from the time this account shared the old database would
+            // make the empty one skip everything older than it.
+            graph.samplesHydrator.resetCursor()
+            graph.remapPuller.resetCursor()
+        }
+        return graph
     }
 
     private func startObservingAuth() {
@@ -215,6 +231,9 @@ final class AppContainer: ObservableObject {
                 self.switchAccount(to: newID)
                 guard newID != nil else { return }
                 let graph = self.graph
+                // Samples that were waiting for a GPS fix when the app
+                // went away belong to this account's database.
+                graph.pendingFixes.resumePending()
                 Task { await graph.hydrateAll() }
             }
     }

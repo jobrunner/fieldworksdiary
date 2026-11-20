@@ -504,9 +504,12 @@ struct FieldtripDetailView: View {
         defer { localityActionBusy = false }
         do {
             let client = FieldtripClient(endpoint: container.config.endpointURL, auth: container.auth)
+            // The stores of the account this started under: after the
+            // request the container may hold another account's.
+            let fieldtrips = container.fieldtrips
             let updated = try await client.setLocality(id: fieldtripID, locality: localityID)
-            try container.fieldtrips.upsert([updated])
-            local = try? container.fieldtrips.fetchById(fieldtripID)
+            try fieldtrips.upsert([updated])
+            local = try? fieldtrips.fetchById(fieldtripID)
             localityActionError = nil
         } catch let err as SampleClientError {
             localityActionError = err.errorDescription
@@ -520,9 +523,12 @@ struct FieldtripDetailView: View {
         defer { localityActionBusy = false }
         do {
             let client = FieldtripClient(endpoint: container.config.endpointURL, auth: container.auth)
+            // The stores of the account this started under: after the
+            // request the container may hold another account's.
+            let fieldtrips = container.fieldtrips
             let updated = try await client.setLocality(id: fieldtripID, locality: nil)
-            try container.fieldtrips.upsert([updated])
-            local = try? container.fieldtrips.fetchById(fieldtripID)
+            try fieldtrips.upsert([updated])
+            local = try? fieldtrips.fetchById(fieldtripID)
             localityActionError = nil
         } catch let err as SampleClientError {
             localityActionError = err.errorDescription

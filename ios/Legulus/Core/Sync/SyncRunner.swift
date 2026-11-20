@@ -465,6 +465,15 @@ final class SyncRunner: ObservableObject {
         retryTimer = nil
     }
 
+    /// True while this runner may still act for `account`: not shut
+    /// down, and the session still belongs to that account. Checked
+    /// after every network call, before anything is acknowledged: a
+    /// request that went out without a token after a sign-out comes
+    /// back 404 from the owner rules, and that must not count as "done".
+    private func isCurrent(_ account: String?) -> Bool {
+        !isShutDown && accountID() == account
+    }
+
     /// Schedule a push pass. Coalesces if one is already running.
     func kick() {
         if isShutDown || passTask != nil { return }
@@ -555,6 +564,7 @@ final class SyncRunner: ObservableObject {
             try? mutationsStore.dequeue(mutation.id)
             return
         }
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
@@ -563,6 +573,7 @@ final class SyncRunner: ObservableObject {
             } catch SampleClientError.http(status: 404, _) {
                 // Already gone on the server.
             }
+            guard isCurrent(account) else { return }
             try? mutationsStore.dequeue(mutation.id)
             Log.sync.info("sample deleted on server \(backendID, privacy: .public)")
         } catch {
@@ -1170,10 +1181,12 @@ final class SyncRunner: ObservableObject {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
         let client = localityClientFactory(endpoint, authProvider())
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
             try await client.delete(id: backendID)
+            guard isCurrent(account) else { return }
             try? mutationsStore.dequeue(mutation.id)
             Log.sync.info("locality deleted on server \(backendID, privacy: .public)")
         } catch {
@@ -1391,6 +1404,7 @@ final class SyncRunner: ObservableObject {
     private func executePhotoDelete(_ mutation: PendingMutation) async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         let client = photoClientFactory(endpoint, authProvider())
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
@@ -1399,6 +1413,9 @@ final class SyncRunner: ObservableObject {
                let tombstone = try? JSONDecoder().decode(PhotoDeletePayload.self, from: mutation.payloadJson)
             {
                 backendID = try await client.findID(clientUUID: tombstone.clientUUID) ?? ""
+                // The account was left while we asked: an empty answer
+                // may just be the missing token. Keep the tombstone.
+                guard isCurrent(account) else { return }
                 // Nothing there yet is not "nothing arrived": keep the
                 // tombstone and look again in a later pass.
                 if backendID.isEmpty, now().timeIntervalSince(mutation.createdAt) < Self.photoTombstoneGrace {
@@ -1411,6 +1428,7 @@ final class SyncRunner: ObservableObject {
                 } catch SampleClientError.http(status: 404, _) {
                     // Already gone on the server.
                 }
+                guard isCurrent(account) else { return }
                 Log.sync.info("photo deleted on server \(backendID, privacy: .public)")
             }
             try? mutationsStore.dequeue(mutation.id)

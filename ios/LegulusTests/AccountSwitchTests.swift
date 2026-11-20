@@ -93,6 +93,38 @@ final class AccountSwitchTests: XCTestCase {
         XCTAssertNil(syncOfA.passTask, "kein neuer Durchlauf für das verlassene Konto")
     }
 
+    /// At app start the signed-out placeholder is replaced by the
+    /// restored account. That is no sign-out: samples waiting for a GPS
+    /// fix must keep their registrations.
+    func testRestoringTheAccountAtStartKeepsWaitingFixes() throws {
+        let first = AppContainer(storageRoot: root)
+        first.switchAccount(to: accountA)
+        let sample = try first.store.createLocal(lat: nil, lon: nil, notes: "wartet auf Fix")
+        first.pendingFixes.register(sampleID: sample.id, createdAt: Date())
+        XCTAssertEqual(first.pendingFixes.pendingCount, 1, "Vorbedingung")
+
+        // App restart: placeholder first, then the account is restored.
+        let restarted = AppContainer(storageRoot: root)
+        restarted.resumePendingFixes() // scene became active while still signed out
+        restarted.switchAccount(to: accountA)
+        restarted.resumePendingFixes()
+        XCTAssertEqual(restarted.pendingFixes.pendingCount, 1, "die Registrierung hat den Neustart überlebt")
+        restarted.pendingFixes.reset()
+    }
+
+    /// Leaving a real account does drop them: the next account must not
+    /// resume fixes for samples it does not have.
+    func testSigningOutDropsWaitingFixes() throws {
+        let container = AppContainer(storageRoot: root)
+        container.switchAccount(to: accountA)
+        let sample = try container.store.createLocal(lat: nil, lon: nil, notes: "")
+        container.pendingFixes.register(sampleID: sample.id, createdAt: Date())
+        container.switchAccount(to: nil)
+        container.switchAccount(to: accountB)
+        container.resumePendingFixes()
+        XCTAssertEqual(container.pendingFixes.pendingCount, 0)
+    }
+
     /// Without storage (previews) nothing touches the disk.
     func testWithoutStorageEverythingStaysInMemory() throws {
         let container = AppContainer(storageRoot: nil)

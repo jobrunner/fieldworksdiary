@@ -36,11 +36,17 @@ Fotos, die noch nicht hochgeladen waren.
   liest die Nutzer-ID aus dem Token). Arbeit, die nach einem Kontowechsel
   noch läuft, kann so weder unter fremdem Token senden noch fremde Daten in
   die eigene Datenbank holen.
-- **Bisherige Datenbank:** Die eine Datenbank früherer Versionen geht beim
-  ersten Anmelden an das Konto, dem die meisten Proben darin gehören
-  (Spalte `user_id`). Enthält sie keine Proben, ist sie nur ein Cache und
-  geht an das angemeldete Konto. Hat das Zielkonto schon eine Datenbank,
-  bleibt die alte Datei unangetastet liegen.
+- **Bisherige Datenbank:** Die eine Datenbank früherer Versionen wird beim
+  ersten Anmelden auf die Konten aufgeteilt, deren Proben darin liegen
+  (Spalte `user_id`). Jedes Konto bekommt eine Kopie mit seinen eigenen
+  Proben, deren Fotos, Features und Outbox-Einträgen. Das Konto mit den
+  meisten Proben behält zusätzlich, was sich nicht zuordnen lässt (Proben
+  ohne Nutzer, zwischengespeicherte Exkursionen und Fundorte, übrige
+  Outbox-Einträge). Ohne Proben ist die Datei ein Cache und geht an das
+  angemeldete Konto. Kopiert wird über SQLites Backup unter einem
+  Zwischennamen und mit einer Umbenennung veröffentlicht; die alte Datei
+  wird erst entfernt, wenn alle Konten versorgt sind. Hat ein Konto schon
+  eine Datenbank, bleibt die alte Datei unangetastet liegen.
 - **Abgemeldet** arbeitet die App auf einer leeren Datenbank im Speicher.
 
 ## Bewusst so
@@ -50,6 +56,11 @@ Fotos, die noch nicht hochgeladen waren.
   die Dateien.
 - **Wartende GPS-Fixes** einer Probe verfallen beim Abmelden. Die Probe
   bleibt dann ohne Koordinate, bis man sie von Hand setzt.
+- **Aufteilung:** Noch nicht hochgeladene, selbst angelegte Fundorte des
+  kleineren Kontos gehen bei der Aufteilung verloren, weil sie sich in der
+  alten Datenbank keinem Konto zuordnen lassen.
+- Lässt sich die Datenbank eines Kontos nicht öffnen, beendet sich die App,
+  statt im Speicher weiterzuarbeiten.
 - **Kein Aufräumen:** Datenbanken von Konten, die sich nie wieder anmelden,
   bleiben auf dem Gerät. Ein Aufräumen käme mit dem Export.
 - Zwei Backends mit zufällig gleicher Nutzer-ID würden sich eine Datenbank

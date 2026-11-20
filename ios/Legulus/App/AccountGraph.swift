@@ -141,7 +141,14 @@ final class AccountGraph {
     /// further sync passes, no waiting GPS fixes. Data stays on disk.
     func shutdown() {
         sync.shutdown()
-        pendingFixes.reset()
+        // The registrations are kept per device, not per account: when a
+        // real account is left they must not be resumed for the next
+        // one. The signed-out placeholder owns none and leaves them
+        // alone — at app start it is replaced by the restored account,
+        // which resumes them.
+        if accountID != nil {
+            pendingFixes.reset()
+        }
     }
 
     /// Pulls the account's data from the server.
