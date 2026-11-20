@@ -380,6 +380,15 @@ final class SyncRunner: ObservableObject {
     /// „Fotos nur im WLAN hochladen“ is on: the upload request itself
     /// refuses cellular.
     private let photoWiFiOnly: () -> Bool
+    /// The signed-in account. A photo batch belongs to the account it
+    /// started under: after a sign-out the local rows are wiped and the
+    /// next account must not inherit the rest of the batch.
+    private let accountID: () -> String?
+
+    /// How long a tombstone without a server record is kept and looked
+    /// up again: an upload the client gave up on (timeout 300 s) may
+    /// still be processed and create the record afterwards.
+    static let photoTombstoneGrace: TimeInterval = 600
     private let now: () -> Date
     /// Photos whose upload failed for good (file too large, rejected):
     /// not retried until the app starts again.
@@ -412,6 +421,7 @@ final class SyncRunner: ObservableObject {
          },
          photoUploadAllowed: @escaping () -> Bool = { true },
          photoWiFiOnly: @escaping () -> Bool = { false },
+         accountProvider: (() -> String?)? = nil,
          now: @escaping () -> Date = Date.init,
          onSampleSynced: @escaping (String) -> Void = { _ in },
          onLocalityChanged: @escaping () -> Void = {})
@@ -434,6 +444,7 @@ final class SyncRunner: ObservableObject {
         self.photoClientFactory = photoClientFactory
         self.photoUploadAllowed = photoUploadAllowed
         self.photoWiFiOnly = photoWiFiOnly
+        accountID = accountProvider ?? { authProvider()?.currentUser?.id }
         self.now = now
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
@@ -1288,11 +1299,13 @@ final class SyncRunner: ObservableObject {
         }
         if due.isEmpty { return }
         let client = photoClientFactory(endpoint, authProvider())
+        let account = accountID()
         var backendIDs: [String: String?] = [:]
         for photo in due {
-            // Checked before every photo: Wi-Fi may drop, or the user
-            // may switch „nur im WLAN“ on, in the middle of a batch.
-            guard photoUploadAllowed() else { return }
+            // Checked before every photo: Wi-Fi may drop, the user may
+            // switch „nur im WLAN“ on, or sign out, in the middle of a
+            // batch.
+            guard photoUploadAllowed(), accountID() == account else { return }
             let backendID: String?
             if let known = backendIDs[photo.sampleId] {
                 backendID = known
@@ -1303,11 +1316,13 @@ final class SyncRunner: ObservableObject {
             // The sample itself is not on the server yet; its create
             // mutation comes first, the photo follows in a later pass.
             guard let backendID, !backendID.isEmpty else { continue }
-            await pushOnePhoto(photo, backendSampleID: backendID, via: client)
+            await pushOnePhoto(photo, backendSampleID: backendID, via: client, account: account)
         }
     }
 
-    private func pushOnePhoto(_ photo: LocalPhoto, backendSampleID: String, via client: PhotoSyncClient) async {
+    private func pushOnePhoto(
+        _ photo: LocalPhoto, backendSampleID: String, via client: PhotoSyncClient, account: String?
+    ) async {
         guard let photoStore, let fileURL = PhotoStorage.absoluteURL(forRelative: photo.localPath) else { return }
         // The row stays `pending` while the upload runs: a photo left in
         // an in-between state by a killed app would never be picked up
@@ -1325,6 +1340,10 @@ final class SyncRunner: ObservableObject {
                 fileURL: fileURL,
                 allowsCellularAccess: !photoWiFiOnly()
             )
+            // Signed out meanwhile: the local rows were wiped. That is
+            // not a delete by the user, and nothing here is ours to
+            // change any more.
+            guard accountID() == account else { return }
             // Deleted while the upload was on the wire: take the record
             // the server just created away again.
             guard try photoStore.fetchBySample(photo.sampleId).contains(where: { $0.id == photo.id }) else {
@@ -1336,6 +1355,7 @@ final class SyncRunner: ObservableObject {
             working.syncStatus = .synced
             try photoStore.update(working)
         } catch {
+            guard accountID() == account else { return }
             working.syncStatus = .failed
             working.syncError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             working.attempts = photo.attempts + 1
@@ -1353,8 +1373,8 @@ final class SyncRunner: ObservableObject {
     /// the record is deleted directly. Without one the mutation is a
     /// tombstone (`PhotoDeletePayload`): the photo was deleted before
     /// its upload was confirmed, so the record is looked up by client
-    /// uuid first — nothing found means nothing arrived. 404 counts as
-    /// already gone.
+    /// uuid first. Nothing found is final only after
+    /// `photoTombstoneGrace`. 404 counts as already gone.
     private func executePhotoDelete(_ mutation: PendingMutation) async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         let client = photoClientFactory(endpoint, authProvider())
@@ -1366,6 +1386,11 @@ final class SyncRunner: ObservableObject {
                let tombstone = try? JSONDecoder().decode(PhotoDeletePayload.self, from: mutation.payloadJson)
             {
                 backendID = try await client.findID(clientUUID: tombstone.clientUUID) ?? ""
+                // Nothing there yet is not "nothing arrived": keep the
+                // tombstone and look again in a later pass.
+                if backendID.isEmpty, now().timeIntervalSince(mutation.createdAt) < Self.photoTombstoneGrace {
+                    return
+                }
             }
             if !backendID.isEmpty {
                 do {

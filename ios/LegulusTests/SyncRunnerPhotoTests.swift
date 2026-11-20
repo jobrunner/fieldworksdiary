@@ -14,6 +14,7 @@ final class SyncRunnerPhotoTests: XCTestCase {
     private var now = Date(timeIntervalSince1970: 1_800_000_000)
     private var uploadAllowed = true
     private var wifiOnly = false
+    private var account: String? = "user-a"
     private var lastSampleID: String?
     private var sampleIDs: [String] = []
     // swiftlint:disable:next force_unwrapping
@@ -51,6 +52,7 @@ final class SyncRunnerPhotoTests: XCTestCase {
             photoClientFactory: { [client] _, _ in client! }, // swiftlint:disable:this force_unwrapping
             photoUploadAllowed: { [unowned self] in self.uploadAllowed },
             photoWiFiOnly: { [unowned self] in self.wifiOnly },
+            accountProvider: { [unowned self] in self.account },
             now: { [unowned self] in self.now }
         )
     }
@@ -217,6 +219,7 @@ final class SyncRunnerPhotoTests: XCTestCase {
     func testTombstone_LooksTheRecordUpAndDeletesIt() async throws {
         let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-lost"))
         _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        now = Date()
         client.known["uuid-lost"] = "pbphoto-lost"
         await run(makeRunner())
         XCTAssertEqual(client.lookups, ["uuid-lost"])
@@ -224,13 +227,48 @@ final class SyncRunnerPhotoTests: XCTestCase {
         XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
     }
 
-    func testTombstone_NothingOnTheServerIsDone() async throws {
+    /// Nothing found is not yet "nothing arrived": a POST the client
+    /// gave up on may still be processed. The tombstone stays for a
+    /// grace period and is looked up again; only then is it dropped.
+    func testTombstone_NothingOnTheServerIsKeptForTheGracePeriod() async throws {
         let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-never"))
-        _ = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
-        await run(makeRunner())
+        let queued = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        now = queued.createdAt.addingTimeInterval(60)
+        let runner = makeRunner()
+        await run(runner)
         XCTAssertEqual(client.lookups, ["uuid-never"])
+        XCTAssertEqual(try mutations.fetch(entityType: .samplePhoto).count, 1, "noch in der Wartefrist")
+
+        // The delayed POST arrives in the meantime.
+        client.known["uuid-never"] = "pbphoto-late"
+        await run(runner)
+        XCTAssertEqual(client.deleted, ["pbphoto-late"])
+        XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
+    }
+
+    func testTombstone_NothingOnTheServerAfterTheGracePeriodIsDone() async throws {
+        let payload = try JSONEncoder().encode(PhotoDeletePayload(clientUUID: "uuid-never"))
+        let queued = try mutations.enqueue(entityType: .samplePhoto, entityId: nil, op: .delete, payload: payload)
+        now = queued.createdAt.addingTimeInterval(SyncRunner.photoTombstoneGrace + 1)
+        await run(makeRunner())
         XCTAssertTrue(client.deleted.isEmpty)
         XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty)
+    }
+
+    /// The user signs out (local rows are wiped) while a batch runs: the
+    /// rest of the batch must not go out under the next account, and a
+    /// row missing after the upload is the wipe, not a delete by the
+    /// user.
+    func testAccountChangeDuringBatch_StopsAndQueuesNoDelete() async throws {
+        let first = try seed(pushed: true)
+        _ = try seed(pushed: true, sameSample: true)
+        client.duringUpload = { [unowned self] in
+            self.account = "user-b"
+            try? self.photos.delete(id: first.id)
+        }
+        await run(makeRunner())
+        XCTAssertEqual(client.attempts, 1, "kein weiterer Upload unter dem neuen Konto")
+        XCTAssertTrue(try mutations.fetch(entityType: .samplePhoto).isEmpty, "kein Löschauftrag durch den Kontowechsel")
     }
 
     func testTombstone_LookupFailureKeepsItForRetry() async throws {
