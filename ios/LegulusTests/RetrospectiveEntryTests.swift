@@ -287,6 +287,30 @@ final class RetrospectiveEntryTests: XCTestCase {
         XCTAssertEqual(try photos.fetchBySample(created.id).count, 1)
     }
 
+    /// The conversion happens once in the importer (off the main
+    /// actor): what goes on to the dialog and the creator is JPEG
+    /// already, with the position still in it.
+    func testHEICPhoto_IsHandedOnAsJPEG() async throws {
+        let heic = try Self.makeImage(type: .heic, gps: GPS(49.68123, "N", 10.03134, "E"))
+
+        let outcome = try await makeImporter(nil).importPhoto(heic)
+
+        guard case let .needsDialog(seed) = outcome else { return XCTFail("expected the dialog") }
+        let handedOn = try XCTUnwrap(seed.photo.data)
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(handedOn as CFData, nil))
+        XCTAssertEqual(CGImageSourceGetType(source) as String?, UTType.jpeg.identifier)
+        XCTAssertNotNil(PhotoMetadataReader.read(handedOn, fallbackZone: berlin).coordinate)
+    }
+
+    /// A file that cannot become JPEG: the sample is still created
+    /// (best effort), without a photo.
+    func testUnconvertiblePhoto_SampleWithoutPhoto() async throws {
+        let outcome = try await makeImporter(nil).importPhoto(Data("nope".utf8))
+
+        guard case let .created(created) = outcome else { return XCTFail("expected a sample") }
+        XCTAssertEqual(try photos.fetchBySample(created.id).count, 0)
+    }
+
     func testPhotoWithGPS_OrtusFails_DialogSeededAndPhotoGoesToItsSample() async throws {
         let data = try Self.makeImage(
             gps: GPS(49.68123, "N", 10.03134, "E"),

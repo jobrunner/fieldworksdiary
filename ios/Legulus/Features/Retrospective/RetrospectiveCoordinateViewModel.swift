@@ -16,7 +16,9 @@ import LegulusGeo
 final class RetrospectiveCoordinateViewModel: ObservableObject {
     /// Photo waiting for the sample (fallback of „Aus Foto“).
     struct PendingPhoto {
-        var data: Data
+        /// JPEG, prepared by the photo import; nil when the picked file
+        /// could not be converted (the capture time still counts).
+        var data: Data?
         var capture: PhotoCaptureTime?
     }
 

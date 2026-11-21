@@ -7,13 +7,11 @@ import UIKit
 /// app reinstall is a non-goal (Documents is included in iCloud
 /// Backup, which is what we want).
 ///
-/// Compression policy: JPEG quality 0.85 at max 2400px on the long
-/// edge. Yields ~600 KB–1.2 MB per image — small enough for patchy
-/// cellular but enough detail for habitat/substrate verification.
+/// Files are stored exactly as they come in — the camera's JPEG, or an
+/// imported photo (see `PhotoImportFormat`): never resized, never
+/// re-encoded here, all metadata stays. Previews for the UI are
+/// downsampled on the fly (`thumbnail`).
 enum PhotoStorage {
-    static let jpegQuality: CGFloat = 0.85
-    static let maxLongEdge: CGFloat = 2400
-
     enum StorageError: Error, LocalizedError {
         case documentsUnreachable
         case writeFailed(String)
@@ -26,24 +24,6 @@ enum PhotoStorage {
             case let .readFailed(msg): "Foto konnte nicht gelesen werden: \(msg)"
             }
         }
-    }
-
-    /// Compresses `image` to JPEG and writes it under
-    /// `Documents/photos/<sampleID>/<photoID>.jpg`. Returns the path
-    /// relative to Documents (suitable for `LocalPhoto.localPath`).
-    static func write(image: UIImage, sampleID: String, photoID: String) throws -> String {
-        let resized = resize(image, maxLongEdge: maxLongEdge)
-        guard let data = resized.jpegData(compressionQuality: jpegQuality) else {
-            throw StorageError.writeFailed("JPEG-Kodierung fehlgeschlagen")
-        }
-        let dir = try sampleDir(sampleID: sampleID)
-        let fileURL = dir.appendingPathComponent("\(photoID).jpg")
-        do {
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            throw StorageError.writeFailed(error.localizedDescription)
-        }
-        return "photos/\(sampleID)/\(photoID).jpg"
     }
 
     /// Writes finished image data (the camera's JPEG file) unchanged
@@ -161,19 +141,5 @@ enum PhotoStorage {
             }
         }
         return dir
-    }
-
-    private static func resize(_ image: UIImage, maxLongEdge: CGFloat) -> UIImage {
-        let size = image.size
-        let long = max(size.width, size.height)
-        guard long > maxLongEdge else { return image }
-        let scale = maxLongEdge / long
-        let target = CGSize(width: size.width * scale, height: size.height * scale)
-        let format = UIGraphicsImageRendererFormat.default()
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(size: target, format: format)
-        return renderer.image { _ in
-            image.draw(in: CGRect(origin: .zero, size: target))
-        }
     }
 }
