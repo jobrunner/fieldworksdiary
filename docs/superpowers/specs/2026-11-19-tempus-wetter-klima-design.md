@@ -239,14 +239,19 @@ Daraus folgt:
   Koordinate: Werte leeren, Status `pending`, neu abfragen. Das gilt auch,
   wenn der Ortus-Lauf eine DEM-Höhe ersetzt.
 - Eine DEM-Höhe gehört zur Koordinate, für die sie gelesen wurde. Wird die
-  Koordinate verschoben und folgt ein Ortus-Lauf, entfernt das Backend die
-  alte DEM-Höhe beim Speichern, damit nicht mit der Höhe des alten Ortes
-  gefragt wird. Eine GPS- oder Hand-Höhe bleibt.
+  Koordinate einer Probe mit DEM-Höhe verschoben, fragt das Backend nicht
+  sofort, sondern erst nach dem Ortus-Lauf, den dieselbe Änderung auslöst
+  und der die Höhe ersetzt oder bestätigt. Scheitert der Ortus-Lauf, wird
+  mit der bisherigen DEM-Höhe gefragt; ein späterer Lauf mit anderer Höhe
+  setzt die Werte wieder zurück.
+- Hat eine wartende Probe keine nutzbare Höhe, werden auch ihre
+  Tempus-Features entfernt.
 - Vom Client mitgeschickte Werte werden nur übernommen, wenn die Probe eine
   nutzbare Höhe hat.
 - Der Cache-Schlüssel im Backend enthält die Höhe in ganzen Metern.
-- Der Backfill fasst Altproben ohne Höhe nicht an und meldet ihre Zahl
-  getrennt; für sie muss zuerst der Ortus-Backfill laufen.
+- Der Backfill und der stündliche Job wählen nur Proben mit nutzbarer
+  Höhe aus, damit übersprungene Proben nicht das Limit verbrauchen. Der
+  Backfill meldet die Zahl der Altproben ohne nutzbare Höhe getrennt; für sie muss zuerst der Ortus-Backfill laufen.
 
 ### App
 

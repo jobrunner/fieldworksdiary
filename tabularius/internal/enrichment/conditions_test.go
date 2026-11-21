@@ -513,12 +513,12 @@ func TestCoordinateRemoved_DropsTempusFeatures(t *testing.T) {
 	e := newConditionsEnricher(app, newFakeTempus(t, "query_past_all_ok.json"), condNow)
 
 	// With a coordinate nothing is removed.
-	e.dropFeaturesWithoutCoordinate(sampleID)
+	e.dropFeaturesOfUnaskable(sampleID)
 	if n := tempusRows(t, app, sampleID); n != 1 {
 		t.Fatalf("tempus rows = %d, want 1 while the coordinate exists", n)
 	}
 	updateSample(t, app, sampleID, map[string]any{"latitude": 0, "longitude": 0, "conditions_status": ""})
-	e.dropFeaturesWithoutCoordinate(sampleID)
+	e.dropFeaturesOfUnaskable(sampleID)
 	if tempus, all := tempusRows(t, app, sampleID), len(sampleFeatures(t, app, sampleID)); tempus != 0 || all != 1 {
 		t.Errorf("tempus rows = %d, all rows = %d; want 0 and the Ortus row", tempus, all)
 	}
@@ -741,4 +741,67 @@ func legacySampleWithHeight(t *testing.T, app *tests.TestApp) (ownerID, sampleID
 	ownerID, sampleID, ftID = createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
 	updateSample(t, app, sampleID, map[string]any{"elevation": 519.6, "elevation_source": "location_service"})
 	return
+}
+
+// Without a usable height the hook left the sample pending and without
+// values; the feature rows of the earlier answer must go as well, or
+// they stay for as long as no height arrives.
+func TestEnrich_WithoutElevationRemovesStaleFeatures(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := pendingSample(t, app)
+	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, geoplace.ScopeTempus,
+		[]geoplace.Feature{{SourceID: "tempus:sun", SourceName: "Tempus", Layer: "sun"}}); err != nil {
+		t.Fatal(err)
+	}
+	updateSample(t, app, sampleID, map[string]any{"elevation": 0, "elevation_source": ""})
+	newConditionsEnricher(app, newFakeTempus(t, "query_past_all_ok.json"), condNow).
+		EnrichSample(context.Background(), sampleID)
+	if n := tempusRows(t, app, sampleID); n != 0 {
+		t.Errorf("tempus rows = %d, want 0", n)
+	}
+}
+
+// A height Tempus does not accept must not use up the limit of every
+// run in front of samples that can be asked.
+func TestRefreshDue_UnusableHeightDoesNotBlockTheOthers(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, tooHigh, ftID := pendingSample(t, app)
+	updateSample(t, app, tooHigh, map[string]any{"elevation": 9500})
+	ok := extraSample(t, app, ownerID, ftID)
+	updateSample(t, app, ok, map[string]any{"conditions_status": conditions.StatusPending})
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	later := time.Now().UTC().Add(2 * time.Hour)
+	if n := newConditionsEnricher(app, tempus, later).RefreshDue(context.Background(), 1); n != 1 {
+		t.Fatalf("queried = %d, want 1", n)
+	}
+	if tempus.hits() != 1 || loadSample(t, app, ok).GetString("conditions_status") == conditions.StatusPending {
+		t.Errorf("hits = %d, status of the usable sample = %q", tempus.hits(), loadSample(t, app, ok).GetString("conditions_status"))
+	}
+}
+
+// After a coordinate move the DEM height still belongs to the old
+// place. The Ortus run that follows the move asks Tempus itself, with
+// the height it found; the update's own trigger waits for it.
+func TestWaitsForOrtusHeight(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	for _, c := range []struct {
+		name   string
+		source string
+		moveBy float64
+		want   bool
+	}{
+		{"DEM height, coordinate moved", "backend_service", 0.01, true},
+		{"DEM height, nothing moved", "backend_service", 0, false},
+		{"GPS height, coordinate moved", "location_service", 0.01, false},
+		{"no height, coordinate moved", "", 0.01, false},
+	} {
+		updateSample(t, app, sampleID, map[string]any{"elevation_source": c.source})
+		orig := loadSample(t, app, sampleID)
+		rec := orig.Clone()
+		rec.Set("latitude", rec.GetFloat("latitude")+c.moveBy)
+		if got := waitsForOrtusHeight(orig, rec); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
 }

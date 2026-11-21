@@ -303,3 +303,24 @@ func TestConditionsRunner_SampleWithoutHeightDoesNotBlockTheOthers(t *testing.T)
 		t.Errorf("status without height %q, with height %q", condStatus(t, app, noHeight.Id), condStatus(t, app, withHeight.Id))
 	}
 }
+
+// The same holds for a height outside the range Tempus accepts.
+func TestConditionsRunner_UnusableHeightDoesNotBlockTheOthers(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	tooHigh := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	tooHigh.Set("elevation", 9500)
+	if err := app.SaveNoValidate(tooHigh); err != nil {
+		t.Fatal(err)
+	}
+	withHeight := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	f := newTempusFake(t)
+
+	res, err := newConditionsRunner(app, f, 1).Run(context.Background())
+	if err != nil || res.Queried != 1 || res.Remaining != 0 || res.WithoutHeight != 1 {
+		t.Fatalf("%+v, %v; want 1 queried, 0 remaining, 1 without height", res, err)
+	}
+	if condStatus(t, app, withHeight.Id) == "" {
+		t.Error("the usable sample was not processed")
+	}
+}

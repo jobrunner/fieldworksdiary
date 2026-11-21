@@ -3,6 +3,7 @@ package hooks
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"time"
@@ -202,9 +203,6 @@ func normalizeDelivered(rec *core.Record, want time.Time) bool {
 //   - no elevation_source: the sample has no height (the number column
 //     cannot tell 0 m from unset)
 //   - outside the range Tempus accepts: not asked
-//
-// A DEM height never outlives its coordinate (resetStaleLocationStatus
-// removes it on a move), so a height that is there belongs to the place.
 func SampleElevation(rec *core.Record) (float64, bool) {
 	if rec.GetString("elevation_source") == "" {
 		return 0, false
@@ -215,6 +213,20 @@ func SampleElevation(rec *core.Record) (float64, bool) {
 	}
 	return elevation, true
 }
+
+// UsableElevationFilter is SampleElevation as a PocketBase filter, for
+// selections that must not pick samples which are then not asked.
+var UsableElevationFilter = fmt.Sprintf("elevation_source != '' && elevation >= %d && elevation <= %d",
+	services.TempusMinElevation, services.TempusMaxElevation)
+
+// UsableElevationSQL and UnusableElevationSQL are the same rule and its
+// negation as SQL expressions.
+var (
+	UsableElevationSQL = fmt.Sprintf("(elevation_source != '' AND elevation >= %d AND elevation <= %d)",
+		services.TempusMinElevation, services.TempusMaxElevation)
+	UnusableElevationSQL = fmt.Sprintf("(elevation_source = '' OR elevation < %d OR elevation > %d)",
+		services.TempusMinElevation, services.TempusMaxElevation)
+)
 
 // SameElevation reports whether two samples are asked with the same
 // height: Tempus distinguishes whole metres.
