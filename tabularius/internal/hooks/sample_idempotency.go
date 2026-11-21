@@ -3,7 +3,6 @@ package hooks
 import (
 	"hash/fnv"
 	"net/http"
-	"strings"
 	"sync"
 
 	"github.com/pocketbase/dbx"
@@ -13,10 +12,10 @@ import (
 
 // existingSample returns the caller's sample with this client_uuid, or
 // nil. An empty uuid or owner never matches. The uuid is compared as
-// stored: PocketBase keeps surrounding whitespace, and the unique index
-// sees the stored value.
+// stored: PocketBase keeps whitespace, and the unique index treats every
+// non-empty value as a key, also one that is only whitespace.
 func existingSample(app core.App, ownerID, clientUUID string) *core.Record {
-	if ownerID == "" || strings.TrimSpace(clientUUID) == "" {
+	if ownerID == "" || clientUUID == "" {
 		return nil
 	}
 	rec, err := app.FindFirstRecordByFilter("samples",
@@ -54,7 +53,7 @@ func keepClientUUIDOfDuplicate(app core.App, rec *core.Record) {
 		return
 	}
 	incoming := rec.GetString("client_uuid")
-	if strings.TrimSpace(incoming) == "" || incoming == orig.GetString("client_uuid") {
+	if incoming == "" || incoming == orig.GetString("client_uuid") {
 		return
 	}
 	_, err := app.FindFirstRecordByFilter("samples",
@@ -75,7 +74,7 @@ func keepClientUUIDOfDuplicate(app core.App, rec *core.Record) {
 var createLocks [64]sync.Mutex
 
 func lockSampleCreate(ownerID, clientUUID string) (unlock func()) {
-	if strings.TrimSpace(clientUUID) == "" {
+	if clientUUID == "" {
 		return func() {}
 	}
 	h := fnv.New32a()

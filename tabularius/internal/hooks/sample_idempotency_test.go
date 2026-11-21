@@ -59,7 +59,7 @@ func TestExistingSample_EmptyUUIDOrOwnerNeverMatches(t *testing.T) {
 	app := setupTestApp(t)
 	owner := createTestUser(t, app, "idem4"+uniqueSuffix(t)+"@example.com")
 	storedSample(t, app, owner.Id, "")
-	if existingSample(app, owner.Id, "") != nil || existingSample(app, owner.Id, "  ") != nil {
+	if existingSample(app, owner.Id, "") != nil {
 		t.Error("an empty client_uuid must never match")
 	}
 	if existingSample(app, "", "uuid-1") != nil {
@@ -321,4 +321,17 @@ func TestSampleCreate_ReplayExpandsRelations(t *testing.T) {
 	sc.URL += "?expand=fieldtrip"
 	sc.ExpectedContent = []string{`"id":"` + first.Id + `"`, `"expand":{"fieldtrip":{`}
 	sc.Test(t)
+}
+
+// The index treats every non-empty value as a key, also one that is
+// only whitespace. The lookup must do the same, or such a repeat would
+// fail against the index instead of being replayed.
+func TestExistingSample_WhitespaceOnlyUUIDIsAKey(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "idem13"+uniqueSuffix(t)+"@example.com")
+	first := storedSample(t, app, owner.Id, "  ")
+	got := existingSample(app, owner.Id, "  ")
+	if got == nil || got.Id != first.Id {
+		t.Fatalf("sample with whitespace-only uuid not found: %v", got)
+	}
 }
