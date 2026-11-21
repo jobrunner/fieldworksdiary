@@ -132,16 +132,19 @@ struct RetrospectiveSampleCreator {
         )
     }
 
-    /// Stores the imported photo as JPEG (`PhotoImportFormat`). The
-    /// photo import hands a JPEG on already (converted off the main
-    /// actor), so the call here only passes it through; it stays as the
-    /// guard that nothing but JPEG is stored. Best effort: the sample
-    /// already exists, a failed photo is logged.
+    /// Stores the imported photo. The photo import hands a JPEG on
+    /// (`PhotoImportFormat.prepared`, converted off the main actor);
+    /// anything else is not stored — no conversion here, on the main
+    /// actor. Best effort: the sample already exists, a failed photo is
+    /// logged.
     private func attachPhoto(_ data: Data, to sampleID: String) {
+        guard PhotoImportFormat.isJPEG(data) else {
+            Log.persistence.error("retrospective photo is no JPEG, not stored for sample \(sampleID, privacy: .public)")
+            return
+        }
         let photoID = UUID().uuidString
         do {
-            let jpeg = try PhotoImportFormat.jpegData(from: data)
-            let path = try PhotoStorage.write(data: jpeg, sampleID: sampleID, photoID: photoID)
+            let path = try PhotoStorage.write(data: data, sampleID: sampleID, photoID: photoID)
             let timestamp = Date()
             try photoStore.insert(LocalPhoto(
                 id: photoID,

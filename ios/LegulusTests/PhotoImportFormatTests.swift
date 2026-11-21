@@ -81,16 +81,33 @@ final class PhotoImportFormatTests: XCTestCase {
 
     func testPrepared_ConvertsOffTheMainActor() async throws {
         let heic = try image(type: .heic)
-        let prepared = await PhotoImportFormat.prepared(heic)
+        let converted = await PhotoImportFormat.prepared(heic)
+        let prepared = try XCTUnwrap(converted)
         XCTAssertEqual(try typeIdentifier(prepared), UTType.jpeg.identifier)
     }
 
-    /// Not an image: handed back as it is, the caller's attach step
-    /// reports the failure.
-    func testPrepared_KeepsUnreadableData() async {
-        let garbage = Data([0, 1, 2, 3, 4])
-        let prepared = await PhotoImportFormat.prepared(garbage)
-        XCTAssertEqual(prepared, garbage)
+    /// Not an image: no data to hand on, so nobody tries the
+    /// conversion a second time.
+    func testPrepared_UnreadableDataIsNil() async {
+        let prepared = await PhotoImportFormat.prepared(Data([0, 1, 2, 3, 4]))
+        XCTAssertNil(prepared)
+    }
+
+    /// A request whose import was cancelled while it waited is skipped.
+    func testPrepared_CancelledRequestIsSkipped() async throws {
+        let heic = try image(type: .heic)
+        let task = Task { () -> Data? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await PhotoImportFormat.prepared(heic)
+        }
+        let prepared = await task.value
+        XCTAssertNil(prepared)
+    }
+
+    func testIsJPEG() throws {
+        XCTAssertTrue(try PhotoImportFormat.isJPEG(image(type: .jpeg)))
+        XCTAssertFalse(try PhotoImportFormat.isJPEG(image(type: .png)))
+        XCTAssertFalse(PhotoImportFormat.isJPEG(Data([0, 1, 2])))
     }
 
     func testGarbage_Throws() {

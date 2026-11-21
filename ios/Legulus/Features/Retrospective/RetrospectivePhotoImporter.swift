@@ -36,15 +36,18 @@ struct RetrospectivePhotoImporter {
     func importPhoto(_ original: Data) async throws -> Outcome {
         // Converted once here, off the main actor; the creator then
         // only stores a JPEG. The metadata travels with the conversion.
-        let data = await PhotoImportFormat.prepared(original)
+        let prepared = await PhotoImportFormat.prepared(original)
         try Task.checkCancellation()
+        if prepared == nil {
+            Log.ui.error("photo import: file could not be converted to JPEG, sample goes on without photo")
+        }
         let deviceZone = creator.deviceZone()
-        let metadata = PhotoMetadataReader.read(data, fallbackZone: deviceZone)
+        let metadata = PhotoMetadataReader.read(prepared ?? original, fallbackZone: deviceZone)
         let capture = PhotoCaptureTime(metadata, fallbackZone: deviceZone)
 
         guard let position = metadata.coordinate else {
             Log.ui.info("photo import without position, capture time: \(capture != nil, privacy: .public)")
-            return try .created(creator.createWithoutPosition(code: .suggested, capture: capture, photo: data))
+            return try .created(creator.createWithoutPosition(code: .suggested, capture: capture, photo: prepared))
         }
 
         let input = CoordinateInput(
@@ -52,7 +55,7 @@ struct RetrospectivePhotoImporter {
             first: String(format: "%.6f", position.lat),
             second: String(format: "%.6f", position.lon)
         )
-        let pending = RetrospectiveCoordinateViewModel.PendingPhoto(data: data, capture: capture)
+        let pending = RetrospectiveCoordinateViewModel.PendingPhoto(data: prepared, capture: capture)
         guard let ortus else {
             return .needsDialog(DialogSeed(
                 input: input, errorMessage: OrtusQueryError.offline.userMessage, photo: pending
@@ -75,6 +78,6 @@ struct RetrospectivePhotoImporter {
                 input: input, errorMessage: OrtusQueryError.noWGS84.userMessage, photo: pending
             ))
         }
-        return try .created(creator.create(response: response, code: .suggested, capture: capture, photo: data))
+        return try .created(creator.create(response: response, code: .suggested, capture: capture, photo: prepared))
     }
 }
