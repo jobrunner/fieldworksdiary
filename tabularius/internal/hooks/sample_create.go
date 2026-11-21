@@ -47,8 +47,9 @@ var berlin = func() *time.Location {
 //     save sees a complete sample.
 //
 // A create whose client_uuid the caller already stored is answered with
-// the existing sample instead (see existingSample); the unique index on
-// (owner, client_uuid) covers two requests running at once.
+// the existing sample instead (see existingSample). Requests with the
+// same uuid that overlap are serialised (lockSampleCreate); the unique
+// index on (owner, client_uuid) is the guarantee behind both.
 func RegisterSampleCreate(app core.App) {
 	app.OnRecordCreateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		ownerID, err := authOwnerID(e.Auth)
@@ -60,6 +61,9 @@ func RegisterSampleCreate(app core.App) {
 		// answers with the sample that exists, before any fieldtrip or
 		// sample_id is touched.
 		clientUUID := e.Record.GetString("client_uuid")
+		// Overlapping requests with this uuid wait here, so the later
+		// one finds the stored sample and groups nothing.
+		defer lockSampleCreate(ownerID, clientUUID)()
 		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
 			return replayExistingSample(e, existing)
 		}
@@ -70,9 +74,9 @@ func RegisterSampleCreate(app core.App) {
 		if err == nil {
 			return nil
 		}
-		// Two requests with the same uuid at once: both miss the lookup
-		// above, the unique index lets one through. The loser answers
-		// with the winner's record.
+		// The save failed although the lookup above missed: the unique
+		// index caught a sample stored outside the lock (another
+		// process). Answer with that record.
 		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
 			return replayExistingSample(e, existing)
 		}
@@ -254,6 +258,7 @@ func uniqueSampleID(app core.App, ownerID, wanted, excludeID string) (string, er
 func RegisterSampleIDUpdate(app core.App) {
 	app.OnRecordUpdateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		keepStrongerTimezone(e.Record)
+		keepClientUUIDOfDuplicate(e.App, e.Record)
 		if err := followCollectingDayOnUpdate(e.App, e.Record); err != nil {
 			return err
 		}
