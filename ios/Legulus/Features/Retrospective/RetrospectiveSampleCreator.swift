@@ -132,10 +132,11 @@ struct RetrospectiveSampleCreator {
         )
     }
 
-    /// Stores the imported photo: a JPEG unchanged, any other format
-    /// converted once at full size with its metadata
-    /// (`PhotoImportFormat`). Best effort: the sample already exists, a
-    /// failed photo is logged.
+    /// Stores the imported photo as JPEG (`PhotoImportFormat`). The
+    /// photo import hands a JPEG on already (converted off the main
+    /// actor), so the call here only passes it through; it stays as the
+    /// guard that nothing but JPEG is stored. Best effort: the sample
+    /// already exists, a failed photo is logged.
     private func attachPhoto(_ data: Data, to sampleID: String) {
         let photoID = UUID().uuidString
         do {

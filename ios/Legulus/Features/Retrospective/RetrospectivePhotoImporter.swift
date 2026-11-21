@@ -33,7 +33,11 @@ struct RetrospectivePhotoImporter {
 
     /// Throws `CancellationError` when the task was cancelled, or a
     /// store error when the sample could not be written.
-    func importPhoto(_ data: Data) async throws -> Outcome {
+    func importPhoto(_ original: Data) async throws -> Outcome {
+        // Converted once here, off the main actor; the creator then
+        // only stores a JPEG. The metadata travels with the conversion.
+        let data = await PhotoImportFormat.prepared(original)
+        try Task.checkCancellation()
         let deviceZone = creator.deviceZone()
         let metadata = PhotoMetadataReader.read(data, fallbackZone: deviceZone)
         let capture = PhotoCaptureTime(metadata, fallbackZone: deviceZone)

@@ -79,6 +79,20 @@ final class PhotoImportFormatTests: XCTestCase {
         XCTAssertEqual(props[kCGImagePropertyPixelHeight] as? Int, 302)
     }
 
+    func testPrepared_ConvertsOffTheMainActor() async throws {
+        let heic = try image(type: .heic)
+        let prepared = await PhotoImportFormat.prepared(heic)
+        XCTAssertEqual(try typeIdentifier(prepared), UTType.jpeg.identifier)
+    }
+
+    /// Not an image: handed back as it is, the caller's attach step
+    /// reports the failure.
+    func testPrepared_KeepsUnreadableData() async {
+        let garbage = Data([0, 1, 2, 3, 4])
+        let prepared = await PhotoImportFormat.prepared(garbage)
+        XCTAssertEqual(prepared, garbage)
+    }
+
     func testGarbage_Throws() {
         XCTAssertThrowsError(try PhotoImportFormat.jpegData(from: Data([0, 1, 2, 3, 4])))
         XCTAssertThrowsError(try PhotoImportFormat.jpegData(from: Data()))

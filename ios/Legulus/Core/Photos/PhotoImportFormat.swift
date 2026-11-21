@@ -24,6 +24,16 @@ enum PhotoImportFormat {
     /// JPEG quality of the one conversion.
     static let conversionQuality: CGFloat = 0.92
 
+    /// `jpegData(from:)` off the caller's actor: decoding and encoding
+    /// a full-size photo takes long enough to stall the UI. Data that
+    /// cannot be converted comes back unchanged — the step that stores
+    /// the photo reports the failure.
+    static func prepared(_ data: Data) async -> Data {
+        await Task.detached(priority: .userInitiated) {
+            (try? jpegData(from: data)) ?? data
+        }.value
+    }
+
     static func jpegData(from data: Data) throws -> Data {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetCount(source) > 0,
