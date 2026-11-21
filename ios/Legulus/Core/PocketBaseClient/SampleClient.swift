@@ -158,6 +158,7 @@ struct SampleClient {
         if let begin = input.beginDate { body["begin_date"] = wireFormatter.string(from: begin) }
         if let end = input.endDate { body["end_date"] = wireFormatter.string(from: end) }
         if let allDay = input.isAllDay { body["is_all_day"] = allDay }
+        if let marked = input.marked { body["marked"] = marked }
         body["version"] = input.version
         body["client_uuid"] = input.clientUuid
         body["client_updated_at"] = wireFormatter.string(from: input.clientUpdatedAt)
