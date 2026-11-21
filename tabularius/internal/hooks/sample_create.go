@@ -45,16 +45,42 @@ var berlin = func() *time.Location {
 //     " (n)" suffix, the sent value goes to original_code),
 //  5. populates `fieldtrip` and `owner` so PocketBase's subsequent
 //     save sees a complete sample.
+//
+// A create whose client_uuid the caller already stored is answered with
+// the existing sample instead (see existingSample). Requests with the
+// same uuid that overlap are serialised (lockSampleCreate); the unique
+// index on (owner, client_uuid) is the guarantee behind both.
 func RegisterSampleCreate(app core.App) {
 	app.OnRecordCreateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		ownerID, err := authOwnerID(e.Auth)
 		if err != nil {
 			return err
 		}
+		// The app repeats a create after a timeout without knowing
+		// whether the first attempt arrived. The same client_uuid
+		// answers with the sample that exists, before any fieldtrip or
+		// sample_id is touched.
+		clientUUID := e.Record.GetString("client_uuid")
+		// Overlapping requests with this uuid wait here, so the later
+		// one finds the stored sample and groups nothing.
+		defer lockSampleCreate(ownerID, clientUUID)()
+		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
+			return replayExistingSample(e, existing)
+		}
 		if err := processSample(e.App, e.Record, ownerID); err != nil {
 			return err
 		}
-		return e.Next()
+		err = e.Next()
+		if err == nil {
+			return nil
+		}
+		// The save failed although the lookup above missed: the unique
+		// index caught a sample stored outside the lock (another
+		// process). Answer with that record.
+		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
+			return replayExistingSample(e, existing)
+		}
+		return err
 	})
 }
 
@@ -232,6 +258,7 @@ func uniqueSampleID(app core.App, ownerID, wanted, excludeID string) (string, er
 func RegisterSampleIDUpdate(app core.App) {
 	app.OnRecordUpdateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		keepStrongerTimezone(e.Record)
+		keepClientUUIDOfDuplicate(e.App, e.Record)
 		if err := followCollectingDayOnUpdate(e.App, e.Record); err != nil {
 			return err
 		}
