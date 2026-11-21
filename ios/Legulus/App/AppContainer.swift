@@ -83,7 +83,8 @@ final class AppContainer: ObservableObject {
 
     private let networkStatus = NetworkStatus()
     /// Application Support (tests pass a temporary folder). Nil keeps
-    /// everything in memory: Xcode previews must not open real data.
+    /// everything in memory — only for Xcode previews and tests, never
+    /// for a running app.
     private let storageRoot: URL?
     private var authObservation: AnyCancellable?
     private var settingsObservation: AnyCancellable?
@@ -97,14 +98,19 @@ final class AppContainer: ObservableObject {
             self.init(storageRoot: nil)
             return
         }
-        let root = try? FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
-        )
-        if let root {
-            // Rename from the Fieldworksdiary days, before anything else
-            // looks at the file.
-            Database.adoptLegacyFile(in: root)
+        let root: URL
+        do {
+            root = try FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+            )
+        } catch {
+            // Without a place for the databases the app would keep
+            // samples in memory only and lose them on exit.
+            fatalError("Application Support unavailable: \(error)")
         }
+        // Rename from the Fieldworksdiary days, before anything else
+        // looks at the file.
+        Database.adoptLegacyFile(in: root)
         self.init(storageRoot: root)
     }
 
@@ -194,6 +200,11 @@ final class AppContainer: ObservableObject {
                 // The single database of earlier versions goes to the
                 // accounts its samples belong to — not necessarily this one.
                 AccountStorage.adoptLegacyDatabase(signedInAccountID: accountID, in: storageRoot)
+                // The hand-over failed for this account (no space, …):
+                // a fresh database would hide its samples for good.
+                if AccountStorage.legacyDataPending(for: accountID, in: storageRoot) {
+                    fatalError("Legacy data of the account could not be handed over")
+                }
                 let url = AccountStorage.databaseURL(accountID: accountID, in: storageRoot)
                 isNewDatabase = !FileManager.default.fileExists(atPath: url.path)
                 database = try Database(accountID: accountID, in: storageRoot)

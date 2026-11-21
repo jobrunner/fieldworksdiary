@@ -762,6 +762,7 @@ final class SyncRunner: ObservableObject {
         }
         let absorbed = Set(parked.map(\.id))
         try? store.setSyncState(id: localID, status: .syncing, error: nil)
+        let account = accountID()
 
         do {
             inFlight += 1
@@ -778,6 +779,13 @@ final class SyncRunner: ObservableObject {
                 try await adoptAfterConflict(localID: localID, backendID: backendID, via: client)
                 outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
                                               mutationID: mutation.id, absorbed: absorbed, via: client)
+            }
+            // The account was left while the requests ran: whatever
+            // came back (a 404 from the owner rule, for a request without
+            // token) says nothing about the sample. Keep the edit queued.
+            guard isCurrent(account) else {
+                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                return
             }
             guard let outcome else {
                 try? mutationsStore.dequeue(mutation.id)
@@ -810,6 +818,12 @@ final class SyncRunner: ObservableObject {
                 raiseEnrichmentBase(localID: localID, to: outcome.fresh.version)
             }
         } catch SampleClientError.conflict {
+            // Left the account while the request ran: no verdict on the
+            // edit, it stays queued (see above).
+            guard isCurrent(account) else {
+                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                return
+            }
             // Still 409 right after adopting the server version: a
             // writer is racing us. Keep the edit queued; give up after
             // a few passes so it can't loop forever.
@@ -830,6 +844,12 @@ final class SyncRunner: ObservableObject {
                 try? mutationsStore.recordFailure(mutation.id, error: "409 conflict")
             }
         } catch SampleClientError.http(status: 404, _) {
+            // Left the account while the request ran: no verdict on the
+            // edit, it stays queued (see above).
+            guard isCurrent(account) else {
+                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                return
+            }
             // The server record is gone (deleted elsewhere): the edit
             // is moot. Drop it; the local row is not touched here (a
             // missing row cannot be resurrected by `store.update`,
@@ -842,6 +862,11 @@ final class SyncRunner: ObservableObject {
             try? store.setSyncState(id: localID, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample update push failed: \(message)")
+            if !isCurrent(account) {
+                // Not a failure of the edit: don't show one after the
+                // next sign-in.
+                try? store.setSyncState(id: localID, status: .pending, error: nil)
+            }
         }
     }
 

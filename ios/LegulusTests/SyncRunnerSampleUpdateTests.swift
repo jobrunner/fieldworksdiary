@@ -48,6 +48,30 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         XCTAssertEqual(stored.version, 4)
     }
 
+    /// The account is left while the PATCH is on the wire. A 404 that
+    /// comes back then (owner rule without token) is no answer: the
+    /// edit stays in the outbox for the next sign-in.
+    func testUpdate_AccountLeftDuringPatch_KeepsTheEdit() async throws {
+        let local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 3)
+        var edited = local
+        edited.notes = "noch nicht am Server"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.updateError = SampleClientError.http(status: 404, body: "")
+        let runner = makeRunner(mock: mock)
+        mock.onUpdate = { runner.shutdown() }
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(
+            try mutations.fetch(entityType: .sample).filter { $0.op == .update }.count, 1,
+            "die Änderung bleibt in der Outbox"
+        )
+        let stored = try XCTUnwrap(store.fetchById(local.id))
+        XCTAssertEqual(stored.notes, "noch nicht am Server")
+        XCTAssertNotEqual(stored.syncStatus, .syncing, "nicht in einem Zwischenzustand zurücklassen")
+    }
+
     func testUpdate_ChangedFieldtripIsStoredAndPulled() async throws {
         var local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 1)
         local.fieldtrip = "ft-old"
@@ -356,8 +380,11 @@ private final class MockUpdateClient: SamplePushClient, @unchecked Sendable {
         return createResponse
     }
 
+    var onUpdate: (() -> Void)?
+
     func updateSample(id _: String, input: SampleUpdateInput) async throws -> Sample {
         updateInputs.append(input)
+        onUpdate?()
         if alwaysConflict { throw SampleClientError.conflict(currentVersion: 7, body: "{}") }
         if !updateErrors.isEmpty { throw updateErrors.removeFirst() }
         if let updateError { throw updateError }

@@ -59,8 +59,13 @@ Fotos, die noch nicht hochgeladen waren.
 - **Aufteilung:** Noch nicht hochgeladene, selbst angelegte Fundorte des
   kleineren Kontos gehen bei der Aufteilung verloren, weil sie sich in der
   alten Datenbank keinem Konto zuordnen lassen.
-- Lässt sich die Datenbank eines Kontos nicht öffnen, beendet sich die App,
-  statt im Speicher weiterzuarbeiten.
+- Lässt sich die Datenbank eines Kontos nicht öffnen, der Speicherort nicht
+  ermitteln oder die Aufteilung der alten Datenbank für das Konto nicht
+  abschließen (z.B. voller Speicher), beendet sich die App, statt im
+  Speicher oder mit einer leeren Datenbank weiterzuarbeiten. Die Daten
+  bleiben dabei in der alten Datei.
+- Von Hand eingegebene Orte sind privat und bleiben bei der Aufteilung beim
+  jeweiligen Besitzer; gemeinsame Orte des Backends stehen in jeder Kopie.
 - **Kein Aufräumen:** Datenbanken von Konten, die sich nie wieder anmelden,
   bleiben auf dem Gerät. Ein Aufräumen käme mit dem Export.
 - Zwei Backends mit zufällig gleicher Nutzer-ID würden sich eine Datenbank

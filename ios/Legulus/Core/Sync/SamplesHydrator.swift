@@ -21,6 +21,9 @@ import Foundation
 final class SamplesHydrator: ObservableObject {
     let store: LocalSampleStore
     let endpointProvider: () -> String
+    /// False once the account this hydrator belongs to is no longer the
+    /// signed-in one: the pull stops and the cursor stays.
+    let sessionActive: () -> Bool
     let authProvider: () -> AuthTokenSource?
     let placemarks: LocalPlacemarkStore?
     let features: LocalSampleFeatureStore?
@@ -43,6 +46,7 @@ final class SamplesHydrator: ObservableObject {
          endpointProvider: @escaping () -> String,
          authProvider: @escaping () -> AuthTokenSource? = { nil },
          userIDProvider: @escaping () -> String = { "" },
+         sessionActive: @escaping () -> Bool = { true },
          defaults: UserDefaults = .standard,
          perPage: Int = 200,
          maxPages: Int = 100,
@@ -60,6 +64,7 @@ final class SamplesHydrator: ObservableObject {
         self.placemarks = placemarks
         self.features = features
         self.endpointProvider = endpointProvider
+        self.sessionActive = sessionActive
         self.authProvider = authProvider
         self.userIDProvider = userIDProvider
         self.defaults = defaults
@@ -101,7 +106,7 @@ final class SamplesHydrator: ObservableObject {
     func pull() async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
-        if isLoading { return }
+        if isLoading || !sessionActive() { return }
         isLoading = true
         defer { isLoading = false }
 
@@ -132,6 +137,13 @@ final class SamplesHydrator: ObservableObject {
                 try store.upsert(items)
                 if let locationHydration, !(await locationHydration.hydrate(items)) {
                     locationFailed = true
+                }
+                // The account was left meanwhile: what the follow-up
+                // requests returned without a token is incomplete. Stop,
+                // and leave the cursor where it was.
+                guard sessionActive() else {
+                    Log.sync.notice("samples hydrate stopped: session ended")
+                    return
                 }
                 processed += items.count
                 guard let last = items.last, let lastUpdated = last.updated else { break }

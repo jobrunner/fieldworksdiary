@@ -161,6 +161,49 @@ final class AccountStorageTests: XCTestCase {
         XCTAssertEqual(try count(urlOf("userb0000000002")), 0)
     }
 
+    /// Places a user entered by hand are private. The copy of another
+    /// account must not hold them: entering the same place again would
+    /// reuse the foreign backend id and the server would reject the push.
+    func testAdoptLegacy_PrivatePlacemarksStayWithTheirOwner() throws {
+        try makeLegacy(owners: ["usera0000000001", "usera0000000001", "userb0000000002"])
+        let legacy = try Database(path: legacyURL().path)
+        try legacy.writer.write { db in
+            let required = try db.columns(in: "local_placemarks")
+                .filter { $0.isNotNull && $0.defaultValueSQL == nil && $0.name != "id" }.map(\.name)
+            func insert(_ id: String, source: String, owner: String?) throws {
+                let columns = (["id", "geocoding_source", "owner"] + required
+                    .filter { !["geocoding_source", "owner", "dedup_hash"].contains($0) })
+                let values = (["?", "?", "?"] + columns.dropFirst(3).map { _ in "'x'" })
+                var sql = "INSERT INTO local_placemarks (\(columns.joined(separator: ", "))"
+                var all = values
+                if required.contains("dedup_hash") {
+                    sql += ", dedup_hash"
+                    all.append("'hash-\(id)'")
+                }
+                sql += ") VALUES (\(all.joined(separator: ", ")))"
+                try db.execute(sql: sql, arguments: [id, source, owner])
+            }
+            try insert("pm-shared", source: "backend_service", owner: nil)
+            try insert("pm-a", source: "manual", owner: "usera0000000001")
+            try insert("pm-b", source: "manual", owner: "userb0000000002")
+        }
+
+        AccountStorage.adoptLegacyDatabase(signedInAccountID: nil, in: root)
+
+        XCTAssertEqual(try rows("local_placemarks", at: urlOf("usera0000000001")), ["pm-a", "pm-shared"])
+        XCTAssertEqual(try rows("local_placemarks", at: urlOf("userb0000000002")), ["pm-b", "pm-shared"])
+    }
+
+    /// A failed copy must be visible to the caller: opening an empty
+    /// database for that account would hide its samples for good.
+    func testAdoptLegacy_ReportsWhenAnAccountStillWaitsForItsData() throws {
+        try makeLegacy(owners: ["usera0000000001"])
+        XCTAssertTrue(AccountStorage.legacyDataPending(for: "usera0000000001", in: root))
+        XCTAssertFalse(AccountStorage.legacyDataPending(for: "userb0000000002", in: root))
+        AccountStorage.adoptLegacyDatabase(signedInAccountID: nil, in: root)
+        XCTAssertFalse(AccountStorage.legacyDataPending(for: "usera0000000001", in: root), "übernommen")
+    }
+
     /// Committed rows that still sit in the WAL file move along.
     func testAdoptLegacy_TakesRowsStillInTheWriteAheadLog() throws {
         let legacy = try Database(path: legacyURL().path)

@@ -61,7 +61,8 @@ final class AccountGraph {
             features: sampleFeatures,
             endpointProvider: { config.endpointURL },
             authProvider: { tokens },
-            userIDProvider: { accountID ?? "" }
+            userIDProvider: { accountID ?? "" },
+            sessionActive: { tokens?.currentToken != nil }
         )
         let remapPuller = RemapEventsPuller(
             localitiesStore: localitiesStore,

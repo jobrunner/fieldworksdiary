@@ -49,6 +49,16 @@ enum AccountStorage {
         }) ?? []
     }
 
+    /// True while the legacy database still holds samples of this account
+    /// that have not been handed over (the copy failed, e.g. for lack of
+    /// space). Opening a fresh database for the account then would hide
+    /// them for good: the new file blocks every later attempt.
+    static func legacyDataPending(for accountID: String, in appSupport: URL, fileManager fm: FileManager = .default) -> Bool {
+        let legacy = appSupport.appendingPathComponent(Database.fileName)
+        guard legacyOwners(of: legacy).contains(accountID) else { return false }
+        return !fm.fileExists(atPath: databaseURL(accountID: accountID, in: appSupport).path)
+    }
+
     /// The main owner of the legacy database, see `legacyOwners`.
     static func legacyOwner(of legacyDatabase: URL) -> String? {
         legacyOwners(of: legacyDatabase).first
@@ -167,6 +177,23 @@ enum AccountStorage {
             }
         }
         try db.execute(sql: "DELETE FROM local_samples WHERE \(foreign)", arguments: [owner])
+        if try db.tableExists("local_placemarks"),
+           try db.columns(in: "local_placemarks").contains(where: { $0.name == "owner" })
+        {
+            // Places entered by hand are private to their owner; the
+            // shared ones (backend_service) stay in every copy. A manual
+            // place without owner stays with the main owner, and with
+            // any account whose remaining samples still point at it.
+            let ownerless = isMainOwner ? "" : """
+             OR ((owner IS NULL OR owner = '')
+                 AND id NOT IN (SELECT placemark FROM local_samples WHERE placemark IS NOT NULL))
+            """
+            try db.execute(sql: """
+            DELETE FROM local_placemarks
+            WHERE geocoding_source = 'manual'
+              AND ((owner IS NOT NULL AND owner != '' AND owner != ?)\(ownerless))
+            """, arguments: [owner])
+        }
         if !isMainOwner {
             // Cached server rows of the main owner; this account pulls
             // its own on first sync.
