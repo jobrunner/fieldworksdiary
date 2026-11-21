@@ -5,9 +5,9 @@ import Foundation
 /// so it lands directly in a temp file without buffering in memory.
 struct ExportClient {
     let endpoint: String
-    let auth: AuthSession?
+    let auth: AuthTokenSource?
 
-    init(endpoint: String, auth: AuthSession? = nil) {
+    init(endpoint: String, auth: AuthTokenSource? = nil) {
         self.endpoint = endpoint
         self.auth = auth
     }

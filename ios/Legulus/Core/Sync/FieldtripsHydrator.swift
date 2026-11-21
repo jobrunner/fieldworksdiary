@@ -7,14 +7,14 @@ import Foundation
 final class FieldtripsHydrator: ObservableObject {
     let store: LocalFieldtripStore
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
 
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
 
     init(store: LocalFieldtripStore,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil })
+         authProvider: @escaping () -> AuthTokenSource? = { nil })
     {
         self.store = store
         self.endpointProvider = endpointProvider

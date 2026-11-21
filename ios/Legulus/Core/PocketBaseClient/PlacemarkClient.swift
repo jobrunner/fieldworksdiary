@@ -24,9 +24,9 @@ extension PlacemarkClient: PlacemarkSyncClient {}
 /// locality's owner may set or clear an override).
 struct PlacemarkClient {
     let endpoint: String
-    let auth: AuthSession?
+    let auth: AuthTokenSource?
 
-    init(endpoint: String, auth: AuthSession? = nil) {
+    init(endpoint: String, auth: AuthTokenSource? = nil) {
         self.endpoint = endpoint
         self.auth = auth
     }

@@ -73,9 +73,9 @@ protocol SampleFeaturesSyncClient {
 /// records list.
 struct SampleFeaturesClient: SampleFeaturesSyncClient {
     let endpoint: String
-    let auth: AuthSession?
+    let auth: AuthTokenSource?
 
-    init(endpoint: String, auth: AuthSession? = nil) {
+    init(endpoint: String, auth: AuthTokenSource? = nil) {
         self.endpoint = endpoint
         self.auth = auth
     }

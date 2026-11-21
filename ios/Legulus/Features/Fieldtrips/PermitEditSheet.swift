@@ -153,6 +153,9 @@ struct PermitEditSheet: View {
             //   2. clear the existing PDF
             //   3. only the number changed
             var updated: Fieldtrip
+            // The stores of the account this started under: after the
+            // request the container may hold another account's.
+            let fieldtrips = container.fieldtrips
             if let file = pickedFile {
                 updated = try await client.uploadPermitPDF(
                     id: fieldtripID, fileURL: file, permitNumber: trimmedNumber
@@ -165,7 +168,7 @@ struct PermitEditSheet: View {
             } else {
                 updated = try await client.setPermitNumber(id: fieldtripID, number: trimmedNumber)
             }
-            try container.fieldtrips.upsert([updated])
+            try fieldtrips.upsert([updated])
             onSaved()
             dismiss()
         } catch let err as SampleClientError {

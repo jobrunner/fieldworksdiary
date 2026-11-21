@@ -44,6 +44,39 @@ final class SamplesHydratorCursorTests: XCTestCase {
         XCTAssertEqual(try store.count(), 450)
     }
 
+    /// The account is left while a page is on the wire. What comes
+    /// back afterwards (and anything fetched without a token) must not
+    /// move the cursor: after the next sign-in the pull starts over.
+    func testPull_SessionEndsDuringPull_KeepsCursorAndStops() async throws {
+        let list = MockList()
+        list.items = (0 ..< 450).map { sample(index: $0) }
+        var checks = 0
+        let hydrator = makeHydrator(list, sessionActive: {
+            checks += 1
+            return checks <= 2 // start of the pull and the first page
+        })
+
+        await hydrator.pull()
+
+        XCTAssertEqual(list.calls.count, 2, "nach dem Ende der Sitzung keine weitere Seite")
+        XCTAssertNil(hydrator.currentCursor(), "der Zeiger rückt nicht vor")
+
+        // Signed in again: the pull starts from the beginning.
+        let again = makeHydrator(list)
+        await again.pull()
+        XCTAssertEqual(try store.count(), 450)
+        XCTAssertNotNil(again.currentCursor())
+    }
+
+    func testPull_WithoutSession_DoesNothing() async throws {
+        let list = MockList()
+        list.items = (0 ..< 5).map { sample(index: $0) }
+        let hydrator = makeHydrator(list, sessionActive: { false })
+        await hydrator.pull()
+        XCTAssertTrue(list.calls.isEmpty)
+        XCTAssertEqual(try store.count(), 0)
+    }
+
     func testPull_SecondRun_OnlyUpdatedSinceCursor() async throws {
         let list = MockList()
         list.items = (0 ..< 5).map { sample(index: $0) }
@@ -151,7 +184,8 @@ final class SamplesHydratorCursorTests: XCTestCase {
         perPage: Int = 200,
         placemarks: LocalPlacemarkStore? = nil,
         features: LocalSampleFeatureStore? = nil,
-        pmClient: PlacemarkSyncClient? = nil
+        pmClient: PlacemarkSyncClient? = nil,
+        sessionActive: @escaping () -> Bool = { true }
     ) -> SamplesHydrator {
         SamplesHydrator(
             store: store,
@@ -159,6 +193,7 @@ final class SamplesHydratorCursorTests: XCTestCase {
             features: features,
             endpointProvider: { "http://test.invalid" },
             userIDProvider: { "u1" },
+            sessionActive: sessionActive,
             defaults: defaults,
             perPage: perPage,
             clientFactory: { _, _ in list },

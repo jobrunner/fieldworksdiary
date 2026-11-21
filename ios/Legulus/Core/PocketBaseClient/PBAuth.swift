@@ -5,7 +5,7 @@ import Foundation
 /// `AuthSession` reference and calls `request.authenticate(with:)`
 /// right before `URLSession.shared.data(for:)`.
 extension URLRequest {
-    mutating func authenticate(with session: AuthSession?) {
+    mutating func authenticate(with session: AuthTokenSource?) {
         if let token = session?.currentToken, !token.isEmpty {
             setValue(token, forHTTPHeaderField: "Authorization")
         }

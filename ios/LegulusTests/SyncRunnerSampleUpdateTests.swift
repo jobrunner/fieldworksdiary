@@ -7,6 +7,7 @@ import XCTest
 /// und Surface-Verhalten bei 409 / Netz-Fehler / fehlender backendId.
 @MainActor
 final class SyncRunnerSampleUpdateTests: XCTestCase {
+    private var account: String? = "user-a"
     private var database: Database!
     private var store: LocalSampleStore!
     private var mutations: PendingMutationsStore!
@@ -46,6 +47,54 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
         XCTAssertEqual(stored.syncStatus, .synced)
         XCTAssertEqual(stored.notes, "updated note")
         XCTAssertEqual(stored.version, 4)
+    }
+
+    /// The session changes hands while the PATCH is on the wire. A 404
+    /// that comes back then (owner rule without token) is no answer:
+    /// the edit stays in the outbox.
+    func testUpdate_AccountChangedDuringPatch_KeepsTheEdit() async throws {
+        let local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 3)
+        var edited = local
+        edited.notes = "noch nicht am Server"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.updateError = SampleClientError.http(status: 404, body: "")
+        mock.onUpdate = { [unowned self] in self.account = "user-b" }
+        await runUntilQuiescent(makeRunner(mock: mock))
+
+        XCTAssertEqual(
+            try mutations.fetch(entityType: .sample).filter { $0.op == .update }.count, 1,
+            "die Änderung bleibt in der Outbox"
+        )
+        let stored = try XCTUnwrap(store.fetchById(local.id))
+        XCTAssertEqual(stored.notes, "noch nicht am Server")
+        XCTAssertEqual(stored.syncStatus, .pending, "nicht in einem Zwischenzustand zurücklassen")
+    }
+
+    /// The runner was shut down while the PATCH was on the wire (its
+    /// user signed out — and may be back already, with a new runner on
+    /// the same database). The old one writes nothing any more: not the
+    /// outbox, and not the row the new runner may have confirmed since.
+    func testUpdate_ShutDownDuringPatch_WritesNothingAfterwards() async throws {
+        let local = try seedSyncedSample(backendID: "backend-1", code: "260605/1", version: 3)
+        var edited = local
+        edited.notes = "noch nicht am Server"
+        try store.saveEdits(edited, mutationsStore: mutations)
+
+        let mock = MockUpdateClient()
+        mock.updateError = SampleClientError.http(status: 404, body: "")
+        let runner = makeRunner(mock: mock)
+        mock.onUpdate = { [unowned self] in
+            runner.shutdown()
+            // The new runner of the same account confirmed the sample.
+            try? self.store.setSyncState(id: local.id, status: .synced, error: nil)
+        }
+        await runUntilQuiescent(runner)
+
+        XCTAssertEqual(try mutations.fetch(entityType: .sample).filter { $0.op == .update }.count, 1)
+        XCTAssertEqual(try XCTUnwrap(store.fetchById(local.id)).syncStatus, .synced,
+                       "der beendete Runner überschreibt den Zustand nicht mehr")
     }
 
     func testUpdate_ChangedFieldtripIsStoredAndPulled() async throws {
@@ -283,6 +332,7 @@ final class SyncRunnerSampleUpdateTests: XCTestCase {
             retryInterval: .seconds(3600),
             enrichmentPollInterval: .milliseconds(1),
             clientFactory: { _, _ in mock },
+            accountProvider: { [unowned self] in self.account },
             onSampleSynced: onSampleSynced
         )
     }
@@ -356,8 +406,11 @@ private final class MockUpdateClient: SamplePushClient, @unchecked Sendable {
         return createResponse
     }
 
+    var onUpdate: (() -> Void)?
+
     func updateSample(id _: String, input: SampleUpdateInput) async throws -> Sample {
         updateInputs.append(input)
+        onUpdate?()
         if alwaysConflict { throw SampleClientError.conflict(currentVersion: 7, body: "{}") }
         if !updateErrors.isEmpty { throw updateErrors.removeFirst() }
         if let updateError { throw updateError }

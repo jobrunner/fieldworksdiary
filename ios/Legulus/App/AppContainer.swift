@@ -1,165 +1,129 @@
 import Combine
 import Foundation
 
-/// Single launch-time container. Owns the database, the auth session
-/// and all long-lived services so views can pull them out of the
+/// Single launch-time container. Owns the auth session and the services
+/// of the signed-in account so views can pull them out of the
 /// environment instead of constructing them piecemeal. Initialised
 /// once at app launch and held by `@StateObject` on the root scene.
+///
+/// The local data belongs to an account, not to the device: every
+/// account has its own `AccountGraph` (database, stores, sync). The
+/// container holds the graph of the current account and replaces it
+/// when someone else signs in. Signing out deletes nothing — the data
+/// stays in the account's database and is there again when its user
+/// comes back.
 @MainActor
 final class AppContainer: ObservableObject {
     let config: AppConfig
     let auth: AuthSession
-    // Hält den `DatabaseWriter` lebendig, solange der Container lebt.
-    // Wird nirgendwo direkt gelesen — die Stores haben eigene Refs —
-    // aber ohne dieses Property würde ARC die `Database`-Instanz frei-
-    // geben, sobald die Stores ihre eigenen Schwachreferenzen halten.
-    // periphery:ignore
-    let database: Database
-    let store: LocalSampleStore
-    let fieldtrips: LocalFieldtripStore
-    let hydrator: FieldtripsHydrator
-    let localitiesStore: LocalLocalityStore
-    let localitiesHydrator: LocalitiesHydrator
-    let samplesHydrator: SamplesHydrator
-    let remapPuller: RemapEventsPuller
-    let placemarksStore: LocalPlacemarkStore
-    let sampleFeatures: LocalSampleFeatureStore
-    let photos: LocalPhotoStore
-    let mutations: PendingMutationsStore
-    let sync: SyncRunner
-    /// Fills in coordinates of instantly created samples (Phase E).
-    let pendingFixes: PendingFixService
     /// Feature flags from Flipt (Phase E); `false` until loaded.
     let featureFlags: FeatureFlags
 
-    /// Tracks which user id the local stores currently hold data for,
-    /// so we can detect "different user just signed in" vs. "session
-    /// restored / same user" and only wipe when needed.
-    private var lastSeenUserID: String?
+    /// The services of the current account; without one (signed out)
+    /// an empty in-memory graph. Views must not keep it across an
+    /// account change — `RootView` rebuilds the UI then.
+    private(set) var graph: AccountGraph
+
+    var store: LocalSampleStore {
+        graph.store
+    }
+
+    var fieldtrips: LocalFieldtripStore {
+        graph.fieldtrips
+    }
+
+    var hydrator: FieldtripsHydrator {
+        graph.hydrator
+    }
+
+    var localitiesStore: LocalLocalityStore {
+        graph.localitiesStore
+    }
+
+    var localitiesHydrator: LocalitiesHydrator {
+        graph.localitiesHydrator
+    }
+
+    var samplesHydrator: SamplesHydrator {
+        graph.samplesHydrator
+    }
+
+    var remapPuller: RemapEventsPuller {
+        graph.remapPuller
+    }
+
+    var placemarksStore: LocalPlacemarkStore {
+        graph.placemarksStore
+    }
+
+    var sampleFeatures: LocalSampleFeatureStore {
+        graph.sampleFeatures
+    }
+
+    var photos: LocalPhotoStore {
+        graph.photos
+    }
+
+    var mutations: PendingMutationsStore {
+        graph.mutations
+    }
+
+    var sync: SyncRunner {
+        graph.sync
+    }
+
+    var pendingFixes: PendingFixService {
+        graph.pendingFixes
+    }
+
+    /// Account whose data the current graph holds; nil when signed out.
+    var accountID: String? {
+        graph.accountID
+    }
+
+    private let networkStatus = NetworkStatus()
+    /// Application Support (tests pass a temporary folder). Nil keeps
+    /// everything in memory — only for Xcode previews and tests, never
+    /// for a running app.
+    private let storageRoot: URL?
     private var authObservation: AnyCancellable?
     private var settingsObservation: AnyCancellable?
 
-    init() {
-        let config = AppConfig()
-        let database: Database
-        do {
-            // Xcode Canvas setzt diese Env-Var für jeden #Preview-Render.
-            // Ohne die Weiche würde jede Preview-Iteration den echten
-            // Produktions-Datenstand unter applicationSupportDirectory
-            // öffnen (WAL-Locking, Migrations-Re-Runs) — reiner Nebeneffekt
-            // des Canvas-Renderns, den Tests genau deshalb schon über
-            // `Database(inMemory:)` umgehen.
-            if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
-                database = try Database(inMemory: ())
-            } else {
-                database = try Database()
-            }
-        } catch {
-            fatalError("Database open failed: \(error)")
+    convenience init() {
+        // Xcode Canvas setzt diese Env-Var für jeden #Preview-Render.
+        // Ohne die Weiche würde jede Preview-Iteration den echten
+        // Datenstand unter applicationSupportDirectory öffnen
+        // (WAL-Locking, Migrations-Re-Runs).
+        if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" {
+            self.init(storageRoot: nil)
+            return
         }
-        // The closure-capture chain below makes the AuthSession
-        // discoverable from every service without each one holding
-        // a direct reference — we just hand them a `() -> AuthSession?`.
-        // That keeps the wiring shallow and avoids retain cycles.
+        let root: URL
+        do {
+            root = try FileManager.default.url(
+                for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
+            )
+        } catch {
+            // Without a place for the databases the app would keep
+            // samples in memory only and lose them on exit.
+            fatalError("Application Support unavailable: \(error)")
+        }
+        // Rename from the Fieldworksdiary days, before anything else
+        // looks at the file.
+        Database.adoptLegacyFile(in: root)
+        self.init(storageRoot: root)
+    }
+
+    init(storageRoot: URL?) {
+        let config = AppConfig()
         let auth = AuthSession { config.endpointURL }
-
-        let store = LocalSampleStore(database: database)
-        let fieldtrips = LocalFieldtripStore(database: database)
-        let hydrator = FieldtripsHydrator(
-            store: fieldtrips,
-            endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth }
-        )
-        let localitiesStore = LocalLocalityStore(database: database)
-        let localitiesHydrator = LocalitiesHydrator(
-            store: localitiesStore,
-            endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth }
-        )
-        let placemarksStore = LocalPlacemarkStore(database: database)
-        let sampleFeatures = LocalSampleFeatureStore(database: database)
-        let samplesHydrator = SamplesHydrator(
-            store: store,
-            placemarks: placemarksStore,
-            features: sampleFeatures,
-            endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth },
-            userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
-        )
-        let remapPuller = RemapEventsPuller(
-            localitiesStore: localitiesStore,
-            endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth },
-            userIDProvider: { [weak auth] in auth?.currentUser?.id ?? "" }
-        )
-        let photos = LocalPhotoStore(database: database)
-        let mutations = PendingMutationsStore(database: database)
-        let networkStatus = NetworkStatus()
-        let sync = SyncRunner(
-            store: store,
-            mutationsStore: mutations,
-            photoStore: photos,
-            localitiesStore: localitiesStore,
-            placemarkStore: placemarksStore,
-            featureStore: sampleFeatures,
-            endpointProvider: { config.endpointURL },
-            authProvider: { [weak auth] in auth },
-            photoUploadAllowed: { [networkStatus] in
-                PhotoUploadPolicy.mayUpload(wifiOnly: config.photosWiFiOnly, onWiFi: networkStatus.isOnWiFi)
-            },
-            photoWiFiOnly: { config.photosWiFiOnly },
-            onSampleSynced: { fieldtripID in
-                Task { await hydrator.pullOne(fieldtripID) }
-            },
-            onLocalityChanged: {
-                Task { await localitiesHydrator.pull() }
-            }
-        )
-
-        let pendingFixes = PendingFixService(
-            store: store,
-            mutations: mutations,
-            source: BackgroundFixSource(),
-            onCoordinateSet: { sampleID in
-                // Same pipeline as a sample created with a fix: fusion,
-                // place (online, else inherited), sync.
-                Task { @MainActor in
-                    let resolver = SampleLocationResolver(
-                        ortus: OrtusClient.make(endpoint: config.ortusEndpointURL),
-                        samples: store,
-                        placemarks: placemarksStore,
-                        features: sampleFeatures,
-                        mutations: mutations
-                    )
-                    SampleCreation.completeLateFix(
-                        sampleID: sampleID,
-                        store: store,
-                        localitiesStore: localitiesStore,
-                        mutationsStore: mutations,
-                        resolver: resolver,
-                        sync: sync
-                    )
-                }
-            }
-        )
-
-        featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
         self.config = config
         self.auth = auth
-        self.database = database
-        self.store = store
-        self.fieldtrips = fieldtrips
-        self.hydrator = hydrator
-        self.localitiesStore = localitiesStore
-        self.localitiesHydrator = localitiesHydrator
-        self.samplesHydrator = samplesHydrator
-        self.remapPuller = remapPuller
-        self.placemarksStore = placemarksStore
-        self.sampleFeatures = sampleFeatures
-        self.photos = photos
-        self.mutations = mutations
-        self.sync = sync
-        self.pendingFixes = pendingFixes
+        self.storageRoot = storageRoot
+        featureFlags = FeatureFlags(entityIDProvider: { [weak auth] in auth?.currentUser?.id })
+        graph = Self.makeGraph(
+            accountID: nil, storageRoot: storageRoot, config: config, session: auth, networkStatus: networkStatus
+        )
     }
 
     /// Resolver for on-device place data. Reads the Ortus endpoint
@@ -179,7 +143,7 @@ final class AppContainer: ObservableObject {
     /// Run once at app start: restore the auth session if there's a
     /// Keychain-stored token, then react to login/logout. The
     /// Combine subscription stays alive for the lifetime of the
-    /// container — it's our hook for "user changed → wipe + re-hydrate".
+    /// container — it's our hook for "account changed → other graph".
     func bootstrap() async {
         MetricsReporter.shared.register()
         featureFlags.start(url: config.featureFlagsURL)
@@ -188,18 +152,100 @@ final class AppContainer: ObservableObject {
         await auth.restoreOnLaunch()
     }
 
+    /// Public entry point for foreground re-hydration (scene phase,
+    /// pull-to-refresh). No-ops when signed out or no endpoint is set.
+    func hydrate() async {
+        guard auth.isSignedIn else { return }
+        await graph.hydrateAll()
+    }
+
+    /// Resumes waiting GPS fixes when the app comes to the foreground.
+    /// Nothing happens while signed out: the empty placeholder graph
+    /// knows none of the samples and would drop their registrations.
+    func resumePendingFixes() {
+        guard graph.accountID != nil else { return }
+        graph.pendingFixes.resumePending()
+    }
+
+    /// Makes `accountID` the current account: its own database and
+    /// services replace the ones of the previous account, whose
+    /// background work is stopped. Nothing is deleted and nothing is
+    /// carried over. Synchronous, so the UI never renders with the
+    /// graph of another account. No-op for the account that is already
+    /// current.
+    func switchAccount(to accountID: String?) {
+        guard accountID != graph.accountID else { return }
+        graph.shutdown()
+        objectWillChange.send()
+        graph = Self.makeGraph(
+            accountID: accountID, storageRoot: storageRoot, config: config, session: auth, networkStatus: networkStatus
+        )
+        Log.app.notice("account graph switched, signed in: \(accountID != nil, privacy: .public)")
+    }
+
     // MARK: - private
+
+    /// The graph of an account on its own database. Without an account
+    /// (signed out) or without storage (previews, some tests) it runs in
+    /// memory. A database file that cannot be opened ends the app, as it
+    /// always did: carrying on in memory would take samples that look
+    /// saved and are gone with the process.
+    private static func makeGraph(
+        accountID: String?, storageRoot: URL?, config: AppConfig, session: AuthSession, networkStatus: NetworkStatus
+    ) -> AccountGraph {
+        let database: Database
+        var isNewDatabase = false
+        do {
+            if let accountID, let storageRoot {
+                // The single database of earlier versions goes to the
+                // accounts its samples belong to — not necessarily this one.
+                AccountStorage.adoptLegacyDatabase(signedInAccountID: accountID, in: storageRoot)
+                // The hand-over failed for this account (no space, …):
+                // a fresh database would hide its samples for good.
+                if AccountStorage.legacyDataPending(for: accountID, in: storageRoot) {
+                    fatalError("Legacy data of the account could not be handed over")
+                }
+                let url = AccountStorage.databaseURL(accountID: accountID, in: storageRoot)
+                isNewDatabase = !FileManager.default.fileExists(atPath: url.path)
+                database = try Database(accountID: accountID, in: storageRoot)
+            } else {
+                database = try Database(inMemory: ())
+            }
+        } catch {
+            fatalError("Database open failed: \(error)")
+        }
+        let graph = AccountGraph(
+            accountID: accountID, database: database, config: config, session: session, networkStatus: networkStatus
+        )
+        if isNewDatabase {
+            // The pull cursors live in UserDefaults, per user. A cursor
+            // from the time this account shared the old database would
+            // make the empty one skip everything older than it.
+            graph.samplesHydrator.resetCursor()
+            graph.remapPuller.resetCursor()
+        }
+        return graph
+    }
 
     private func startObservingAuth() {
         // `removeDuplicates` collapses the no-op republishes that
         // happen while we set `signInError` etc. — we only care about
-        // user id transitions here.
+        // user id transitions here. `@Published` emits before the new
+        // value is visible to views, and the switch runs synchronously
+        // in the sink: no view ever sees the new user with the old
+        // user's graph.
         authObservation = auth.$currentUser
             .map { $0?.id }
             .removeDuplicates()
             .sink { [weak self] newID in
                 guard let self else { return }
-                Task { await self.handleAuthChange(to: newID) }
+                self.switchAccount(to: newID)
+                guard newID != nil else { return }
+                let graph = self.graph
+                // Samples that were waiting for a GPS fix when the app
+                // went away belong to this account's database.
+                graph.pendingFixes.resumePending()
+                Task { await graph.hydrateAll() }
             }
     }
 
@@ -210,60 +256,5 @@ final class AppContainer: ObservableObject {
             .sink { [weak self] user in
                 self?.config.apply(user: user)
             }
-    }
-
-    private func handleAuthChange(to newID: String?) async {
-        defer { lastSeenUserID = newID }
-
-        // Different user (or signed out) — wipe local rows so two
-        // identities never share the same store. We treat a fresh
-        // launch with an existing keychain token (lastSeenUserID == nil,
-        // newID == X) as "not a switch" — the local DB belongs to
-        // that user already.
-        if let previous = lastSeenUserID, previous != newID {
-            wipeLocalStores()
-        }
-
-        guard let newID else { return }
-        store.userId = newID
-        await hydrateAll()
-    }
-
-    private func wipeLocalStores() {
-        do {
-            try store.reset()
-            try fieldtrips.reset()
-            try localitiesStore.reset()
-            try placemarksStore.reset()
-            try photos.reset()
-            try mutations.reset()
-            remapPuller.resetCursor()
-            samplesHydrator.resetCursor()
-            // Waiting fixes belong to the wiped rows.
-            pendingFixes.reset()
-        } catch {
-            // Wipe failures are non-fatal — der neue User sieht
-            // maximal Stale-Rows, die der Rule-Filter ohnehin
-            // ausgeblendet hätte.
-            Log.persistence.error("local-store wipe failed: \(error.localizedDescription)")
-        }
-    }
-
-    /// Public entry point for foreground re-hydration (scene phase,
-    /// pull-to-refresh). No-ops when signed out or no endpoint is set.
-    func hydrate() async {
-        guard auth.isSignedIn else { return }
-        await hydrateAll()
-    }
-
-    private func hydrateAll() async {
-        // Fire every pull concurrently. Each hydrator is internally
-        // single-flight, so a tab .task that also kicks pull() while
-        // this is running just no-ops.
-        async let samplesPull: Void = samplesHydrator.pull()
-        async let fieldtripsPull: Void = hydrator.pull()
-        async let localitiesPull: Void = localitiesHydrator.pull()
-        async let remapPull: Void = remapPuller.pull()
-        _ = await(samplesPull, fieldtripsPull, localitiesPull, remapPull)
     }
 }

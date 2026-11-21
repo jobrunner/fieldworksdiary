@@ -324,7 +324,7 @@ final class SyncRunner: ObservableObject {
     /// features push / hydration.
     let featureStore: LocalSampleFeatureStore?
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
     let onSampleSynced: (String) -> Void
     /// Called after a `.locality/.create` mutation reconciled a
     /// client locality to its backend id, so the container can
@@ -333,17 +333,18 @@ final class SyncRunner: ObservableObject {
     /// Factory für den HTTP-Client. Produktiv konstruiert das jedes
     /// Mal ein frisches `SampleClient` mit dem aktuellen Endpoint;
     /// Tests injizieren einen Mock.
-    let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient
+    let clientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SamplePushClient
     /// Factory für den Locality-Push-Client (R8d). Analog zu
     /// `clientFactory`; Tests injizieren einen Mock.
-    let localityClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient
+    let localityClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> LocalityPushClient
     /// Phase O2: placemark resolve/fetch and features replace/fetch.
-    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
-    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient
 
     @Published private(set) var inFlight = 0
 
     private(set) var passTask: Task<Void, Never>?
+    private var isShutDown = false
     private var retryTimer: Task<Void, Never>?
 
     /// Time between automatic retry passes when the outbox isn't
@@ -373,7 +374,7 @@ final class SyncRunner: ObservableObject {
     /// doesn't wait for the enrichment sample by sample.
     private var enrichmentTargets: [EnrichmentTarget] = []
 
-    private let photoClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient
+    private let photoClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PhotoSyncClient
     /// False holds photo uploads back („Fotos nur im WLAN hochladen“
     /// without Wi-Fi). Sample data syncs regardless.
     private let photoUploadAllowed: () -> Bool
@@ -401,22 +402,23 @@ final class SyncRunner: ObservableObject {
          placemarkStore: LocalPlacemarkStore? = nil,
          featureStore: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil },
+         authProvider: @escaping () -> AuthTokenSource? = { nil },
          retryInterval: Duration = .seconds(30),
          enrichmentPollInterval: Duration = .seconds(1.5),
          enrichmentPollBudget: Duration = .seconds(12),
-         clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
-         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> LocalityPushClient = { LocalityClient(
+         clientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?)
+             -> SamplePushClient = { SampleClient(endpoint: $0, auth: $1) },
+         localityClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> LocalityPushClient = { LocalityClient(
              endpoint: $0,
              auth: $1
          ) },
-         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient = {
              PlacemarkClient(endpoint: $0, auth: $1)
          },
-         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient = {
              SampleFeaturesClient(endpoint: $0, auth: $1)
          },
-         photoClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PhotoSyncClient = {
+         photoClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PhotoSyncClient = {
              PhotoClient(endpoint: $0, auth: $1)
          },
          photoUploadAllowed: @escaping () -> Bool = { true },
@@ -444,7 +446,7 @@ final class SyncRunner: ObservableObject {
         self.photoClientFactory = photoClientFactory
         self.photoUploadAllowed = photoUploadAllowed
         self.photoWiFiOnly = photoWiFiOnly
-        accountID = accountProvider ?? { authProvider()?.currentUser?.id }
+        accountID = accountProvider ?? { authProvider()?.currentToken.flatMap(AccountBoundAuth.userID(ofToken:)) }
         self.now = now
         self.onSampleSynced = onSampleSynced
         self.onLocalityChanged = onLocalityChanged
@@ -453,9 +455,38 @@ final class SyncRunner: ObservableObject {
 
     deinit { retryTimer?.cancel() }
 
+    /// Ends this runner for good: its account is no longer the current
+    /// one. No further passes; a pass in flight stops before its next
+    /// request. The outbox stays in the account's database and is
+    /// picked up when its user signs in again.
+    func shutdown() {
+        isShutDown = true
+        retryTimer?.cancel()
+        retryTimer = nil
+    }
+
+    /// True while this runner may still act for `account`: not shut
+    /// down, and the session still belongs to that account. Checked
+    /// after every network call, before anything is acknowledged: a
+    /// request that went out without a token after a sign-out comes
+    /// back 404 from the owner rules, and that must not count as "done".
+    private func isCurrent(_ account: String?) -> Bool {
+        !isShutDown && accountID() == account
+    }
+
+    /// A sample whose push was cut short because the account was left
+    /// goes back to `pending`; its mutation stays queued. A runner that
+    /// was shut down writes nothing at all: its user may be signed in
+    /// again already, with a new runner on the same database that owns
+    /// the row and the outbox now — and re-sends the queued mutation.
+    private func releaseAfterLeavingAccount(_ localID: String) {
+        guard !isShutDown else { return }
+        try? store.setSyncState(id: localID, status: .pending, error: nil)
+    }
+
     /// Schedule a push pass. Coalesces if one is already running.
     func kick() {
-        if passTask != nil { return }
+        if isShutDown || passTask != nil { return }
         passTask = Task { [weak self] in
             await self?.runPass()
             await MainActor.run { self?.passTask = nil }
@@ -498,6 +529,7 @@ final class SyncRunner: ObservableObject {
             let client = clientFactory(endpoint, authProvider())
             enrichmentTargets = []
             for mutation in mutations {
+                if isShutDown { return }
                 await execute(mutation, via: client)
             }
             await pollPendingEnrichment(via: client)
@@ -542,6 +574,7 @@ final class SyncRunner: ObservableObject {
             try? mutationsStore.dequeue(mutation.id)
             return
         }
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
@@ -550,6 +583,7 @@ final class SyncRunner: ObservableObject {
             } catch SampleClientError.http(status: 404, _) {
                 // Already gone on the server.
             }
+            guard isCurrent(account) else { return }
             try? mutationsStore.dequeue(mutation.id)
             Log.sync.info("sample deleted on server \(backendID, privacy: .public)")
         } catch {
@@ -738,6 +772,7 @@ final class SyncRunner: ObservableObject {
         }
         let absorbed = Set(parked.map(\.id))
         try? store.setSyncState(id: localID, status: .syncing, error: nil)
+        let account = accountID()
 
         do {
             inFlight += 1
@@ -754,6 +789,13 @@ final class SyncRunner: ObservableObject {
                 try await adoptAfterConflict(localID: localID, backendID: backendID, via: client)
                 outcome = try await patchOnce(localID: localID, backendID: backendID, payload: payload,
                                               mutationID: mutation.id, absorbed: absorbed, via: client)
+            }
+            // The account was left while the requests ran: whatever
+            // came back (a 404 from the owner rule, for a request without
+            // token) says nothing about the sample. Keep the edit queued.
+            guard isCurrent(account) else {
+                releaseAfterLeavingAccount(localID)
+                return
             }
             guard let outcome else {
                 try? mutationsStore.dequeue(mutation.id)
@@ -786,6 +828,12 @@ final class SyncRunner: ObservableObject {
                 raiseEnrichmentBase(localID: localID, to: outcome.fresh.version)
             }
         } catch SampleClientError.conflict {
+            // Left the account while the request ran: no verdict on the
+            // edit, it stays queued (see above).
+            guard isCurrent(account) else {
+                releaseAfterLeavingAccount(localID)
+                return
+            }
             // Still 409 right after adopting the server version: a
             // writer is racing us. Keep the edit queued; give up after
             // a few passes so it can't loop forever.
@@ -806,6 +854,12 @@ final class SyncRunner: ObservableObject {
                 try? mutationsStore.recordFailure(mutation.id, error: "409 conflict")
             }
         } catch SampleClientError.http(status: 404, _) {
+            // Left the account while the request ran: no verdict on the
+            // edit, it stays queued (see above).
+            guard isCurrent(account) else {
+                releaseAfterLeavingAccount(localID)
+                return
+            }
             // The server record is gone (deleted elsewhere): the edit
             // is moot. Drop it; the local row is not touched here (a
             // missing row cannot be resurrected by `store.update`,
@@ -818,6 +872,11 @@ final class SyncRunner: ObservableObject {
             try? store.setSyncState(id: localID, status: .failed, error: message)
             try? mutationsStore.recordFailure(mutation.id, error: message)
             Log.sync.error("sample update push failed: \(message)")
+            if !isCurrent(account) {
+                // Not a failure of the edit: don't show one after the
+                // next sign-in.
+                releaseAfterLeavingAccount(localID)
+            }
         }
     }
 
@@ -1157,10 +1216,12 @@ final class SyncRunner: ObservableObject {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
         let client = localityClientFactory(endpoint, authProvider())
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
             try await client.delete(id: backendID)
+            guard isCurrent(account) else { return }
             try? mutationsStore.dequeue(mutation.id)
             Log.sync.info("locality deleted on server \(backendID, privacy: .public)")
         } catch {
@@ -1305,7 +1366,7 @@ final class SyncRunner: ObservableObject {
             // Checked before every photo: Wi-Fi may drop, the user may
             // switch „nur im WLAN“ on, or sign out, in the middle of a
             // batch.
-            guard photoUploadAllowed(), accountID() == account else { return }
+            guard !isShutDown, photoUploadAllowed(), accountID() == account else { return }
             let backendID: String?
             if let known = backendIDs[photo.sampleId] {
                 backendID = known
@@ -1378,6 +1439,7 @@ final class SyncRunner: ObservableObject {
     private func executePhotoDelete(_ mutation: PendingMutation) async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         let client = photoClientFactory(endpoint, authProvider())
+        let account = accountID()
         do {
             inFlight += 1
             defer { inFlight -= 1 }
@@ -1386,6 +1448,9 @@ final class SyncRunner: ObservableObject {
                let tombstone = try? JSONDecoder().decode(PhotoDeletePayload.self, from: mutation.payloadJson)
             {
                 backendID = try await client.findID(clientUUID: tombstone.clientUUID) ?? ""
+                // The account was left while we asked: an empty answer
+                // may just be the missing token. Keep the tombstone.
+                guard isCurrent(account) else { return }
                 // Nothing there yet is not "nothing arrived": keep the
                 // tombstone and look again in a later pass.
                 if backendID.isEmpty, now().timeIntervalSince(mutation.createdAt) < Self.photoTombstoneGrace {
@@ -1398,6 +1463,7 @@ final class SyncRunner: ObservableObject {
                 } catch SampleClientError.http(status: 404, _) {
                     // Already gone on the server.
                 }
+                guard isCurrent(account) else { return }
                 Log.sync.info("photo deleted on server \(backendID, privacy: .public)")
             }
             try? mutationsStore.dequeue(mutation.id)

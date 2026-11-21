@@ -21,12 +21,15 @@ import Foundation
 final class SamplesHydrator: ObservableObject {
     let store: LocalSampleStore
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    /// False once the account this hydrator belongs to is no longer the
+    /// signed-in one: the pull stops and the cursor stays.
+    let sessionActive: () -> Bool
+    let authProvider: () -> AuthTokenSource?
     let placemarks: LocalPlacemarkStore?
     let features: LocalSampleFeatureStore?
-    let clientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleListClient
-    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient
-    let featuresClientFactory: (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient
+    let clientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleListClient
+    let placemarkClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient
+    let featuresClientFactory: (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient
 
     let userIDProvider: () -> String
     let defaults: UserDefaults
@@ -41,18 +44,19 @@ final class SamplesHydrator: ObservableObject {
          placemarks: LocalPlacemarkStore? = nil,
          features: LocalSampleFeatureStore? = nil,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil },
+         authProvider: @escaping () -> AuthTokenSource? = { nil },
          userIDProvider: @escaping () -> String = { "" },
+         sessionActive: @escaping () -> Bool = { true },
          defaults: UserDefaults = .standard,
          perPage: Int = 200,
          maxPages: Int = 100,
-         clientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleListClient = {
+         clientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleListClient = {
              SampleClient(endpoint: $0, auth: $1)
          },
-         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> PlacemarkSyncClient = {
+         placemarkClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> PlacemarkSyncClient = {
              PlacemarkClient(endpoint: $0, auth: $1)
          },
-         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthSession?) -> SampleFeaturesSyncClient = {
+         featuresClientFactory: @escaping (_ endpoint: String, _ auth: AuthTokenSource?) -> SampleFeaturesSyncClient = {
              SampleFeaturesClient(endpoint: $0, auth: $1)
          })
     {
@@ -60,6 +64,7 @@ final class SamplesHydrator: ObservableObject {
         self.placemarks = placemarks
         self.features = features
         self.endpointProvider = endpointProvider
+        self.sessionActive = sessionActive
         self.authProvider = authProvider
         self.userIDProvider = userIDProvider
         self.defaults = defaults
@@ -101,7 +106,7 @@ final class SamplesHydrator: ObservableObject {
     func pull() async {
         let endpoint = endpointProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !endpoint.isEmpty else { return }
-        if isLoading { return }
+        if isLoading || !sessionActive() { return }
         isLoading = true
         defer { isLoading = false }
 
@@ -132,6 +137,13 @@ final class SamplesHydrator: ObservableObject {
                 try store.upsert(items)
                 if let locationHydration, !(await locationHydration.hydrate(items)) {
                     locationFailed = true
+                }
+                // The account was left meanwhile: what the follow-up
+                // requests returned without a token is incomplete. Stop,
+                // and leave the cursor where it was.
+                guard sessionActive() else {
+                    Log.sync.notice("samples hydrate stopped: session ended")
+                    return
                 }
                 processed += items.count
                 guard let last = items.last, let lastUpdated = last.updated else { break }

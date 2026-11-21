@@ -9,14 +9,14 @@ import Foundation
 final class LocalitiesHydrator: ObservableObject {
     let store: LocalLocalityStore
     let endpointProvider: () -> String
-    let authProvider: () -> AuthSession?
+    let authProvider: () -> AuthTokenSource?
 
     @Published private(set) var isLoading = false
     @Published private(set) var lastError: String?
 
     init(store: LocalLocalityStore,
          endpointProvider: @escaping () -> String,
-         authProvider: @escaping () -> AuthSession? = { nil })
+         authProvider: @escaping () -> AuthTokenSource? = { nil })
     {
         self.store = store
         self.endpointProvider = endpointProvider
