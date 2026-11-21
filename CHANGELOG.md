@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.5.0](https://github.com/jobrunner/legulus/compare/v0.4.1...v0.5.0) (2026-11-21)
+
+
+### Features
+
+* **ios:** Foto-Import beim Nachtragen behält Auflösung und Metadaten ([3ec71bb](https://github.com/jobrunner/legulus/commit/3ec71bb9b9859d17ca1faf77eab57fad407029c7))
+* **ios:** Fotodateien unverändert speichern, Vorschau und GPS-Metadaten ([e9b63b5](https://github.com/jobrunner/legulus/commit/e9b63b58ec88440f4d2e46b56130b8f1a4892074))
+* **ios:** Fotos sofort speichern, Kamera einbinden, Löschen im Foto-Strip ([cc662c3](https://github.com/jobrunner/legulus/commit/cc662c33646464089abad2a5da168cf8ac59a587))
+* **ios:** Fotos unabhängig von der Probe hochladen, WLAN-Einstellung, Löschen im Sync ([fa156d0](https://github.com/jobrunner/legulus/commit/fa156d0f0629815aa2ec163f80862677f7fa6e2e))
+* **ios:** Kalender-Icon und Umbruch nach dem Wochentag in der Datumszeile ([5bf76fb](https://github.com/jobrunner/legulus/commit/5bf76fbe9a8f19ee32877a07a25c2157501195f4))
+* **ios:** Kalender-Icon und Umbruch nach dem Wochentag in der Datumszeile ([a7c9194](https://github.com/jobrunner/legulus/commit/a7c9194a7f0f77d48918ce8a1f1f3f54aeafb409))
+* **ios:** kleinere Schrift für die Sample-Nummer ([13d8d4e](https://github.com/jobrunner/legulus/commit/13d8d4e88069dcc30e5338146a745112e02dd6af))
+* **ios:** kleinere Schrift für die Sample-Nummer ([02b28a8](https://github.com/jobrunner/legulus/commit/02b28a8ed858802f884c21ad39971f51ce34fee0))
+* **ios:** Koordinate und Höhe per Tap kopieren ([eac42f3](https://github.com/jobrunner/legulus/commit/eac42f3105eb49cad1933c4d0baf4e10f00c9960))
+* **ios:** Koordinate und Höhe per Tap kopieren ([b97cd61](https://github.com/jobrunner/legulus/commit/b97cd61af68f91c1ddea14715d4caf2b58c17062))
+* **ios:** Serienkamera für Belegfotos ([086a30c](https://github.com/jobrunner/legulus/commit/086a30c53ef6cc928a77ed577fb64a170f6d3c77))
+* **ios:** Serienkamera, Fotos im Original, Löschen und WLAN-Einstellung ([fe5b7de](https://github.com/jobrunner/legulus/commit/fe5b7de9626690d3b1f524fea19074bc10256dd5))
+* **ios:** Stift-Icon statt Bearbeiten-Menü in der Sample-Ansicht ([bc50137](https://github.com/jobrunner/legulus/commit/bc5013706b46ead8fba4f44bc3636806532856ed))
+* **ios:** Stift-Icon statt Bearbeiten-Menü in der Sample-Ansicht ([05fe90f](https://github.com/jobrunner/legulus/commit/05fe90fceae2bfe3a71c106942b93fb63ff2f1c2))
+* **ios:** Zwischenablage-Texte für Koordinate und Höhe ([f042832](https://github.com/jobrunner/legulus/commit/f042832c5797fa2beb2c383d97388a4cba96c986))
+* **tabularius:** 50-MB-Limit und idempotenter Upload für Sample-Fotos ([bafa75f](https://github.com/jobrunner/legulus/commit/bafa75f1bc42aa78980179d970164fbf92dd9fb2))
+* **tabularius:** Abfragezeitpunkt für Tempus berechnen ([478bf8c](https://github.com/jobrunner/legulus/commit/478bf8cefaf7fa82a874135e4da5af566e9f1241))
+* **tabularius:** Backfill bestehender Proben über Tempus ([78dbb10](https://github.com/jobrunner/legulus/commit/78dbb10f458c836687dc38a4044f20ee82006e0d))
+* **tabularius:** Backfill bestehender Proben über Tempus ([9a88fa7](https://github.com/jobrunner/legulus/commit/9a88fa7b2b8c6e5b0fe95d583834b49899fa07da))
+* **tabularius:** Felder für Wetter, Klima und Astronomie am Sample ([49d7e20](https://github.com/jobrunner/legulus/commit/49d7e2020173073d2cadcbcd70c353dc96416836))
+* **tabularius:** Samples über Tempus anreichern ([5ec80a0](https://github.com/jobrunner/legulus/commit/5ec80a0adc9d984a2b9eadfa7de341242329e021))
+* **tabularius:** Tempus-Anreicherung verdrahten und konfigurieren ([d325bf2](https://github.com/jobrunner/legulus/commit/d325bf2b263679e819f3bc23b6a17135ea17fd82))
+* **tabularius:** Tempus-Antwort auf Sample-Felder abbilden ([12e38ab](https://github.com/jobrunner/legulus/commit/12e38abe80d15cd13ada420e2efdb9822bd2f382))
+* **tabularius:** Tempus-Wrapper mit Retry und Cache ([754b95a](https://github.com/jobrunner/legulus/commit/754b95aa4a4b845aacd46599337dc2ec188923a7))
+* **tabularius:** Wetter, Klima und Astronomie über Tempus anreichern ([33865c0](https://github.com/jobrunner/legulus/commit/33865c037b73fbe4e4a4007d96dc8ddd86d2f792))
+* **tabularius:** Wetterwerte ganztägiger Proben bei Nachtexkursion neu abfragen ([931c871](https://github.com/jobrunner/legulus/commit/931c8716d544208b021a41a4076f80c503507a70))
+
+
+### Bug Fixes
+
+* Befunde aus dem Review der Serienkamera beheben ([8150288](https://github.com/jobrunner/legulus/commit/815028865135cacc5cd6297b68dcade908b93ed3))
+* **build:** Tunnel-Ziel bricht auch bei HTTP-Fehlern des Backends ab ([711ae72](https://github.com/jobrunner/legulus/commit/711ae72e9d90fe82b316c6a7b6ed297239911d2e))
+* **ios:** beendeter Sync-Runner schreibt nach einer späten Antwort nichts mehr ([5a11e37](https://github.com/jobrunner/legulus/commit/5a11e37fa791db2b6f9919f883a8e2dbb44f9514))
+* **ios:** Befunde aus dem Review der Kontotrennung beheben ([18c5915](https://github.com/jobrunner/legulus/commit/18c59151cf537b7804579dd8146643303f6812ff))
+* **ios:** Foto-Sync gegen Kontowechsel und verspätete Uploads absichern ([1408d12](https://github.com/jobrunner/legulus/commit/1408d121a591b1493c82d71a9db98aa35cfc1972))
+* **ios:** Foto-Wandlung nacheinander, kein zweiter Versuch im Main-Actor, primäres HEIC-Bild ([8273fd7](https://github.com/jobrunner/legulus/commit/8273fd72cc20167194ec7c7dfafb2a006881e517))
+* **ios:** Kopier-Button ohne eigenen Accessibility-Container ([4da124c](https://github.com/jobrunner/legulus/commit/4da124c671581e05502dac9ace9024724e70befb))
+* **ios:** Kopier-Hinweis und Höhen-Rundung nach Review korrigieren ([5ec44ec](https://github.com/jobrunner/legulus/commit/5ec44ece665ea11c69a173207fdf9d67765c04f9))
+* **ios:** lokale Daten pro Konto statt einer Datenbank für alle ([48503b0](https://github.com/jobrunner/legulus/commit/48503b0ba2c682ab32ed37849c8bd8712a0c2cf4))
+* **ios:** lokale Daten pro Konto statt einer Datenbank für alle ([871f785](https://github.com/jobrunner/legulus/commit/871f7857fb864c2d039e7d67818379eaee7b2209))
+* **ios:** weitere Befunde aus dem Review der Kontotrennung beheben ([bb1bab7](https://github.com/jobrunner/legulus/commit/bb1bab7c37ff0e7495c505ad09721054ba5c106d))
+* **tabularius:** auch eine UUID nur aus Leerraum gilt als Schlüssel ([51d3d9d](https://github.com/jobrunner/legulus/commit/51d3d9dea0f818ce56f29320b9f8c080d3db9690))
+* **tabularius:** Backfill zählt nur echte Tempus-Abfragen ([d3e79a0](https://github.com/jobrunner/legulus/commit/d3e79a02c3693ef829727030746b35a4dea1d287))
+* **tabularius:** Befunde aus dem Review der Tempus-Anreicherung beheben ([f847b94](https://github.com/jobrunner/legulus/commit/f847b946972da1b2918b6c10ac2da65aa3a1f888))
+* **tabularius:** Befunde aus dem Review des Tempus-Backfills beheben ([b730b47](https://github.com/jobrunner/legulus/commit/b730b47177227bdfed06f3adb16d242f7d8bd20d))
+* **tabularius:** entfernte Koordinate wartet nicht auf einen Ortus-Lauf ([bb18bfc](https://github.com/jobrunner/legulus/commit/bb18bfc390357248ee7c8135e12a1f5a62316c25))
+* **tabularius:** gelöschte Probe beim Zurücksetzen nach Nachtflag-Wechsel überspringen ([354a539](https://github.com/jobrunner/legulus/commit/354a53903950ad3e578d6fb2c6146e8424d1efed))
+* **tabularius:** Proben ohne nutzbare Höhe blockieren nichts, alte DEM-Höhe wartet auf Ortus ([dbb3261](https://github.com/jobrunner/legulus/commit/dbb3261784396b3e9a966c76268dc6416a432371))
+* **tabularius:** Tempus mit der Höhe der Probe abfragen ([56b80ef](https://github.com/jobrunner/legulus/commit/56b80ef6ba19607970f0ebb07cfa6db2b288e25a))
+* **tabularius:** überlappende Anlage gruppiert nicht doppelt, PATCH auf Alt-Dublette bleibt möglich ([3d5a810](https://github.com/jobrunner/legulus/commit/3d5a810d20db9cdddbd528cbe087073d4b647b66))
+* **tabularius:** UUID wie gespeichert vergleichen, Replay-Antwort wie eine normale Anlage aufbereiten ([e5df35c](https://github.com/jobrunner/legulus/commit/e5df35c6414fefc4d11ec85adf05de09899407ea))
+* **tabularius:** Wettlauf-Fälle der Tempus-Anreicherung schließen ([2fd2580](https://github.com/jobrunner/legulus/commit/2fd2580fdefb65e0cb805f5acf9a297b679e7d31))
+* **tabularius:** wiederholte Proben-Anlage legt keine zweite Probe an ([419c951](https://github.com/jobrunner/legulus/commit/419c9511b10cce496f2c2316f1f1158eb39a4f4d))
+* **tabularius:** wiederholte Proben-Anlage legt keine zweite Probe an ([017eafa](https://github.com/jobrunner/legulus/commit/017eafa95e60f8e652cf95330088cb5547e113a8))
+
+
+### Performance Improvements
+
+* **ios:** Foto beim Import außerhalb des Main-Actors nach JPEG wandeln ([6c6e271](https://github.com/jobrunner/legulus/commit/6c6e271f5d52590af5e8b989a12f03d118451938))
+
 ## [0.4.1](https://github.com/jobrunner/legulus/compare/v0.4.0...v0.4.1) (2026-11-17)
 
 
