@@ -474,6 +474,16 @@ final class SyncRunner: ObservableObject {
         !isShutDown && accountID() == account
     }
 
+    /// A sample whose push was cut short because the account was left
+    /// goes back to `pending`; its mutation stays queued. A runner that
+    /// was shut down writes nothing at all: its user may be signed in
+    /// again already, with a new runner on the same database that owns
+    /// the row and the outbox now — and re-sends the queued mutation.
+    private func releaseAfterLeavingAccount(_ localID: String) {
+        guard !isShutDown else { return }
+        try? store.setSyncState(id: localID, status: .pending, error: nil)
+    }
+
     /// Schedule a push pass. Coalesces if one is already running.
     func kick() {
         if isShutDown || passTask != nil { return }
@@ -784,7 +794,7 @@ final class SyncRunner: ObservableObject {
             // came back (a 404 from the owner rule, for a request without
             // token) says nothing about the sample. Keep the edit queued.
             guard isCurrent(account) else {
-                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                releaseAfterLeavingAccount(localID)
                 return
             }
             guard let outcome else {
@@ -821,7 +831,7 @@ final class SyncRunner: ObservableObject {
             // Left the account while the request ran: no verdict on the
             // edit, it stays queued (see above).
             guard isCurrent(account) else {
-                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                releaseAfterLeavingAccount(localID)
                 return
             }
             // Still 409 right after adopting the server version: a
@@ -847,7 +857,7 @@ final class SyncRunner: ObservableObject {
             // Left the account while the request ran: no verdict on the
             // edit, it stays queued (see above).
             guard isCurrent(account) else {
-                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                releaseAfterLeavingAccount(localID)
                 return
             }
             // The server record is gone (deleted elsewhere): the edit
@@ -865,7 +875,7 @@ final class SyncRunner: ObservableObject {
             if !isCurrent(account) {
                 // Not a failure of the edit: don't show one after the
                 // next sign-in.
-                try? store.setSyncState(id: localID, status: .pending, error: nil)
+                releaseAfterLeavingAccount(localID)
             }
         }
     }
