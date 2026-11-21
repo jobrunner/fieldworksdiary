@@ -108,6 +108,13 @@ final class AppConfig: ObservableObject {
         didSet { UserDefaults.standard.set(coordinateDisplayFormat.rawValue, forKey: Keys.coordinateDisplayFormat) }
     }
 
+    /// „Fotos nur im WLAN hochladen“. Photos are uploaded in full
+    /// resolution; with this on they wait for Wi-Fi while sample data
+    /// keeps syncing over any connection. Device-local, default off.
+    @Published var photosWiFiOnly: Bool {
+        didSet { UserDefaults.standard.set(photosWiFiOnly, forKey: Keys.photosWiFiOnly) }
+    }
+
     /// Last handed-out number of the running counter. Local only.
     var lastRunningNumber: Int {
         get { UserDefaults.standard.integer(forKey: Keys.lastRunningNumber) }
@@ -171,6 +178,7 @@ final class AppConfig: ObservableObject {
         dayCutoffHour = min(max(defaults.integer(forKey: Keys.dayCutoffHour), 0), 23)
         coordinateDisplayFormat = defaults.string(forKey: Keys.coordinateDisplayFormat)
             .flatMap(CoordinateDisplayFormat.init(rawValue:)) ?? .default
+        photosWiFiOnly = defaults.bool(forKey: Keys.photosWiFiOnly)
     }
 
     fileprivate enum Keys {
@@ -181,6 +189,7 @@ final class AppConfig: ObservableObject {
         static let sampleIDOffset = SampleIDSettings.Keys.offset
         static let dayCutoffHour = SampleIDSettings.Keys.cutoffHour
         static let coordinateDisplayFormat = "AppConfig.coordinateDisplayFormat"
+        static let photosWiFiOnly = "AppConfig.photosWiFiOnly"
         static let lastRunningNumber = SampleIDSettings.Keys.lastRunning
     }
 }

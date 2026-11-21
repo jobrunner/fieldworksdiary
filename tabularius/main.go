@@ -96,6 +96,10 @@ func main() {
 	// other user-facing collections.
 	hooks.RegisterOwnerSetters(app)
 
+	// Phase S: a repeated photo upload (same client_uuid) answers with
+	// the record that already exists.
+	hooks.RegisterPhotoIdempotency(app)
+
 	// Phase R5.1: optimistic-concurrency guard on the versioned
 	// collections (samples, fieldtrips, localities). Stale writes
 	// get 409; happy-path writes have their `version` rewritten

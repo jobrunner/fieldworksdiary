@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UIKit
 
 /// Filesystem layer for sample photos. Photos live under
@@ -43,6 +44,60 @@ enum PhotoStorage {
             throw StorageError.writeFailed(error.localizedDescription)
         }
         return "photos/\(sampleID)/\(photoID).jpg"
+    }
+
+    /// Writes finished image data (the camera's JPEG file) unchanged
+    /// under `Documents/photos/<sampleID>/<photoID>.jpg`: no re-encoding,
+    /// no resizing, all metadata stays. Returns the path relative to
+    /// Documents.
+    static func write(data: Data, sampleID: String, photoID: String) throws -> String {
+        let dir = try sampleDir(sampleID: sampleID)
+        let fileURL = dir.appendingPathComponent("\(photoID).jpg")
+        do {
+            try data.write(to: fileURL, options: .atomic)
+        } catch {
+            throw StorageError.writeFailed(error.localizedDescription)
+        }
+        return "photos/\(sampleID)/\(photoID).jpg"
+    }
+
+    /// A preview with at most `maxPixel` on its long edge, upright.
+    /// ImageIO downsamples while decoding, so a strip of full-resolution
+    /// photos does not hold them all in memory. Nil when the file is
+    /// missing or not an image.
+    static func thumbnail(relativePath: String, maxPixel: CGFloat) -> UIImage? {
+        guard let url = absoluteURL(forRelative: relativePath),
+              let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        return thumbnail(from: source, maxPixel: maxPixel)
+    }
+
+    /// `thumbnail(relativePath:maxPixel:)` for image data that is not on
+    /// disk (yet).
+    static func thumbnail(data: Data, maxPixel: CGFloat) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+        else { return nil }
+        return thumbnail(from: source, maxPixel: maxPixel)
+    }
+
+    private static func thumbnail(from source: CGImageSource, maxPixel: CGFloat) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel
+        ]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        return UIImage(cgImage: image)
+    }
+
+    /// Size of the stored file in bytes; nil when it is missing.
+    static func fileSize(relativePath: String) -> Int64? {
+        guard let url = absoluteURL(forRelative: relativePath),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber
+        else { return nil }
+        return size.int64Value
     }
 
     /// Returns the absolute URL for a relative path (as stored in

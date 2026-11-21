@@ -14,6 +14,10 @@ struct LocalPhoto: Codable, FetchableRecord, MutablePersistableRecord, Identifia
     var clientUuid: String
     var clientUpdatedAt: Date
     var createdAt: Date
+    /// Failed upload attempts so far; drives the retry delay
+    /// (`PhotoUploadPolicy`).
+    var attempts: Int = 0
+    var lastAttemptAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -25,6 +29,8 @@ struct LocalPhoto: Codable, FetchableRecord, MutablePersistableRecord, Identifia
         case clientUuid = "client_uuid"
         case clientUpdatedAt = "client_updated_at"
         case createdAt = "created_at"
+        case attempts
+        case lastAttemptAt = "last_attempt_at"
     }
 
     static let databaseTableName = "local_photos"

@@ -66,6 +66,10 @@ private struct SampleEditorContent: View {
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var showingCamera = false
+    /// Simulator stand-in for the camera.
+    @State private var showingPicker = false
+    /// Photo the delete confirmation is open for.
+    @State private var photoToDelete: String?
     @FocusState private var notesFocused: Bool
     @FocusState private var codeFocused: Bool
 
@@ -124,6 +128,10 @@ private struct SampleEditorContent: View {
 
     /// Mindestgröße eines Tap-Targets (Apple HIG).
     private let minTapTarget: CGFloat = 44
+
+    /// JPEG quality of the Simulator stand-in (the real camera hands out
+    /// its own file and is never re-encoded).
+    private let simulatorJPEGQuality: CGFloat = 0.92
 
     var body: some View {
         ScrollView {
@@ -198,12 +206,35 @@ private struct SampleEditorContent: View {
         }
         .refreshable { viewModel.refreshDerivedFields() }
         .onChange(of: viewModel.code) { _, _ in viewModel.recheckCode() }
-        .sheet(isPresented: $showingCamera) {
+        .fullScreenCover(isPresented: $showingCamera) {
+            CameraView(
+                onPhoto: { try viewModel.addCapturedPhoto($0) },
+                onDone: { showingCamera = false }
+            )
+        }
+        // Simulator: no camera, the system picker stands in so the photo
+        // path stays testable end to end.
+        .sheet(isPresented: $showingPicker) {
             CameraPicker { image in
-                if let image { viewModel.addPhoto(image) }
-                showingCamera = false
+                if let data = image?.jpegData(compressionQuality: simulatorJPEGQuality) {
+                    do {
+                        try viewModel.addCapturedPhoto(data)
+                    } catch {
+                        Log.ui.error("picked photo not stored: \(error.localizedDescription, privacy: .public)")
+                    }
+                }
+                showingPicker = false
             }
             .ignoresSafeArea()
+        }
+        .confirmationDialog("Foto löschen?", isPresented: deletePromptBinding, titleVisibility: .visible) {
+            Button("Löschen", role: .destructive) {
+                if let id = photoToDelete { viewModel.deletePhoto(id: id) }
+                photoToDelete = nil
+            }
+            Button("Abbrechen", role: .cancel) { photoToDelete = nil }
+        } message: {
+            Text("Das Foto wird vom Gerät und, falls schon hochgeladen, vom Server entfernt.")
         }
         .alert(
             "Die Sample-ID darf nicht leer sein und muss eindeutig sein.",
@@ -360,9 +391,7 @@ private struct SampleEditorContent: View {
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: AppSpacing.sm)
-                Button {
-                    showingCamera = true
-                } label: {
+                Button(action: openCamera) {
                     Image(systemName: "camera.fill")
                         .font(AppFont.sectionTitle)
                         .foregroundStyle(AppColor.brandPrimaryText)
@@ -372,7 +401,7 @@ private struct SampleEditorContent: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Foto aufnehmen")
             }
-            if !viewModel.pendingPhotos.isEmpty || !viewModel.savedPhotos.isEmpty {
+            if !viewModel.savedPhotos.isEmpty {
                 photoStrip
             }
         }
@@ -381,37 +410,45 @@ private struct SampleEditorContent: View {
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppSpacing.sm) {
-                ForEach(viewModel.pendingPhotos) { photo in
-                    photoThumb(image: photo.image) {
-                        viewModel.removePendingPhoto(id: photo.id)
+                ForEach(Array(viewModel.savedPhotos.enumerated()), id: \.element.id) { index, photo in
+                    SavedPhotoThumbnail(
+                        relativePath: photo.localPath,
+                        size: thumbSize,
+                        label: "Foto \(index + 1) von \(viewModel.savedPhotos.count)"
+                    )
+                    // Deleting is offered twice, never by a hidden
+                    // gesture alone: context menu and VoiceOver action.
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            photoToDelete = photo.id
+                        } label: {
+                            Label("Löschen", systemImage: "trash")
+                        }
                     }
-                    .accessibilityLabel("Noch nicht gespeichertes Foto")
-                    .accessibilityAction(named: "Entfernen") {
-                        viewModel.removePendingPhoto(id: photo.id)
-                    }
-                }
-                ForEach(viewModel.savedPhotos) { photo in
-                    SavedPhotoThumbnail(relativePath: photo.localPath, size: thumbSize)
-                        .accessibilityLabel("Gespeichertes Foto")
+                    .accessibilityAction(named: "Löschen") { photoToDelete = photo.id }
                 }
             }
         }
     }
 
-    private func photoThumb(image: UIImage, onRemove: @escaping () -> Void) -> some View {
-        Image(uiImage: image)
-            .resizable()
-            .aspectRatio(contentMode: .fill)
-            .frame(width: thumbSize, height: thumbSize)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-            .overlay(alignment: .topTrailing) {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.white, .black.opacity(0.6))
-                        .padding(AppSpacing.xxs)
-                }
-                .accessibilityHidden(true)
+    private var deletePromptBinding: Binding<Bool> {
+        Binding(
+            get: { photoToDelete != nil },
+            set: { presented in
+                if !presented { photoToDelete = nil }
             }
+        )
+    }
+
+    /// The series camera; without a camera (Simulator) the system picker.
+    private func openCamera() {
+        notesFocused = false
+        codeFocused = false
+        if UIImagePickerController.isSourceTypeAvailable(.camera) {
+            showingCamera = true
+        } else {
+            showingPicker = true
+        }
     }
 
     // MARK: - bottom section
@@ -890,12 +927,15 @@ private struct SampleEditorContent: View {
     }
 }
 
-/// Loads a JPEG file from PhotoStorage and renders it as a square
-/// thumbnail of `size` points. Used in the saved-photos strip of the editor.
+/// A square preview of a stored photo. The picture is downsampled while
+/// decoding (`PhotoStorage.thumbnail`), so a strip of full-resolution
+/// photos stays light.
 private struct SavedPhotoThumbnail: View {
     let relativePath: String
     let size: CGFloat
+    let label: String
 
+    @Environment(\.displayScale) private var displayScale
     @State private var image: UIImage?
 
     var body: some View {
@@ -905,21 +945,24 @@ private struct SavedPhotoThumbnail: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Rectangle().fill(Color(.secondarySystemBackground))
+                Rectangle().fill(AppColor.surfaceSecondary)
             }
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md))
-        .task { load() }
+        .contentShape(Rectangle())
+        .accessibilityElement()
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(.isImage)
+        .task(id: relativePath) { await load() }
     }
 
-    private func load() {
-        guard image == nil else { return }
-        if let data = try? PhotoStorage.readData(relativePath: relativePath),
-           let img = UIImage(data: data)
-        {
-            image = img
-        }
+    private func load() async {
+        let path = relativePath
+        let pixels = size * displayScale
+        image = await Task.detached(priority: .userInitiated) {
+            PhotoStorage.thumbnail(relativePath: path, maxPixel: pixels)
+        }.value
     }
 }
 

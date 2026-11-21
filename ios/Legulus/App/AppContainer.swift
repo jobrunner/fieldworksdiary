@@ -94,6 +94,7 @@ final class AppContainer: ObservableObject {
         )
         let photos = LocalPhotoStore(database: database)
         let mutations = PendingMutationsStore(database: database)
+        let networkStatus = NetworkStatus()
         let sync = SyncRunner(
             store: store,
             mutationsStore: mutations,
@@ -103,6 +104,10 @@ final class AppContainer: ObservableObject {
             featureStore: sampleFeatures,
             endpointProvider: { config.endpointURL },
             authProvider: { [weak auth] in auth },
+            photoUploadAllowed: { [networkStatus] in
+                PhotoUploadPolicy.mayUpload(wifiOnly: config.photosWiFiOnly, onWiFi: networkStatus.isOnWiFi)
+            },
+            photoWiFiOnly: { config.photosWiFiOnly },
             onSampleSynced: { fieldtripID in
                 Task { await hydrator.pullOne(fieldtripID) }
             },

@@ -37,6 +37,7 @@ struct SettingsScreen: View {
             sampleIDSection
             rolloverSection
             coordinateFormatSection
+            photoUploadSection
             endpointSection
             ortusEndpointSection
             aboutSection
@@ -188,6 +189,14 @@ struct SettingsScreen: View {
             }
         } footer: {
             Text("Gilt in der Ortszeit des Samples.")
+        }
+    }
+
+    private var photoUploadSection: some View {
+        Section {
+            Toggle("Fotos nur im WLAN hochladen", isOn: $config.photosWiFiOnly)
+        } footer: {
+            Text("Fotos werden in voller Auflösung hochgeladen. Proben werden weiter über jede Verbindung synchronisiert.")
         }
     }
 
