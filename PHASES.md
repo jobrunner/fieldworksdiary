@@ -1241,7 +1241,7 @@ Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lä
 Aus dem Gerätetest von PR 4 entstanden (nicht Teil der sechs PRs):
 
 - [x] Lokale Daten pro Konto statt einer Datenbank für alle (`fix/local-data-per-account`); Design `docs/superpowers/specs/2026-11-20-lokale-daten-pro-konto-design.md`
-- [ ] Idempotente Proben-Anlage im Backend: gleiche `client_uuid` antwortet mit der vorhandenen Probe, eindeutiger Index auf Besitzer und `client_uuid` (`fix/sample-create-idempotent`)
+- [x] Idempotente Proben-Anlage im Backend: gleiche `client_uuid` antwortet mit der vorhandenen Probe, eindeutiger Index auf Besitzer und `client_uuid` (`fix/sample-create-idempotent`)
 - [ ] App wertet den Antwort-Header `Idempotent-Replayed` aus und schickt zwischenzeitliche Änderungen als Update nach
 - [ ] Lokaler Export und Import der Gerätedaten, auch abgemeldet (eigenes Design)
 
