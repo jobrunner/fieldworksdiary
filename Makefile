@@ -18,7 +18,7 @@ help: ## Ziele auflisten
 
 .PHONY: tabularius-tunnel
 tabularius-tunnel: ## SSH-Tunnel zum lokalen Backend (TUNNEL_PORT=8090 Dev, 8092 Test)
-	@if ! curl -s -m 3 -o /dev/null http://127.0.0.1:$(TUNNEL_PORT)/api/health; then \
+	@if ! curl -sf -m 3 -o /dev/null http://127.0.0.1:$(TUNNEL_PORT)/api/health; then \
 		echo "Auf 127.0.0.1:$(TUNNEL_PORT) antwortet kein Backend."; \
 		echo "Dev-Backend starten: docker compose up --build"; \
 		exit 1; \
