@@ -157,7 +157,7 @@ func (e *ConditionsEnricher) runSafely(sampleID string) {
 //     data was not available yet, or forecast data can now be replaced
 //     by the archive). The new answer overwrites the values, also ones
 //     the app delivered.
-//   - pending samples with a coordinate that have been waiting longer
+//   - pending samples with a coordinate and a height that have been waiting longer
 //     than pendingGrace (Tempus was unreachable when they were saved).
 //
 // Samples with an empty status (rows from before Phase T) are never
@@ -176,7 +176,7 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 	}
 	if rest := limit - len(due); rest > 0 {
 		pending, err := e.App.FindRecordsByFilter("samples",
-			"conditions_status = 'pending' && (latitude != 0 || longitude != 0) && updated <= {:stale}",
+			"conditions_status = 'pending' && (latitude != 0 || longitude != 0) && elevation_source != '' && updated <= {:stale}",
 			"updated", rest, 0, dbx.Params{"stale": now.Add(-pendingGrace).Format(pbDateLayout)})
 		if err != nil {
 			e.log().Warn("conditions: refresh query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
@@ -243,6 +243,10 @@ func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string
 		if rec.GetString("conditions_status") != "" || !hasCoordinate(rec) {
 			return nil
 		}
+		// No height yet: left unmarked, a later run picks it up.
+		if _, ok := hooks.SampleElevation(rec); !ok {
+			return nil
+		}
 		conditions.Clear(rec)
 		marked = true
 		return tx.SaveNoValidate(rec)
@@ -301,6 +305,12 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	if !hasCoordinate(rec) || !refreshable(status, provisionalToo) {
 		return false
 	}
+	// Tempus requires the height. Without one the sample waits: the
+	// Ortus run asks again once it has written the DEM height.
+	elevation, ok := hooks.SampleElevation(rec)
+	if !ok {
+		return false
+	}
 	seen := conditions.Snapshot(rec)
 	seenFetched := rec.GetDateTime("conditions_fetched_at").Time()
 	lat, lon := rec.GetFloat("latitude"), rec.GetFloat("longitude")
@@ -311,7 +321,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		log.Warn("conditions: no free query slot, sample stays as it is", slog.String("service", tempusServiceName))
 		return false
 	}
-	resp, err := e.Tempus.Query(ctx, lat, lon, want)
+	resp, err := e.Tempus.Query(ctx, lat, lon, elevation, want)
 	release()
 	if e.afterQuery != nil {
 		e.afterQuery()
@@ -336,6 +346,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
 			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon ||
 			!hooks.SampleQueryInstant(tx, rec).Equal(want) ||
+			!sameElevation(rec, elevation) ||
 			conditions.Snapshot(rec) != seen ||
 			!rec.GetDateTime("conditions_fetched_at").Time().Equal(seenFetched) {
 			return errSkip
@@ -380,6 +391,12 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		slog.Bool("changed", bumped),
 	)
 	return true
+}
+
+// sameElevation reports whether rec is still asked with this height.
+func sameElevation(rec *core.Record, elevation float64) bool {
+	now, ok := hooks.SampleElevation(rec)
+	return ok && math.Round(now) == math.Round(elevation)
 }
 
 // refreshable reports whether a sample in this status is asked: a

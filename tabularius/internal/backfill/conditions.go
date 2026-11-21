@@ -21,9 +21,10 @@ const (
 	defaultConditionsInterval = 2 * time.Second
 )
 
-// legacyConditionsFilter selects the samples from before Phase T: a
-// coordinate, but never processed.
-const legacyConditionsFilter = "(latitude != 0 || longitude != 0) && conditions_status = ''"
+// legacyConditionsFilter selects the samples from before Phase T that
+// can be asked: a coordinate and a height (Tempus requires it), but
+// never processed.
+const legacyConditionsFilter = "(latitude != 0 || longitude != 0) && elevation_source != '' && conditions_status = ''"
 
 // ErrNoConditionsEnricher is returned when the runner has no Tempus
 // client to work with.
@@ -51,6 +52,9 @@ type ConditionsResult struct {
 	Queried int
 	// Remaining counts the samples still waiting for a later run.
 	Remaining int
+	// WithoutHeight counts the unprocessed samples that cannot be asked
+	// because they have no height yet (the Ortus backfill delivers it).
+	WithoutHeight int
 }
 
 func (r *ConditionsRunner) log() *slog.Logger {
@@ -110,13 +114,20 @@ func (r *ConditionsRunner) Run(ctx context.Context) (ConditionsResult, error) {
 		return res, errors.Join(runErr, err)
 	}
 	res.Remaining = int(remaining)
+	withoutHeight, err := r.App.CountRecords("samples",
+		dbx.NewExp("(latitude != 0 OR longitude != 0) AND elevation_source = '' AND conditions_status = ''"))
+	if err != nil {
+		return res, errors.Join(runErr, err)
+	}
+	res.WithoutHeight = int(withoutHeight)
 	r.log().Info("conditions backfill: done", slog.String("service", "tempus"),
-		slog.Int("queried", res.Queried), slog.Int("remaining", res.Remaining))
+		slog.Int("queried", res.Queried), slog.Int("remaining", res.Remaining),
+		slog.Int("without_height", res.WithoutHeight))
 	return res, runErr
 }
 
 // legacyConditionsExpr is legacyConditionsFilter as an SQL expression
 // for counting.
 func legacyConditionsExpr() dbx.Expression {
-	return dbx.NewExp("(latitude != 0 OR longitude != 0) AND conditions_status = ''")
+	return dbx.NewExp("(latitude != 0 OR longitude != 0) AND elevation_source != '' AND conditions_status = ''")
 }

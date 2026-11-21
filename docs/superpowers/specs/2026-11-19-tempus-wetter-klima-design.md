@@ -96,10 +96,17 @@ Berechnung wird durch Tempus abgelöst.
 
 ## Was Tempus vorgibt
 
-- `GET /api/v1/query?lat&lon&datetime` liefert immer HTTP 200. Der Zustand
+- `GET /api/v1/query?lat&lon&elevation&datetime` liefert bei gültiger
+  Anfrage HTTP 200. Der Zustand
   je Provider steht in `providers[]`: `ok`, `unavailable` (erneut
   versuchen, `retryAfter` als Go-Dauer wie `2h0m0s`) oder `error` (nicht
   erneut versuchen).
+- `elevation` ist Pflicht (Nachtrag 2026-11-21, siehe „Höhe als
+  Voraussetzung“): Höhe des Ortes in Metern über dem Meer (orthometrisch,
+  also aus Karte, DEM oder MSL-Höhe des GNSS-Empfängers), Bereich −500 bis
+  9000. Sie wählt die Gitterzelle und korrigiert Temperatur und Taupunkt.
+  Tempus unterscheidet ganze Meter. Ohne oder mit ungültiger Höhe kommt
+  HTTP 400.
 - Der Zeitpunkt wird auf die volle UTC-Stunde abgerundet.
 - Für Zeitpunkte, die jünger als etwa 5 Tage sind, kommen Vorhersagedaten.
   Danach liefert dieselbe Abfrage endgültige Archivdaten (ERA5). Für die
@@ -203,8 +210,49 @@ sie 14:00. Ändert sich der Abfragezeitpunkt später (z.B. weil das Backend
 die Exkursion als Nachtexkursion einstuft), gilt das als Änderung und das
 Backend fragt neu ab.
 
+### Höhe als Voraussetzung (Nachtrag 2026-11-21)
+
+Tempus liest das Wetter inzwischen direkt aus den Reanalyse-Daten und
+verlangt dafür die Höhe des Ortes. Eine Probe kann deshalb erst abgefragt
+werden, wenn sie eine Höhe hat. Maßgeblich ist das Feld `elevation` der
+Probe mit seiner Herkunft `elevation_source`:
+
+- `location_service`: Höhe aus dem GPS-Empfänger (iOS liefert sie über dem
+  Meer). Sie ist mit dem Fix da, die App kann sofort abfragen.
+- `backend_service`: DEM-Höhe von Ortus. Sie kommt mit der Ortus-Antwort,
+  in der App wie im Backend.
+- `manual`: von Hand eingetragen.
+
+Welche Höhe an der Probe steht, regelt weiterhin Phase O: Eine GPS- oder
+Hand-Höhe wird nie durch die DEM-Höhe ersetzt. Tempus bekommt, was an der
+Probe steht, gerundet auf ganze Meter.
+
+Daraus folgt:
+
+- Eine Probe mit Koordinate, aber ohne Höhe (leere `elevation_source`)
+  oder mit einer Höhe außerhalb des Bereichs wird nicht abgefragt. Ihr
+  Status bleibt `pending`, bis eine Höhe da ist. Im Backend fragt der
+  Ortus-Lauf danach selbst an; der stündliche Job fasst Proben ohne Höhe
+  nicht an.
+- Die Werte gelten für die Höhe, mit der gefragt wurde. Ändert sich die
+  Höhe um mindestens einen ganzen Meter, gilt das wie eine verschobene
+  Koordinate: Werte leeren, Status `pending`, neu abfragen. Das gilt auch,
+  wenn der Ortus-Lauf eine DEM-Höhe ersetzt.
+- Eine DEM-Höhe gehört zur Koordinate, für die sie gelesen wurde. Wird die
+  Koordinate verschoben und folgt ein Ortus-Lauf, entfernt das Backend die
+  alte DEM-Höhe beim Speichern, damit nicht mit der Höhe des alten Ortes
+  gefragt wird. Eine GPS- oder Hand-Höhe bleibt.
+- Vom Client mitgeschickte Werte werden nur übernommen, wenn die Probe eine
+  nutzbare Höhe hat.
+- Der Cache-Schlüssel im Backend enthält die Höhe in ganzen Metern.
+- Der Backfill fasst Altproben ohne Höhe nicht an und meldet ihre Zahl
+  getrennt; für sie muss zuerst der Ortus-Backfill laufen.
+
 ### App
 
+- Die App fragt erst ab, wenn die Probe eine Höhe hat: sofort mit der
+  GPS-Höhe, sonst nach der Ortus-Antwort mit der DEM-Höhe. Ohne Höhe
+  bleibt der Status `pending`.
 - Nach dem Anlegen einer Probe mit Koordinate, nach einer Änderung von
   Koordinate, Beginn, Zeitzone oder Ganztägig und beim Nachtragen fragt die
   App Tempus direkt ab, wenn sie online ist. Reihenfolge: erst lokal
@@ -226,7 +274,7 @@ Backend fragt neu ab.
 
 - Neuer Wrapper `internal/services/tempus.go` nach dem Vorbild von
   `ortus.go`: Retry, Timeout, Cache in `geocache` (Schlüssel aus
-  Koordinate und Abfragezeitpunkt; endgültige Antworten 7 Tage,
+  Koordinate, Höhe und Abfragezeitpunkt; endgültige Antworten 7 Tage,
   vorläufige höchstens 1 Stunde). Endpoint aus `TEMPUS_BASE_URL`
   (Docker-Compose, mit Default wie bei `ORTUS_BASE_URL`). Ist die Variable
   ausdrücklich leer, läuft das Backend ohne Tempus und loggt eine Warnung.
@@ -243,7 +291,7 @@ Backend fragt neu ab.
   das über den bestehenden Poll nach dem Push bzw. den nächsten Pull.
 - **Nachziehen:** Ein stündlicher Job fragt erneut ab: Proben mit Status
   `provisional`, deren `conditions_retry_at` erreicht ist, und Proben mit
-  Status `pending` und Koordinate, die älter als eine Stunde sind (z.B.
+  Status `pending`, Koordinate und Höhe, die älter als eine Stunde sind (z.B.
   weil Tempus nicht erreichbar war). Damit bekommt eine frische Probe, für
   deren letzte Stunden noch kein Wetter vorlag, ihre Werte nach wenigen
   Stunden und die endgültigen nach 5 Tagen. Der Job überschreibt Werte,

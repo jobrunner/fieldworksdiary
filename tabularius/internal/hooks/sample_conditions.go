@@ -11,6 +11,7 @@ import (
 	"github.com/pocketbase/pocketbase/core"
 
 	"go.mett.io/tabularius/internal/conditions"
+	"go.mett.io/tabularius/internal/services"
 )
 
 // RegisterSampleConditionsReset wires resetStaleConditions as create and
@@ -112,10 +113,12 @@ func SampleQueryInstant(app core.App, rec *core.Record) time.Time {
 //   - no coordinate: no values, empty status
 //   - the request carries values queried for the sample's instant (the
 //     app asked Tempus itself): kept, with status and retry date
-//     derived from the dates (conditions.CheckDelivered). After a move of coordinate or
-//     instant that only holds for values fetched anew, not for the old
+//     derived from the dates (conditions.CheckDelivered). After a move of coordinate,
+//     height or instant that only holds for values fetched anew, not for the old
 //     ones echoed back.
-//   - coordinate or instant moved otherwise, or the request carries
+//   - the sample has no usable height (SampleElevation): delivered
+//     values are not taken over; it waits as "pending" for a height
+//   - coordinate, height or instant moved otherwise, or the request carries
 //     values for another instant: cleared, status "pending" — the
 //     enrichment takes over.
 //   - anything else (e.g. only the notes changed) stays as it is; a row
@@ -129,7 +132,9 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 	}
 	want := SampleQueryInstant(app, rec)
 	status := rec.GetString("conditions_status")
-	delivered := (status == conditions.StatusProvisional || status == conditions.StatusFinal) &&
+	// Without a height nobody can have asked Tempus.
+	_, hasElevation := SampleElevation(rec)
+	delivered := hasElevation && (status == conditions.StatusProvisional || status == conditions.StatusFinal) &&
 		conditions.SameInstant(rec.GetDateTime("conditions_queried_for").Time(), want)
 	if delivered {
 		delivered = normalizeDelivered(rec, want)
@@ -145,7 +150,8 @@ func resetStaleConditions(app core.App, rec *core.Record, isCreate bool) {
 	orig := rec.Original()
 	moved := math.Abs(rec.GetFloat("latitude")-orig.GetFloat("latitude")) > coordEpsilon ||
 		math.Abs(rec.GetFloat("longitude")-orig.GetFloat("longitude")) > coordEpsilon ||
-		!want.Equal(SampleQueryInstant(app, orig))
+		!want.Equal(SampleQueryInstant(app, orig)) ||
+		!SameElevation(rec, orig)
 	if moved {
 		fetchedAnew := rec.GetDateTime("conditions_fetched_at").Time().
 			After(orig.GetDateTime("conditions_fetched_at").Time())
@@ -187,4 +193,33 @@ func normalizeDelivered(rec *core.Record, want time.Time) bool {
 		rec.Set("conditions_retry_at", retryAt.UTC())
 	}
 	return true
+}
+
+// SampleElevation returns the height Tempus is asked with, and whether
+// the sample has a usable one. Tempus requires the height above sea
+// level; without it a sample is not asked and stays pending.
+//
+//   - no elevation_source: the sample has no height (the number column
+//     cannot tell 0 m from unset)
+//   - outside the range Tempus accepts: not asked
+//
+// A DEM height never outlives its coordinate (resetStaleLocationStatus
+// removes it on a move), so a height that is there belongs to the place.
+func SampleElevation(rec *core.Record) (float64, bool) {
+	if rec.GetString("elevation_source") == "" {
+		return 0, false
+	}
+	elevation := rec.GetFloat("elevation")
+	if elevation < services.TempusMinElevation || elevation > services.TempusMaxElevation {
+		return 0, false
+	}
+	return elevation, true
+}
+
+// SameElevation reports whether two samples are asked with the same
+// height: Tempus distinguishes whole metres.
+func SameElevation(a, b *core.Record) bool {
+	ea, oka := SampleElevation(a)
+	eb, okb := SampleElevation(b)
+	return oka == okb && (!oka || math.Round(ea) == math.Round(eb))
 }

@@ -140,7 +140,9 @@ Kernlogik (Abfragezeitpunkt, Abbildung auf Felder und Status) in
 `internal/conditions`. Die Werte stehen als Felder am Sample, die
 vollständigen Features in `sample_features` mit `source_id` `tempus:…`.
 Zahlenspalten gelten nur, wenn ihr Name in `conditions_fields` steht
-(0 °C ist ein echter Wert). Frische Werte sind vorläufig; ein
+(0 °C ist ein echter Wert). Tempus verlangt die Höhe des Ortes: Abgefragt
+wird erst, wenn die Probe eine hat (`elevation` mit `elevation_source`,
+GPS oder Ortus-DEM); bis dahin bleibt der Status `pending`. Frische Werte sind vorläufig; ein
 stündlicher Job fragt sie erneut ab. Details:
 `docs/superpowers/specs/2026-11-19-tempus-wetter-klima-design.md`.
 

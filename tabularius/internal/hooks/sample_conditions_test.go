@@ -24,6 +24,8 @@ func conditionsSample(t *testing.T, app *tests.TestApp) *core.Record {
 	rec.Set("longitude", 10.03)
 	rec.Set("begin_date", condBegin)
 	rec.Set("timezone", "Europe/Berlin")
+	rec.Set("elevation", 520.2)
+	rec.Set("elevation_source", "location_service")
 	return rec
 }
 
@@ -537,4 +539,72 @@ func resetAllDayConditionsAfterFlip(t *testing.T, app *tests.TestApp, ft *core.R
 		t.Fatal(err)
 	}
 	return resetAllDayConditions(app, ft.Id)
+}
+
+func TestSampleElevation(t *testing.T) {
+	app := setupTestApp(t)
+	for _, c := range []struct {
+		name           string
+		elevation      float64
+		source, status string
+		want           bool
+	}{
+		{"gps height", 520, "location_service", "pending", true},
+		{"manual height at sea level", 0, "manual", "", true},
+		{"no height", 0, "", "backend_service", false},
+		{"value without source", 520, "", "backend_service", false},
+		{"DEM height", 236, "backend_service", "backend_service", true},
+		{"below the range of Tempus", -501, "manual", "", false},
+		{"above the range of Tempus", 9001, "manual", "", false},
+	} {
+		rec := newSampleRecord(t, app)
+		rec.Set("elevation", c.elevation)
+		rec.Set("elevation_source", c.source)
+		rec.Set("location_status", c.status)
+		got, ok := SampleElevation(rec)
+		if ok != c.want || (ok && got != c.elevation) {
+			t.Errorf("%s: got (%v, %v), want ok = %v", c.name, got, ok, c.want)
+		}
+	}
+}
+
+// The values are corrected to the height they were queried with: after
+// another height they no longer fit, also when the app echoes them.
+func TestReset_UpdateElevationChangedClears(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec = saved(t, app, rec)
+	rec.Set("elevation", 800)
+	resetStaleConditions(app, rec, false)
+	if status(rec) != conditions.StatusPending || rec.GetFloat("weather_temperature_c") != 0 {
+		t.Errorf("status = %q, temperature = %v", status(rec), rec.GetFloat("weather_temperature_c"))
+	}
+}
+
+// Tempus distinguishes whole metres; GPS noise below that changes nothing.
+func TestReset_UpdateElevationWithinTheSameMetreKeeps(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	rec = saved(t, app, rec)
+	rec.Set("elevation", 520.4)
+	resetStaleConditions(app, rec, false)
+	if status(rec) != conditions.StatusFinal {
+		t.Errorf("status = %q", status(rec))
+	}
+}
+
+// Without a height nobody can have asked Tempus: delivered values are
+// not taken over.
+func TestReset_CreateWithClientValuesButNoElevationIsCleared(t *testing.T) {
+	app := setupTestApp(t)
+	rec := conditionsSample(t, app)
+	rec.Set("elevation", 0)
+	rec.Set("elevation_source", "")
+	clientValues(rec, condBegin, conditions.StatusFinal)
+	resetStaleConditions(app, rec, true)
+	if status(rec) != conditions.StatusPending {
+		t.Errorf("status = %q", status(rec))
+	}
 }

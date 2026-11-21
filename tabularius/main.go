@@ -305,7 +305,8 @@ func registerConditionsBackfillCommand(app *pocketbase.PocketBase, httpClient *h
 				return err
 			}
 			res, err := r.Run(cmd.Context())
-			cmd.Printf("tempus-backfill: %d queried, %d remaining\n", res.Queried, res.Remaining)
+			cmd.Printf("tempus-backfill: %d queried, %d remaining, %d without height (run ortus-backfill first)\n",
+				res.Queried, res.Remaining, res.WithoutHeight)
 			return err
 		},
 	}
