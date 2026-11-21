@@ -230,8 +230,14 @@ func (e *Enricher) run(ctx context.Context, sampleID string) {
 		}
 
 		geoplace.ApplyGeo(rec, res.Geo)
+		heightBefore := rec.Clone()
 		applyDEMHeight(rec, res.Geo)
 		applyTimezone(rec, res.Geo)
+		// Weather values are corrected to the height they were queried
+		// with: after another DEM height they are asked again.
+		if rec.GetString("conditions_status") != "" && !hooks.SameElevation(rec, heightBefore) {
+			conditions.Clear(rec)
+		}
 		// A corrected zone moves 14:00/22:00 local of an all-day sample:
 		// its weather values were queried for another instant. Rows
 		// that were never processed stay with the backfill.

@@ -49,11 +49,11 @@ func TestTempusQuery_DecodesAllKinds(t *testing.T) {
 	var query string
 	srv := tempusServer(t, tempusFixture(t, "query_past_all_ok.json"), nil, &query)
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
-	got, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast)
+	got, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
-	if query != "datetime=2026-07-01T12%3A00%3A00Z&lat=48.135100&lon=11.582000" {
+	if query != "datetime=2026-07-01T12%3A00%3A00Z&elevation=520&lat=48.135100&lon=11.582000" {
 		t.Errorf("unexpected query %q", query)
 	}
 	kinds := map[string]bool{}
@@ -84,7 +84,7 @@ func TestTempusQuery_DecodesAllKinds(t *testing.T) {
 func TestTempusQuery_RetryAfterDuration(t *testing.T) {
 	srv := tempusServer(t, tempusFixture(t, "query_recent_weather_unavailable.json"), nil, nil)
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
-	got, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast)
+	got, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast)
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestTempusQuery_RetryAfterDuration(t *testing.T) {
 func TestTempusQuery_FutureKeepsSunAndMoon(t *testing.T) {
 	srv := tempusServer(t, tempusFixture(t, "query_future_weather_error.json"), nil, nil)
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
-	got, err := tp.Query(context.Background(), 48.1351, 11.582, time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC))
+	got, err := tp.Query(context.Background(), 48.1351, 11.582, 520, time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("Query: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestTempusQuery_CachesFinalAnswer(t *testing.T) {
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: newTestGeocache(t), Now: func() time.Time { return now }}
 	for i := 0; i < 2; i++ {
 		// Same hour and same place to 5 decimals: one cache entry.
-		if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast.Add(time.Duration(i)*20*time.Minute)); err != nil {
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast.Add(time.Duration(i)*20*time.Minute)); err != nil {
 			t.Fatalf("Query %d: %v", i, err)
 		}
 	}
@@ -141,7 +141,7 @@ func TestTempusQuery_CachesFinalAnswer(t *testing.T) {
 		t.Errorf("server hits = %d, want 1", hits)
 	}
 	// Another hour is another entry.
-	if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast.Add(time.Hour)); err != nil {
+	if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if hits != 2 {
@@ -154,7 +154,7 @@ func TestTempusQuery_DoesNotCacheUnavailable(t *testing.T) {
 	srv := tempusServer(t, tempusFixture(t, "query_recent_weather_unavailable.json"), &hits, nil)
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: newTestGeocache(t)}
 	for i := 0; i < 2; i++ {
-		if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast); err != nil {
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast); err != nil {
 			t.Fatalf("Query %d: %v", i, err)
 		}
 	}
@@ -171,7 +171,7 @@ func TestTempusQuery_RecentAnswerExpiresAfterOneHour(t *testing.T) {
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: newTestGeocache(t), Now: func() time.Time { return now }}
 	q := func() {
 		t.Helper()
-		if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast); err != nil {
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -196,7 +196,7 @@ func TestTempusQuery_ErrorHidesURL(t *testing.T) {
 	}))
 	defer srv.Close()
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
-	_, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast)
+	_, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast)
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -209,7 +209,7 @@ func TestTempusQuery_ErrorHidesURL(t *testing.T) {
 func TestTempusQuery_BrokenJSONIsAnError(t *testing.T) {
 	srv := tempusServer(t, []byte("{"), nil, nil)
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
-	if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast); err == nil {
+	if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast); err == nil {
 		t.Fatal("expected a decode error")
 	}
 }
@@ -244,7 +244,7 @@ func TestTempusQuery_ForecastEntryIsNotServedAsFinal(t *testing.T) {
 	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: cache, Now: clock}
 	q := func() {
 		t.Helper()
-		if _, err := tp.Query(context.Background(), 48.1351, 11.582, tempusPast); err != nil {
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, 520, tempusPast); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -264,5 +264,36 @@ func TestTempusQuery_ForecastEntryIsNotServedAsFinal(t *testing.T) {
 	q()
 	if hits != 3 {
 		t.Errorf("server hits = %d, want 3 after the final entry expired", hits)
+	}
+}
+
+// Tempus requires the height above sea level: it selects the grid cell
+// and corrects temperature to it. It is sent in whole metres, the
+// resolution Tempus distinguishes.
+func TestTempusQuery_SendsElevationInWholeMetres(t *testing.T) {
+	var q string
+	srv := tempusServer(t, tempusFixture(t, "query_past_all_ok.json"), nil, &q)
+	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1}
+	if _, err := tp.Query(context.Background(), 48.1351, 11.582, 519.6, tempusPast); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains("&"+q+"&", "&elevation=520&") {
+		t.Errorf("query = %q, want elevation=520", q)
+	}
+}
+
+// Another height is another answer; the same whole metre is not.
+func TestTempusQuery_ElevationIsPartOfTheCacheKey(t *testing.T) {
+	var hits int32
+	srv := tempusServer(t, tempusFixture(t, "query_past_all_ok.json"), &hits, nil)
+	now := tempusPast.Add(30 * 24 * time.Hour)
+	tp := &services.Tempus{BaseURL: srv.URL, MaxRetries: 1, Cache: newTestGeocache(t), Now: func() time.Time { return now }}
+	for _, elevation := range []float64{520.2, 519.8, 900} {
+		if _, err := tp.Query(context.Background(), 48.1351, 11.582, elevation, tempusPast); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hits != 2 {
+		t.Errorf("server hits = %d, want 2 (520 m twice, 900 m once)", hits)
 	}
 }

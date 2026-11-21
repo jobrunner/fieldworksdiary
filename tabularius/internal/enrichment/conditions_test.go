@@ -2,10 +2,12 @@ package enrichment
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +28,8 @@ type fakeTempus struct {
 	body      []byte
 	fail      bool
 	datetimes []string
+	// elevations are the elevation parameters of the requests.
+	elevations []string
 }
 
 func newFakeTempus(t *testing.T, fixture string) *fakeTempus {
@@ -39,6 +43,7 @@ func newFakeTempus(t *testing.T, fixture string) *fakeTempus {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		f.datetimes = append(f.datetimes, r.URL.Query().Get("datetime"))
+		f.elevations = append(f.elevations, r.URL.Query().Get("elevation"))
 		if f.fail {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
@@ -77,6 +82,7 @@ func pendingSample(t *testing.T, app *tests.TestApp) (ownerID, sampleID, ftID st
 	ownerID, sampleID, ftID = createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
 	updateSample(t, app, sampleID, map[string]any{
 		"conditions_status": conditions.StatusPending, "timezone": "Europe/Berlin", "version": 3,
+		"elevation": 519.6, "elevation_source": "location_service",
 	})
 	return
 }
@@ -96,6 +102,8 @@ func extraSample(t *testing.T, app *tests.TestApp, ownerID, ftID string) string 
 	rec.Set("longitude", 11.582)
 	rec.Set("timezone", "Europe/Berlin")
 	rec.Set("begin_date", time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC))
+	rec.Set("elevation", 519.6)
+	rec.Set("elevation_source", "location_service")
 	if err := app.SaveNoValidate(rec); err != nil {
 		t.Fatalf("save sample: %v", err)
 	}
@@ -505,12 +513,12 @@ func TestCoordinateRemoved_DropsTempusFeatures(t *testing.T) {
 	e := newConditionsEnricher(app, newFakeTempus(t, "query_past_all_ok.json"), condNow)
 
 	// With a coordinate nothing is removed.
-	e.dropFeaturesWithoutCoordinate(sampleID)
+	e.dropFeaturesOfUnaskable(sampleID)
 	if n := tempusRows(t, app, sampleID); n != 1 {
 		t.Fatalf("tempus rows = %d, want 1 while the coordinate exists", n)
 	}
 	updateSample(t, app, sampleID, map[string]any{"latitude": 0, "longitude": 0, "conditions_status": ""})
-	e.dropFeaturesWithoutCoordinate(sampleID)
+	e.dropFeaturesOfUnaskable(sampleID)
 	if tempus, all := tempusRows(t, app, sampleID), len(sampleFeatures(t, app, sampleID)); tempus != 0 || all != 1 {
 		t.Errorf("tempus rows = %d, all rows = %d; want 0 and the Ortus row", tempus, all)
 	}
@@ -586,7 +594,7 @@ func TestEnrich_SkipsWriteWhenConditionsChangedMeanwhile(t *testing.T) {
 // sample: the backfill must not ask Tempus and overwrite them.
 func TestBackfillSample_KeepsValuesSavedAfterTheMark(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582) // status empty
+	_, sampleID, _ := legacySampleWithHeight(t, app) // status empty
 	f := newFakeTempus(t, "query_past_all_ok.json")
 	e := newConditionsEnricher(app, f, condNow)
 	e.afterBackfillMark = func() { makeProvisional(t, app, sampleID, condNow.Add(time.Hour)) }
@@ -602,7 +610,7 @@ func TestBackfillSample_KeepsValuesSavedAfterTheMark(t *testing.T) {
 
 func TestBackfillSample_FillsLegacySampleAndSkipsOthers(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	ownerID, legacy, ftID := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
+	ownerID, legacy, ftID := legacySampleWithHeight(t, app)
 	f := newFakeTempus(t, "query_past_all_ok.json")
 	e := newConditionsEnricher(app, f, condNow)
 	if !e.BackfillSample(context.Background(), legacy) {
@@ -627,10 +635,178 @@ func TestBackfillSample_FillsLegacySampleAndSkipsOthers(t *testing.T) {
 // A failed query still counts as an attempt.
 func TestBackfillSample_FailedQueryCountsAsQueried(t *testing.T) {
 	app := newAppForRecordsOnly(t)
-	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
+	_, sampleID, _ := legacySampleWithHeight(t, app)
 	f := newFakeTempus(t, "query_past_all_ok.json")
 	f.fail = true
 	if !newConditionsEnricher(app, f, condNow).BackfillSample(context.Background(), sampleID) {
 		t.Error("a failed Tempus query was not counted")
+	}
+}
+
+// Tempus needs the height of the place. A sample without one is not
+// asked and stays pending until the GPS or Ortus delivers a height.
+func TestEnrich_WithoutElevationStaysPendingAndAsksNothing(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	updateSample(t, app, sampleID, map[string]any{"elevation": 0, "elevation_source": ""})
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	newConditionsEnricher(app, tempus, condNow).EnrichSample(context.Background(), sampleID)
+	if tempus.hits() != 0 {
+		t.Errorf("tempus asked %d times without a height", tempus.hits())
+	}
+	if got := loadSample(t, app, sampleID).GetString("conditions_status"); got != conditions.StatusPending {
+		t.Errorf("status = %q, want pending", got)
+	}
+}
+
+func TestEnrich_SendsTheSampleElevation(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	newConditionsEnricher(app, tempus, condNow).EnrichSample(context.Background(), sampleID)
+	if got := tempus.elevations; len(got) != 1 || got[0] != "520" {
+		t.Errorf("elevations = %v, want [520]", got)
+	}
+}
+
+func TestRefreshDue_SkipsPendingWithoutElevation(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	updateSample(t, app, sampleID, map[string]any{"elevation": 0, "elevation_source": ""})
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	// Two hours on, the row counts as a pending one left behind.
+	later := time.Now().UTC().Add(2 * time.Hour)
+	if n := newConditionsEnricher(app, tempus, later).RefreshDue(context.Background(), 10); n != 0 {
+		t.Errorf("queried = %d, want 0", n)
+	}
+}
+
+// The backfill leaves a legacy sample without height unmarked, so a
+// later run picks it up once a height is there.
+func TestBackfillSample_LeavesSampleWithoutElevationUnmarked(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, _, ftID := pendingSample(t, app)
+	legacy := extraSample(t, app, ownerID, ftID)
+	updateSample(t, app, legacy, map[string]any{"elevation": 0, "elevation_source": ""})
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	if newConditionsEnricher(app, tempus, condNow).BackfillSample(context.Background(), legacy) {
+		t.Error("backfill reported a query")
+	}
+	if got := loadSample(t, app, legacy).GetString("conditions_status"); got != "" {
+		t.Errorf("status = %q, want empty", got)
+	}
+}
+
+// The Ortus run replaces the DEM height: values queried for the old
+// height no longer fit and are asked again with the new one.
+func TestOrtusDEMHeightChange_ResetsConditionsAndAsksAgain(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := createOwnerSampleFieldtrip(t, app, deLat, deLon)
+	updateSample(t, app, sampleID, map[string]any{
+		"location_status": "pending", "timezone": "Europe/Berlin", "timezone_source": "location_service",
+		"elevation": 2000, "elevation_source": "backend_service",
+	})
+	rec := mustSample(t, app, sampleID)
+	conditions.Apply(rec, conditions.Result{
+		Status:     conditions.StatusFinal,
+		QueriedFor: time.Date(2026, 5, 19, 15, 0, 0, 0, time.UTC),
+		FetchedAt:  condNow,
+		Values:     map[string]any{"weather_temperature_c": 12.0},
+	})
+	if err := app.SaveNoValidate(rec); err != nil {
+		t.Fatal(err)
+	}
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	e := newOrtusEnricher(app, newFakeOrtus(t, "query_de_ochsenfurt.json"))
+	e.Conditions = newConditionsEnricher(app, tempus, condNow)
+	e.runSafely(sampleID, "")
+
+	s := loadSample(t, app, sampleID)
+	if s.GetFloat("elevation") == 2000 {
+		t.Fatal("precondition: the Ortus run did not replace the DEM height")
+	}
+	want := strconv.Itoa(int(math.Round(s.GetFloat("elevation"))))
+	if got := tempus.elevations; len(got) != 1 || got[0] != want {
+		t.Errorf("asked with elevations %v, want [%s]", got, want)
+	}
+	if s.GetString("conditions_status") != conditions.StatusFinal {
+		t.Errorf("status = %q", s.GetString("conditions_status"))
+	}
+}
+
+// legacySampleWithHeight is a sample from before Phase T (empty
+// conditions status) that has what Tempus requires: a height.
+func legacySampleWithHeight(t *testing.T, app *tests.TestApp) (ownerID, sampleID, ftID string) {
+	t.Helper()
+	ownerID, sampleID, ftID = createOwnerSampleFieldtrip(t, app, 48.1351, 11.582)
+	updateSample(t, app, sampleID, map[string]any{"elevation": 519.6, "elevation_source": "location_service"})
+	return
+}
+
+// Without a usable height the hook left the sample pending and without
+// values; the feature rows of the earlier answer must go as well, or
+// they stay for as long as no height arrives.
+func TestEnrich_WithoutElevationRemovesStaleFeatures(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, sampleID, _ := pendingSample(t, app)
+	if err := geoplace.ReplaceFeatures(app, sampleID, ownerID, geoplace.ScopeTempus,
+		[]geoplace.Feature{{SourceID: "tempus:sun", SourceName: "Tempus", Layer: "sun"}}); err != nil {
+		t.Fatal(err)
+	}
+	updateSample(t, app, sampleID, map[string]any{"elevation": 0, "elevation_source": ""})
+	newConditionsEnricher(app, newFakeTempus(t, "query_past_all_ok.json"), condNow).
+		EnrichSample(context.Background(), sampleID)
+	if n := tempusRows(t, app, sampleID); n != 0 {
+		t.Errorf("tempus rows = %d, want 0", n)
+	}
+}
+
+// A height Tempus does not accept must not use up the limit of every
+// run in front of samples that can be asked.
+func TestRefreshDue_UnusableHeightDoesNotBlockTheOthers(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	ownerID, tooHigh, ftID := pendingSample(t, app)
+	updateSample(t, app, tooHigh, map[string]any{"elevation": 9500})
+	ok := extraSample(t, app, ownerID, ftID)
+	updateSample(t, app, ok, map[string]any{"conditions_status": conditions.StatusPending})
+	tempus := newFakeTempus(t, "query_past_all_ok.json")
+	later := time.Now().UTC().Add(2 * time.Hour)
+	if n := newConditionsEnricher(app, tempus, later).RefreshDue(context.Background(), 1); n != 1 {
+		t.Fatalf("queried = %d, want 1", n)
+	}
+	if tempus.hits() != 1 || loadSample(t, app, ok).GetString("conditions_status") == conditions.StatusPending {
+		t.Errorf("hits = %d, status of the usable sample = %q", tempus.hits(), loadSample(t, app, ok).GetString("conditions_status"))
+	}
+}
+
+// After a coordinate move the DEM height still belongs to the old
+// place. The Ortus run that follows the move asks Tempus itself, with
+// the height it found; the update's own trigger waits for it.
+func TestWaitsForOrtusHeight(t *testing.T) {
+	app := newAppForRecordsOnly(t)
+	_, sampleID, _ := pendingSample(t, app)
+	for _, c := range []struct {
+		name   string
+		source string
+		moveBy float64
+		want   bool
+	}{
+		{"DEM height, coordinate moved", "backend_service", 0.01, true},
+		{"DEM height, nothing moved", "backend_service", 0, false},
+		{"GPS height, coordinate moved", "location_service", 0.01, false},
+		{"no height, coordinate moved", "", 0.01, false},
+		// No coordinate, no Ortus run: the cleanup must not be skipped.
+		{"DEM height, coordinate removed", "backend_service", -48.1351, false},
+	} {
+		updateSample(t, app, sampleID, map[string]any{"elevation_source": c.source})
+		orig := loadSample(t, app, sampleID)
+		rec := orig.Clone()
+		rec.Set("latitude", rec.GetFloat("latitude")+c.moveBy)
+		if c.moveBy < 0 {
+			rec.Set("longitude", 0)
+		}
+		if got := waitsForOrtusHeight(orig, rec); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }

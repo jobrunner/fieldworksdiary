@@ -94,14 +94,20 @@ func (e *ConditionsEnricher) acquireSlot(ctx context.Context) (func(), bool) {
 // pending.
 func (e *ConditionsEnricher) Register() {
 	trigger := func(ev *core.RecordRequestEvent) error {
+		// The pre-update state, captured before the save (nil on create).
+		orig := ev.Record.Original()
+		if ev.Record.IsNew() {
+			orig = nil
+		}
 		if err := ev.Next(); err != nil {
 			return err
 		}
 		switch {
+		case waitsForOrtusHeight(orig, ev.Record):
 		case !hasCoordinate(ev.Record):
 			go func(id string) {
 				defer e.recoverPanic(id)
-				e.dropFeaturesWithoutCoordinate(id)
+				e.dropFeaturesOfUnaskable(id)
 			}(ev.Record.Id)
 		case ev.Record.GetString("conditions_status") == conditions.StatusPending:
 			go e.runSafely(ev.Record.Id)
@@ -157,7 +163,7 @@ func (e *ConditionsEnricher) runSafely(sampleID string) {
 //     data was not available yet, or forecast data can now be replaced
 //     by the archive). The new answer overwrites the values, also ones
 //     the app delivered.
-//   - pending samples with a coordinate that have been waiting longer
+//   - pending samples with a coordinate and a height that have been waiting longer
 //     than pendingGrace (Tempus was unreachable when they were saved).
 //
 // Samples with an empty status (rows from before Phase T) are never
@@ -168,7 +174,7 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 	}
 	now := e.now().UTC()
 	due, err := e.App.FindRecordsByFilter("samples",
-		"conditions_status = 'provisional' && conditions_retry_at != '' && conditions_retry_at <= {:now}",
+		"conditions_status = 'provisional' && conditions_retry_at != '' && conditions_retry_at <= {:now} && "+hooks.UsableElevationFilter,
 		"conditions_retry_at", limit, 0, dbx.Params{"now": now.Format(pbDateLayout)})
 	if err != nil {
 		e.log().Warn("conditions: refresh query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
@@ -176,7 +182,7 @@ func (e *ConditionsEnricher) RefreshDue(ctx context.Context, limit int) int {
 	}
 	if rest := limit - len(due); rest > 0 {
 		pending, err := e.App.FindRecordsByFilter("samples",
-			"conditions_status = 'pending' && (latitude != 0 || longitude != 0) && updated <= {:stale}",
+			"conditions_status = 'pending' && (latitude != 0 || longitude != 0) && "+hooks.UsableElevationFilter+" && updated <= {:stale}",
 			"updated", rest, 0, dbx.Params{"stale": now.Add(-pendingGrace).Format(pbDateLayout)})
 		if err != nil {
 			e.log().Warn("conditions: refresh query failed", slog.String("service", tempusServiceName), slog.Any("err", err))
@@ -243,6 +249,10 @@ func (e *ConditionsEnricher) BackfillSample(ctx context.Context, sampleID string
 		if rec.GetString("conditions_status") != "" || !hasCoordinate(rec) {
 			return nil
 		}
+		// No height yet: left unmarked, a later run picks it up.
+		if _, ok := hooks.SampleElevation(rec); !ok {
+			return nil
+		}
 		conditions.Clear(rec)
 		marked = true
 		return tx.SaveNoValidate(rec)
@@ -301,6 +311,17 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	if !hasCoordinate(rec) || !refreshable(status, provisionalToo) {
 		return false
 	}
+	// Tempus requires the height. Without one the sample waits: the
+	// Ortus run asks again once it has written the DEM height.
+	elevation, ok := hooks.SampleElevation(rec)
+	if !ok {
+		// The values are gone (pending); the features of the earlier
+		// answer must not stay for as long as no height arrives.
+		if status == conditions.StatusPending {
+			e.dropFeaturesOfUnaskable(sampleID)
+		}
+		return false
+	}
 	seen := conditions.Snapshot(rec)
 	seenFetched := rec.GetDateTime("conditions_fetched_at").Time()
 	lat, lon := rec.GetFloat("latitude"), rec.GetFloat("longitude")
@@ -311,7 +332,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		log.Warn("conditions: no free query slot, sample stays as it is", slog.String("service", tempusServiceName))
 		return false
 	}
-	resp, err := e.Tempus.Query(ctx, lat, lon, want)
+	resp, err := e.Tempus.Query(ctx, lat, lon, elevation, want)
 	release()
 	if e.afterQuery != nil {
 		e.afterQuery()
@@ -336,6 +357,7 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 		if math.Abs(rec.GetFloat("latitude")-lat) > coordEpsilon ||
 			math.Abs(rec.GetFloat("longitude")-lon) > coordEpsilon ||
 			!hooks.SampleQueryInstant(tx, rec).Equal(want) ||
+			!sameElevation(rec, elevation) ||
 			conditions.Snapshot(rec) != seen ||
 			!rec.GetDateTime("conditions_fetched_at").Time().Equal(seenFetched) {
 			return errSkip
@@ -382,6 +404,12 @@ func (e *ConditionsEnricher) enrich(ctx context.Context, sampleID string, provis
 	return true
 }
 
+// sameElevation reports whether rec is still asked with this height.
+func sameElevation(rec *core.Record, elevation float64) bool {
+	now, ok := hooks.SampleElevation(rec)
+	return ok && math.Round(now) == math.Round(elevation)
+}
+
 // refreshable reports whether a sample in this status is asked: a
 // pending one always, a provisional one only by the refresh job.
 func refreshable(status string, provisionalToo bool) bool {
@@ -412,23 +440,24 @@ func (e *ConditionsEnricher) dropStaleFeatures(sampleID string, lat, lon float64
 	}
 }
 
-// dropFeaturesWithoutCoordinate removes the Tempus features of a sample
-// that has no coordinate (any more): they describe a place the sample
-// is no longer at, and nothing else would ever replace them.
-func (e *ConditionsEnricher) dropFeaturesWithoutCoordinate(sampleID string) {
+// dropFeaturesOfUnaskable removes the Tempus features of a sample that
+// cannot be asked (see unaskable): the features of its former place or
+// height must not outlive the values. The check runs in the
+// transaction, so features of an answer that arrived meanwhile stay.
+func (e *ConditionsEnricher) dropFeaturesOfUnaskable(sampleID string) {
 	log := e.log().With(slog.String("sample_id", sampleID))
 	err := e.App.RunInTransaction(func(tx core.App) error {
 		rec, err := tx.FindRecordById("samples", sampleID)
 		if err != nil {
 			return err
 		}
-		if hasCoordinate(rec) || !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeTempus, nil) {
+		if !unaskable(rec) || !geoplace.FeaturesChanged(tx, sampleID, geoplace.ScopeTempus, nil) {
 			return nil
 		}
 		return geoplace.ReplaceFeatures(tx, sampleID, rec.GetString("owner"), geoplace.ScopeTempus, nil)
 	})
 	if err != nil {
-		log.Warn("conditions: dropping features without coordinate failed",
+		log.Warn("conditions: dropping features of a sample that cannot be asked failed",
 			slog.String("service", tempusServiceName), slog.Any("err", err))
 	}
 }
@@ -445,4 +474,28 @@ func (e *ConditionsEnricher) log() *slog.Logger {
 		return e.Logger
 	}
 	return e.App.Logger()
+}
+
+// unaskable reports whether rec can have no Tempus features: it has no
+// coordinate, or it waits (pending) without a usable height. Values
+// delivered meanwhile make it provisional or final and keep theirs.
+func unaskable(rec *core.Record) bool {
+	if !hasCoordinate(rec) {
+		return true
+	}
+	_, ok := hooks.SampleElevation(rec)
+	return !ok && rec.GetString("conditions_status") == conditions.StatusPending
+}
+
+// waitsForOrtusHeight reports whether an update moved the coordinate of
+// a sample whose height is a DEM height. That height belongs to the old
+// place: the Ortus run started by the same update replaces or confirms
+// it and asks Tempus afterwards (Enricher.runSafely), so the update's
+// own trigger does not ask with it. Should no Ortus run follow, the
+// refresh job picks the pending sample up.
+func waitsForOrtusHeight(orig, rec *core.Record) bool {
+	if orig == nil || !hasCoordinate(rec) || rec.GetString("elevation_source") != "backend_service" {
+		return false
+	}
+	return coordChanged(orig, rec)
 }

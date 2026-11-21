@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -129,14 +130,25 @@ func (t *Tempus) cacheMaxAge(at time.Time) time.Duration {
 	return min(sinceFinal, orDefault(t.FinalMaxAge, tempusDefaultFinalMaxAge))
 }
 
-// Query returns Tempus' answer for (lat, lon) at the instant at. It
-// consults the cache first (keyed by coordinate and UTC hour, the
-// resolution Tempus works in); on miss it calls the service with retry.
-// An answer in which a provider is still unavailable is not cached.
-func (t *Tempus) Query(ctx context.Context, lat, lon float64, at time.Time) (*TempusResponse, error) {
+// Tempus accepts heights in this range (metres above sea level).
+const (
+	TempusMinElevation = -500
+	TempusMaxElevation = 9000
+)
+
+// Query returns Tempus' answer for (lat, lon) at the instant at.
+// elevation is the height of the place in metres above sea level;
+// Tempus requires it (it selects the grid cell and corrects the
+// temperature to it) and distinguishes whole metres. The cache is
+// consulted first (keyed by coordinate, whole metre and UTC hour, the
+// resolution Tempus works in); on miss the service is called with
+// retry. An answer in which a provider is still unavailable is not
+// cached.
+func (t *Tempus) Query(ctx context.Context, lat, lon, elevation float64, at time.Time) (*TempusResponse, error) {
 	start := time.Now()
 	at = at.UTC()
-	key := CoordinateKey(lat, lon, at.Truncate(time.Hour).Format(time.RFC3339))
+	metres := int(math.Round(elevation))
+	key := CoordinateKey(lat, lon, at.Truncate(time.Hour).Format(time.RFC3339)+"|"+strconv.Itoa(metres)+"m")
 
 	if t.Cache != nil {
 		raw, err := t.Cache.GetMaxAge(tempusService, key, t.cacheMaxAge(at))
@@ -157,7 +169,7 @@ func (t *Tempus) Query(ctx context.Context, lat, lon float64, at time.Time) (*Te
 		}
 	}
 
-	body, err := t.fetch(ctx, lat, lon, at)
+	body, err := t.fetch(ctx, lat, lon, metres, at)
 	if err != nil {
 		attrs := []any{
 			slog.String("service", tempusService),
@@ -206,10 +218,11 @@ func (r *TempusResponse) anyUnavailable() bool {
 	return false
 }
 
-func (t *Tempus) fetch(ctx context.Context, lat, lon float64, at time.Time) ([]byte, error) {
+func (t *Tempus) fetch(ctx context.Context, lat, lon float64, metres int, at time.Time) ([]byte, error) {
 	q := url.Values{}
 	q.Set("lat", strconv.FormatFloat(lat, 'f', 6, 64))
 	q.Set("lon", strconv.FormatFloat(lon, 'f', 6, 64))
+	q.Set("elevation", strconv.Itoa(metres))
 	q.Set("datetime", at.Format(time.RFC3339))
 	full := strings.TrimRight(t.BaseURL, "/") + "/api/v1/query?" + q.Encode()
 	return doWithRetry(ctx, t.HTTPClient, http.MethodGet, full, nil, t.MaxRetries)

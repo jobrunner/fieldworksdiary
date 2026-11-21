@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
 	"go.mett.io/tabularius/internal/conditions"
@@ -75,7 +76,7 @@ func TestConditionsRunner_RespectsLimitAndResumes(t *testing.T) {
 	u := newUser(t, app)
 	ids := []string{}
 	for _, sid := range []string{"260519/1", "260519/2", "260519/3"} {
-		ids = append(ids, newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", sid).Id)
+		ids = append(ids, newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", sid).Id)
 	}
 	f := newTempusFake(t)
 	r := newConditionsRunner(app, f, 2)
@@ -115,13 +116,13 @@ func TestConditionsRunner_RespectsLimitAndResumes(t *testing.T) {
 func TestConditionsRunner_SkipsProcessedAndCoordinateless(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	done := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	done := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
 	done.Set("conditions_status", conditions.StatusProvisional)
 	done.Set("weather_temperature_c", 3.0)
 	if err := app.SaveNoValidate(done); err != nil {
 		t.Fatal(err)
 	}
-	noCoord := newSampleWithID(t, app, u.Id, 0, 0, "pending", "260519/2")
+	noCoord := newSampleWithHeight(t, app, u.Id, 0, 0, "pending", "260519/2")
 	f := newTempusFake(t)
 	res, err := newConditionsRunner(app, f, 10).Run(context.Background())
 	if err != nil || res.Queried != 0 || res.Remaining != 0 || f.hits.Load() != 0 {
@@ -140,8 +141,8 @@ func TestConditionsRunner_SkipsProcessedAndCoordinateless(t *testing.T) {
 func TestConditionsRunner_TempusDownLeavesPendingAndContinues(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	a := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
-	b := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	a := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	b := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
 	f := newTempusFake(t)
 	f.fail.Store(true)
 	res, err := newConditionsRunner(app, f, 10).Run(context.Background())
@@ -157,8 +158,8 @@ func TestConditionsRunner_TempusDownLeavesPendingAndContinues(t *testing.T) {
 func TestConditionsRunner_CancelledContextStops(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	first := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
-	second := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	first := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	second := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
 	f := newTempusFake(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	f.onHit = func(n int32) {
@@ -191,8 +192,8 @@ func TestConditionsRunner_CancelledContextStops(t *testing.T) {
 func TestConditionsRunner_DoesNotOverwriteValuesDeliveredMeanwhile(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	a := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
-	b := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	a := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	b := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
 	f := newTempusFake(t)
 	var late string
 	f.onHit = func(n int32) {
@@ -235,7 +236,7 @@ func TestConditionsRunner_NilEnricherIsAnError(t *testing.T) {
 func TestConditionsRunner_CancelDuringLastSampleIsReported(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
 	f := newTempusFake(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	f.onHit = func(int32) { cancel() }
@@ -249,8 +250,8 @@ func TestConditionsRunner_CancelDuringLastSampleIsReported(t *testing.T) {
 func TestConditionsRunner_PausesAfterASlowSample(t *testing.T) {
 	app := newApp(t)
 	u := newUser(t, app)
-	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
-	newSampleWithID(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
 	f := newTempusFake(t)
 	var firstDone, secondStart time.Time
 	f.onHit = func(n int32) {
@@ -268,5 +269,58 @@ func TestConditionsRunner_PausesAfterASlowSample(t *testing.T) {
 	}
 	if gap := secondStart.Sub(firstDone); gap < 180*time.Millisecond {
 		t.Errorf("gap between the samples = %s, want at least the interval", gap)
+	}
+}
+
+// newSampleWithHeight is newSampleWithID with a height, which Tempus
+// requires.
+func newSampleWithHeight(t *testing.T, app *tests.TestApp, owner string, lat, lon float64, status, sid string) *core.Record {
+	t.Helper()
+	s := newSampleWithID(t, app, owner, lat, lon, status, sid)
+	s.Set("elevation", 520)
+	s.Set("elevation_source", "location_service")
+	if err := app.SaveNoValidate(s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// A legacy sample without height cannot be asked. It must not use up
+// the limit of every run in front of the others; it is counted on its
+// own so the run says what is still missing (an Ortus backfill).
+func TestConditionsRunner_SampleWithoutHeightDoesNotBlockTheOthers(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	noHeight := newSampleWithID(t, app, u.Id, 48.1351, 11.582, "pending", "260519/1")
+	withHeight := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	f := newTempusFake(t)
+
+	res, err := newConditionsRunner(app, f, 1).Run(context.Background())
+	if err != nil || res.Queried != 1 || res.Remaining != 0 || res.WithoutHeight != 1 {
+		t.Fatalf("%+v, %v; want 1 queried, 0 remaining, 1 without height", res, err)
+	}
+	if condStatus(t, app, noHeight.Id) != "" || condStatus(t, app, withHeight.Id) == "" {
+		t.Errorf("status without height %q, with height %q", condStatus(t, app, noHeight.Id), condStatus(t, app, withHeight.Id))
+	}
+}
+
+// The same holds for a height outside the range Tempus accepts.
+func TestConditionsRunner_UnusableHeightDoesNotBlockTheOthers(t *testing.T) {
+	app := newApp(t)
+	u := newUser(t, app)
+	tooHigh := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/1")
+	tooHigh.Set("elevation", 9500)
+	if err := app.SaveNoValidate(tooHigh); err != nil {
+		t.Fatal(err)
+	}
+	withHeight := newSampleWithHeight(t, app, u.Id, 48.1351, 11.582, "backend_service", "260519/2")
+	f := newTempusFake(t)
+
+	res, err := newConditionsRunner(app, f, 1).Run(context.Background())
+	if err != nil || res.Queried != 1 || res.Remaining != 0 || res.WithoutHeight != 1 {
+		t.Fatalf("%+v, %v; want 1 queried, 0 remaining, 1 without height", res, err)
+	}
+	if condStatus(t, app, withHeight.Id) == "" {
+		t.Error("the usable sample was not processed")
 	}
 }
