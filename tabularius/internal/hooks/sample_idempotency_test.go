@@ -275,3 +275,50 @@ func TestKeepClientUUIDOfDuplicate_FreeUUIDIsAdopted(t *testing.T) {
 		t.Errorf("client_uuid = %q, want uuid-free", got)
 	}
 }
+
+// The uuid is compared as stored. PocketBase keeps surrounding
+// whitespace, so a trimmed lookup would miss the sample and the repeat
+// would fail against the index.
+func TestExistingSample_UUIDIsComparedAsStored(t *testing.T) {
+	app := setupTestApp(t)
+	owner := createTestUser(t, app, "idem11"+uniqueSuffix(t)+"@example.com")
+	first := storedSample(t, app, owner.Id, " uuid-1 ")
+	got := existingSample(app, owner.Id, " uuid-1 ")
+	if got == nil || got.Id != first.Id {
+		t.Fatalf("sample with padded uuid not found: %v", got)
+	}
+	if existingSample(app, owner.Id, "uuid-1") != nil {
+		t.Error("the trimmed uuid is another key")
+	}
+}
+
+// A replay is answered like a stored create: with the relations the
+// request asked to expand.
+func TestSampleCreate_ReplayExpandsRelations(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	owner := createTestUser(t, app, "idem12"+uniqueSuffix(t)+"@example.com")
+	coll, err := app.FindCollectionByNameOrId("fieldtrips")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trip := core.NewRecord(coll)
+	trip.Set("owner", owner.Id)
+	trip.Set("collecting_day", "2026-05-19")
+	if err := app.SaveNoValidate(trip); err != nil {
+		t.Fatal(err)
+	}
+	first := storedSample(t, app, owner.Id, "uuid-1")
+	first.Set("fieldtrip", trip.Id)
+	if err := app.SaveNoValidate(first); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := owner.NewAuthToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := createSampleScenario(app, tok, sampleCreateBody, func(testing.TB, *http.Response) {})
+	sc.Name = "replay with expand"
+	sc.URL += "?expand=fieldtrip"
+	sc.ExpectedContent = []string{`"id":"` + first.Id + `"`, `"expand":{"fieldtrip":{`}
+	sc.Test(t)
+}

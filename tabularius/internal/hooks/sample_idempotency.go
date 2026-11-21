@@ -7,14 +7,16 @@ import (
 	"sync"
 
 	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
 )
 
 // existingSample returns the caller's sample with this client_uuid, or
-// nil. An empty uuid or owner never matches.
+// nil. An empty uuid or owner never matches. The uuid is compared as
+// stored: PocketBase keeps surrounding whitespace, and the unique index
+// sees the stored value.
 func existingSample(app core.App, ownerID, clientUUID string) *core.Record {
-	clientUUID = strings.TrimSpace(clientUUID)
-	if ownerID == "" || clientUUID == "" {
+	if ownerID == "" || strings.TrimSpace(clientUUID) == "" {
 		return nil
 	}
 	rec, err := app.FindFirstRecordByFilter("samples",
@@ -32,6 +34,10 @@ func existingSample(app core.App, ownerID, clientUUID string) *core.Record {
 const replayHeader = "Idempotent-Replayed"
 
 func replayExistingSample(e *core.RecordRequestEvent, existing *core.Record) error {
+	// As the regular create response: expands, hidden fields.
+	if err := apis.EnrichRecord(e.RequestEvent, existing); err != nil {
+		return err
+	}
 	e.Response.Header().Set(replayHeader, "true")
 	return e.JSON(http.StatusOK, existing)
 }
@@ -47,8 +53,8 @@ func keepClientUUIDOfDuplicate(app core.App, rec *core.Record) {
 	if orig == nil {
 		return
 	}
-	incoming := strings.TrimSpace(rec.GetString("client_uuid"))
-	if incoming == "" || incoming == orig.GetString("client_uuid") {
+	incoming := rec.GetString("client_uuid")
+	if strings.TrimSpace(incoming) == "" || incoming == orig.GetString("client_uuid") {
 		return
 	}
 	_, err := app.FindFirstRecordByFilter("samples",
@@ -69,8 +75,7 @@ func keepClientUUIDOfDuplicate(app core.App, rec *core.Record) {
 var createLocks [64]sync.Mutex
 
 func lockSampleCreate(ownerID, clientUUID string) (unlock func()) {
-	clientUUID = strings.TrimSpace(clientUUID)
-	if clientUUID == "" {
+	if strings.TrimSpace(clientUUID) == "" {
 		return func() {}
 	}
 	h := fnv.New32a()
