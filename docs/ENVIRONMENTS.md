@@ -18,6 +18,17 @@ Der Dev-Tunnel ist ein SSH-Tunnel über sish auf die lokale Instanz
 und ohne gemeinsames WLAN. Läuft der Tunnel nicht, antwortet die
 Tunnel-URL mit 404.
 
+```bash
+make tabularius-tunnel                    # Dev-Backend auf 8090
+make tabularius-tunnel TUNNEL_PORT=8092   # Test-Instanz der iOS-Tests
+```
+
+Das Ziel prüft vorher, ob auf dem Port ein Backend antwortet. Zeigt der
+Tunnel auf die Test-Instanz, scheitern Apple-Login (andere Bundle-ID)
+und die Konten des Dev-Backends; außerdem setzt jeder iOS-Testlauf diese
+Instanz zurück. Schlüssel, Host und Tunnel-Name lassen sich über
+`TUNNEL_KEY`, `TUNNEL_HOST` und `TUNNEL_NAME` überschreiben.
+
 Staging und Production laufen **isoliert** in eigenen Docker-Containern
 (`tabularius-staging` vs `tabularius-prod`) mit eigenen
 SQLite-Volumes. Ein Crash der Staging-Datenbank kann Prod nicht treffen.
