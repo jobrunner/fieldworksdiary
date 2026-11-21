@@ -45,16 +45,38 @@ var berlin = func() *time.Location {
 //     " (n)" suffix, the sent value goes to original_code),
 //  5. populates `fieldtrip` and `owner` so PocketBase's subsequent
 //     save sees a complete sample.
+//
+// A create whose client_uuid the caller already stored is answered with
+// the existing sample instead (see existingSample); the unique index on
+// (owner, client_uuid) covers two requests running at once.
 func RegisterSampleCreate(app core.App) {
 	app.OnRecordCreateRequest("samples").BindFunc(func(e *core.RecordRequestEvent) error {
 		ownerID, err := authOwnerID(e.Auth)
 		if err != nil {
 			return err
 		}
+		// The app repeats a create after a timeout without knowing
+		// whether the first attempt arrived. The same client_uuid
+		// answers with the sample that exists, before any fieldtrip or
+		// sample_id is touched.
+		clientUUID := e.Record.GetString("client_uuid")
+		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
+			return replayExistingSample(e, existing)
+		}
 		if err := processSample(e.App, e.Record, ownerID); err != nil {
 			return err
 		}
-		return e.Next()
+		err = e.Next()
+		if err == nil {
+			return nil
+		}
+		// Two requests with the same uuid at once: both miss the lookup
+		// above, the unique index lets one through. The loser answers
+		// with the winner's record.
+		if existing := existingSample(e.App, ownerID, clientUUID); existing != nil {
+			return replayExistingSample(e, existing)
+		}
+		return err
 	})
 }
 
