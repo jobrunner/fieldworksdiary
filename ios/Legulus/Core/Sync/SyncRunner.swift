@@ -651,7 +651,11 @@ final class SyncRunner: ObservableObject {
             }
             // Compared before merging, so server echo differences don't
             // count as local edits.
-            let editedDuringPost = Self.createInput(fresh, location: syncLocation(fresh)) != input
+            // A replay did not apply this request's body: the server
+            // holds what the first attempt sent, and whatever changed
+            // locally since then has to follow as an update too.
+            let editedDuringPost = created.isReplay
+                || Self.createInput(fresh, location: syncLocation(fresh)) != input
             // Place data the user (or the resolver) wrote during the
             // POST wins over the response; the queued update pushes it.
             let keepLocalPlace = fresh.updatedAt != current.updatedAt

@@ -217,6 +217,34 @@ final class SyncRunnerOrtusTests: XCTestCase {
         XCTAssertEqual(updates.map(\.entityId), [sample.id], "missed edit goes out as update")
     }
 
+    /// The server answered a repeated create with the sample it stored
+    /// on the first attempt and did not apply this request's body. What
+    /// changed locally between the attempts is not on the server, so
+    /// the row goes out once more as an update.
+    func testCreate_Replay_QueuesUpdateWithTheLocalState() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        var replayed = remote(id: "backend-1", code: sample.sampleID)
+        replayed.isReplay = true
+        push.createResponse = replayed
+        await runUntilQuiescent(makeRunner(push: push))
+
+        let stored = try XCTUnwrap(store.fetchById(sample.id))
+        XCTAssertEqual(stored.backendId, "backend-1")
+        let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
+        XCTAssertEqual(updates.map(\.entityId), [sample.id], "the local state goes out as an update")
+    }
+
+    func testCreate_NoReplay_QueuesNoUpdate() async throws {
+        let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
+        let push = MockPush(log: log)
+        push.createResponse = remote(id: "backend-1", code: sample.sampleID)
+        await runUntilQuiescent(makeRunner(push: push))
+
+        let updates = try mutations.fetch(entityType: .sample).filter { $0.op == .update }
+        XCTAssertTrue(updates.isEmpty)
+    }
+
     func testCreate_RowDeletedDuringPost_QueuesServerDelete() async throws {
         let sample = try store.createLocal(lat: 49.68, lon: 10.04, collectedFrom: date(2026, 5, 19, 14))
         let push = MockPush(log: log)

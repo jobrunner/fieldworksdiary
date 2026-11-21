@@ -69,6 +69,10 @@ struct Sample: Decodable, Identifiable, Equatable {
     /// "" / false for unset columns, which must not be mistaken for
     /// real values (see `SampleGeoValues.init(from:)`).
     let geo: SampleGeoValues?
+    /// Not on the wire: set by `SampleClient` when the server answered
+    /// a create with a sample it had stored already (header
+    /// `Idempotent-Replayed`). The body of that request was not applied.
+    var isReplay = false
 
     enum CodingKeys: String, CodingKey {
         case id, fieldtrip, locality, notes, marked, elevation, latitude, longitude, version, placemark

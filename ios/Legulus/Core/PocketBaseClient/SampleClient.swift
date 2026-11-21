@@ -294,6 +294,14 @@ struct SampleClient {
         return f.string(from: Date(timeIntervalSince1970: (date.timeIntervalSince1970 * 1000).rounded() / 1000))
     }
 
+    /// True when the backend answered a create with a sample stored by
+    /// an earlier attempt (same `client_uuid`).
+    static func isReplay(_ response: URLResponse) -> Bool {
+        (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Idempotent-Replayed")?
+            .lowercased() == "true"
+    }
+
     private func send(_ request: URLRequest) async throws -> Sample {
         var request = request
         request.authenticate(with: auth)
@@ -310,7 +318,9 @@ struct SampleClient {
             throw SampleClientError.http(status: status, body: body)
         }
         do {
-            return try JSONDecoder.legulus.decode(Sample.self, from: data)
+            var sample = try JSONDecoder.legulus.decode(Sample.self, from: data)
+            sample.isReplay = Self.isReplay(response)
+            return sample
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
