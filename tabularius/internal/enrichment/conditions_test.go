@@ -795,11 +795,16 @@ func TestWaitsForOrtusHeight(t *testing.T) {
 		{"DEM height, nothing moved", "backend_service", 0, false},
 		{"GPS height, coordinate moved", "location_service", 0.01, false},
 		{"no height, coordinate moved", "", 0.01, false},
+		// No coordinate, no Ortus run: the cleanup must not be skipped.
+		{"DEM height, coordinate removed", "backend_service", -48.1351, false},
 	} {
 		updateSample(t, app, sampleID, map[string]any{"elevation_source": c.source})
 		orig := loadSample(t, app, sampleID)
 		rec := orig.Clone()
 		rec.Set("latitude", rec.GetFloat("latitude")+c.moveBy)
+		if c.moveBy < 0 {
+			rec.Set("longitude", 0)
+		}
 		if got := waitsForOrtusHeight(orig, rec); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}

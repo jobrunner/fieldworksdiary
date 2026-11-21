@@ -494,7 +494,7 @@ func unaskable(rec *core.Record) bool {
 // own trigger does not ask with it. Should no Ortus run follow, the
 // refresh job picks the pending sample up.
 func waitsForOrtusHeight(orig, rec *core.Record) bool {
-	if orig == nil || rec.GetString("elevation_source") != "backend_service" {
+	if orig == nil || !hasCoordinate(rec) || rec.GetString("elevation_source") != "backend_service" {
 		return false
 	}
 	return coordChanged(orig, rec)
