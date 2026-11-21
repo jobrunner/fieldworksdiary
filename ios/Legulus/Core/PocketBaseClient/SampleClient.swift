@@ -158,6 +158,7 @@ struct SampleClient {
         if let begin = input.beginDate { body["begin_date"] = wireFormatter.string(from: begin) }
         if let end = input.endDate { body["end_date"] = wireFormatter.string(from: end) }
         if let allDay = input.isAllDay { body["is_all_day"] = allDay }
+        if let marked = input.marked { body["marked"] = marked }
         body["version"] = input.version
         body["client_uuid"] = input.clientUuid
         body["client_updated_at"] = wireFormatter.string(from: input.clientUpdatedAt)
@@ -294,6 +295,14 @@ struct SampleClient {
         return f.string(from: Date(timeIntervalSince1970: (date.timeIntervalSince1970 * 1000).rounded() / 1000))
     }
 
+    /// True when the backend answered a create with a sample stored by
+    /// an earlier attempt (same `client_uuid`).
+    static func isReplay(_ response: URLResponse) -> Bool {
+        (response as? HTTPURLResponse)?
+            .value(forHTTPHeaderField: "Idempotent-Replayed")?
+            .lowercased() == "true"
+    }
+
     private func send(_ request: URLRequest) async throws -> Sample {
         var request = request
         request.authenticate(with: auth)
@@ -310,7 +319,9 @@ struct SampleClient {
             throw SampleClientError.http(status: status, body: body)
         }
         do {
-            return try JSONDecoder.legulus.decode(Sample.self, from: data)
+            var sample = try JSONDecoder.legulus.decode(Sample.self, from: data)
+            sample.isReplay = Self.isReplay(response)
+            return sample
         } catch {
             throw SampleClientError.decoding(error.localizedDescription)
         }
