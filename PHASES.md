@@ -1234,7 +1234,7 @@ Sechs Verbesserungen rund um die Sample-Ansicht, jede auf einem eigenen Feature-
 - [x] PR 3 – Datumszeile: Kalender-Icon, Umbruch nach dem Wochentag (`feat/sample-date-row`)
 - [x] PR 4 – Serienkamera, Fotos in voller Auflösung mit EXIF, Löschen, WLAN-Einstellung (`feat/sample-photo-series`, auf PR 2); Plan `docs/superpowers/plans/2026-11-19-foto-serienkamera.md`
 - [x] PR 5 – Kleinere Schrift für die Sample-Nummer (`feat/sample-code-font`)
-- [ ] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
+- [x] PR 6 – Foto-Import beim Nachtragen im Original (`feat/retrospective-photo-original`, auf PR 4)
 
 Häkchen werden nach dem Merge des jeweiligen PRs gesetzt. Die Kamera (PR 4) lässt sich nur auf einem Gerät prüfen.
 
@@ -1242,7 +1242,7 @@ Aus dem Gerätetest von PR 4 entstanden (nicht Teil der sechs PRs):
 
 - [x] Lokale Daten pro Konto statt einer Datenbank für alle (`fix/local-data-per-account`); Design `docs/superpowers/specs/2026-11-20-lokale-daten-pro-konto-design.md`
 - [x] Idempotente Proben-Anlage im Backend: gleiche `client_uuid` antwortet mit der vorhandenen Probe, eindeutiger Index auf Besitzer und `client_uuid` (`fix/sample-create-idempotent`)
-- [ ] App wertet den Antwort-Header `Idempotent-Replayed` aus und schickt zwischenzeitliche Änderungen als Update nach
+- [x] App wertet den Antwort-Header `Idempotent-Replayed` aus und schickt zwischenzeitliche Änderungen als Update nach
 - [ ] Lokaler Export und Import der Gerätedaten, auch abgemeldet (eigenes Design)
 
 ## Phase T – Wetter, Klima und Astronomie über Tempus
